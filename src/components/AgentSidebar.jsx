@@ -69,7 +69,7 @@ const Sidebar = () => {
 
         // ✅ Step 3: fetch from API
         const orgRes = await axios.get(
-          `https://saer.pk/api/organizations/${orgId}/`,
+          `http://127.0.0.1:8000/api/organizations/${orgId}/`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }

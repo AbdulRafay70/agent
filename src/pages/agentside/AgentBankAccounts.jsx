@@ -82,7 +82,7 @@ const AgentBankAccounts = () => {
       try {
         const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
         const params = orgId ? { organization: orgId } : {};
-        const res = await axios.get('https://saer.pk/api/bank-accounts/', { params, headers });
+        const res = await axios.get('http://127.0.0.1:8000/api/bank-accounts/', { params, headers });
         let items = [];
         if (Array.isArray(res.data)) items = res.data;
         else if (res.data && Array.isArray(res.data.results)) items = res.data.results;
@@ -157,7 +157,7 @@ const AgentBankAccounts = () => {
     const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 
     if (editingAccountId) {
-      axios.patch(`https://saer.pk/api/bank-accounts/${editingAccountId}/`, payload, { headers })
+      axios.patch(`http://127.0.0.1:8000/api/bank-accounts/${editingAccountId}/`, payload, { headers })
         .then((res) => {
           const updated = res.data;
           setAgentAccounts((prev) => prev.map((p) => (Number(p.id) === Number(editingAccountId) ? {
@@ -183,7 +183,7 @@ const AgentBankAccounts = () => {
       if (orgId) payload.organization_id = orgId;
       if (branchId) payload.branch_id = branchId;
       if (agencyId) payload.agency_id = agencyId;
-      axios.post('https://saer.pk/api/bank-accounts/', payload, { headers })
+      axios.post('http://127.0.0.1:8000/api/bank-accounts/', payload, { headers })
         .then((res) => {
           const created = res.data;
           const item = {
@@ -222,7 +222,7 @@ const AgentBankAccounts = () => {
       return;
     }
     try {
-      await axios.delete(`https://saer.pk/api/bank-accounts/${accountId}/`, {
+      await axios.delete(`http://127.0.0.1:8000/api/bank-accounts/${accountId}/`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAgentAccounts((prev) => prev.filter((p) => Number(p.id) !== Number(accountId)));

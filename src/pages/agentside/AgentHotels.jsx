@@ -86,6 +86,25 @@ const Hotels = () => {
     return `${day} ${month} ${year}`;
   };
 
+  // Format category token to human-friendly label
+  const formatCategory = (cat) => {
+    if (!cat) return "N/A";
+    const s = String(cat).toLowerCase();
+    const map = {
+      economy: "Economy",
+      standard: "Standard",
+      deluxe: "Deluxe",
+      premium: "Premium",
+      luxury: "Luxury",
+      eco: "Economy",
+      std: "Standard",
+      dlx: "Deluxe",
+      prm: "Premium",
+      lux: "Luxury",
+    };
+    return map[s] || cat.charAt(0).toUpperCase() + cat.slice(1);
+  };
+
   const fetchHotels = async () => {
     try {
       setLoading(true);
@@ -105,7 +124,7 @@ const Hotels = () => {
 
       // 1. Fetch user details
       const userResponse = await axios.get(
-        `https://saer.pk/api/users/${userId}/`,
+        `http://127.0.0.1:8000/api/users/${userId}/`,
         config
       );
 
@@ -126,39 +145,80 @@ const Hotels = () => {
         throw new Error("User has no organizations assigned");
       }
 
-      // 3. Fetch hotels - different approaches based on number of orgs
+      // 3. Fetch hotels - support paginated responses and annotate with org info
       let allHotels = [];
 
-      if (organizationIds.length === 1) {
+      const normalizeResponse = (resp) => {
+        if (!resp) return [];
+        const d = resp.data;
+        if (!d) return [];
+        if (Array.isArray(d)) return d;
+        if (Array.isArray(d?.results)) return d.results;
+        if (Array.isArray(d?.data)) return d.data;
+        return [];
+      };
+
+        if (organizationIds.length === 1) {
         // Single organization - simple request
-        const response = await axios.get(`https://saer.pk/api/hotels/`, {
+        const response = await axios.get(`http://127.0.0.1:8000/api/hotels/`, {
           ...config,
           params: {
             organization: organizationIds[0],
           },
         });
-        allHotels = response.data;
+        const orgId = organizationIds[0];
+        const orgName = orgDetails.find((o) => o.id === orgId)?.name || null;
+        allHotels = normalizeResponse(response).map((h) => ({ ...h, orgId, orgName }));
       } else {
         // Multiple organizations - fetch in parallel
-        const requests = organizationIds.map(orgId =>
-          axios.get(`https://saer.pk/api/hotels/`, {
+        const requests = organizationIds.map((orgId) =>
+          axios.get(`http://127.0.0.1:8000/api/hotels/`, {
             ...config,
             params: { organization: orgId },
           })
         );
         const responses = await Promise.all(requests);
-        allHotels = responses.flatMap(response => response.data);
+        allHotels = responses.flatMap((response, idx) => {
+          const orgId = organizationIds[idx];
+          const orgName = orgDetails.find((o) => o.id === orgId)?.name || null;
+          return normalizeResponse(response).map((h) => ({ ...h, orgId, orgName }));
+        });
       }
 
       const normalize = (city) => city?.toString().trim().toLowerCase() || "";
 
-      // Filter hotels by city
-      const makkah = allHotels.filter((hotel) => normalize(hotel.city) === "makkah");
-      const madinah = allHotels.filter((hotel) => normalize(hotel.city) === "madina");
+      // Deduplicate hotels by `id`. If the same hotel appears for multiple
+      // organizations (as separate items), merge their org names into `orgNames`.
+      const hotelMap = new Map();
+      allHotels.forEach((h) => {
+        const id = h.id ?? `${h.name}-${h.address}`;
+        if (hotelMap.has(id)) {
+          const existing = hotelMap.get(id);
+          // push orgName if it's different and not already present
+          if (h.orgName && !existing.orgNames.includes(h.orgName)) {
+            existing.orgNames.push(h.orgName);
+          }
+        } else {
+          hotelMap.set(id, { ...h, orgNames: h.orgName ? [h.orgName] : [] });
+        }
+      });
 
-      setMakkahHotels(makkah);
-      setMadinahHotels(madinah);
-      setHotels(allHotels);
+      const dedupedHotels = Array.from(hotelMap.values());
+
+      // Filter hotels by city (after deduplication)
+      const makkah = dedupedHotels.filter((hotel) => normalize(hotel.city) === "makkah");
+      const madinah = dedupedHotels.filter((hotel) => normalize(hotel.city) === "madina");
+
+      // If API returns numeric city codes (e.g. 5) or unexpected values,
+      // fall back to showing all hotels so the page isn't blank.
+      if (makkah.length === 0 && madinah.length === 0 && dedupedHotels.length > 0) {
+        setMakkahHotels(dedupedHotels);
+        setMadinahHotels([]);
+      } else {
+        setMakkahHotels(makkah);
+        setMadinahHotels(madinah);
+      }
+      setHotels(dedupedHotels);
       setTotalRecords(allHotels.length);
     } catch (error) {
       console.error("Error fetching hotels:", error);
@@ -202,14 +262,26 @@ const Hotels = () => {
       'Double Bed': null,
       'Triple Bed': null,
       'Quad Bed': null,
-      'Quint Bed': null
+      'Quint Bed': null,
     };
 
-    prices.forEach(price => {
-      if (price.room_type in priceMap &&
-        price.start_date === startDate &&
-        price.end_date === endDate) {
-        priceMap[price.room_type] = price;
+    // Normalize room_type from API and map common variants to our keys
+    const normalizeRoomTypeKey = (rt) => {
+      if (!rt && rt !== 0) return null;
+      const s = rt.toString().trim().toLowerCase();
+      if (s.includes('only')) return 'Only-Room';
+      if (s.includes('sharing')) return 'Sharing';
+      if (s.includes('double')) return 'Double Bed';
+      if (s.includes('triple') || s === 'triple' || s === '3') return 'Triple Bed';
+      if (s.includes('quad') || s === 'quad' || s === '4') return 'Quad Bed';
+      if (s.includes('quint') || s === 'quint' || s === '5') return 'Quint Bed';
+      return null;
+    };
+
+    prices.forEach((price) => {
+      const key = normalizeRoomTypeKey(price.room_type);
+      if (key && price.start_date === startDate && price.end_date === endDate) {
+        priceMap[key] = price;
       }
     });
 
@@ -359,8 +431,9 @@ const Hotels = () => {
                               <strong>{hotel.name}</strong>
                               <br />
                               <small className="text-muted">{hotel.distance}M</small>
+                              {/* Removed inline organization display to avoid leaking org lists */}
                             </td>
-                            <td rowSpan={sortedGroups.length}>{hotel.category}</td>
+                            <td rowSpan={sortedGroups.length}>{formatCategory(hotel.category)}</td>
                             <td rowSpan={sortedGroups.length} style={{ color: "#1B78CE" }}>
                               {hotel.address}
                             </td>

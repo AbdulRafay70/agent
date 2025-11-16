@@ -115,57 +115,83 @@ const AgentPackages = () => {
   const [detailsPackage, setDetailsPackage] = useState(null);
   const token = localStorage.getItem('agentAccessToken');
 
-  const getOrgId = () => {
+  const getOrgIds = () => {
     const agentOrg = localStorage.getItem("agentOrganization");
-    if (!agentOrg) return null;
+    if (!agentOrg) return [];
     const orgData = JSON.parse(agentOrg);
-    return orgData.ids[0];
+    return Array.isArray(orgData.ids) ? orgData.ids : [];
   };
 
-  const orgId = getOrgId();
+  const orgIds = getOrgIds();
 
   useEffect(() => {
     const fetchData = async () => {
       console.log("🔍 Fetching packages...");
       console.log("  - Token:", token ? "✓ Present" : "✗ Missing");
-      console.log("  - Org ID:", orgId || "✗ Missing");
+      console.log("  - Org IDs:", orgIds && orgIds.length ? orgIds.join(',') : "✗ Missing");
 
-      // Don't fetch if we don't have token or orgId
-      if (!token || !orgId) {
-        console.warn("⚠️ Missing token or organization ID. Please log in again.");
+      // Don't fetch if we don't have token or any organization IDs
+      if (!token || !orgIds || orgIds.length === 0) {
+        console.warn("⚠️ Missing token or organization ID(s). Please log in again.");
         setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
-        const [packageRes, airlinesRes] = await Promise.all([
-          axios.get(`https://saer.pk/api/umrah-packages/?organization=${orgId}`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }),
-          axios.get("https://saer.pk/api/airlines/", {
-            params: { organization: orgId },
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }),
-        ]);
 
-        const packages = packageRes.data.filter(
-          (pkg) => pkg.organization === orgId
+        // Fetch packages and airlines for all organization IDs (agent may be linked to a parent org)
+        const packagePromises = orgIds.map((id) =>
+          axios.get(`http://127.0.0.1:8000/api/umrah-packages/?organization=${id}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          })
         );
-        
+
+        const airlinePromises = orgIds.map((id) =>
+          axios.get("http://127.0.0.1:8000/api/airlines/", {
+            params: { organization: id },
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          })
+        );
+
+        const packageResponses = orgIds.length ? await Promise.all(packagePromises) : [];
+        const airlineResponses = orgIds.length ? await Promise.all(airlinePromises) : [];
+
+        // Flatten and deduplicate packages by id
+        const allPackages = packageResponses
+          .map((r) => r.data || [])
+          .flat()
+          .filter(Boolean);
+        const packagesById = {};
+        allPackages.forEach((p) => {
+          if (!packagesById[p.id]) packagesById[p.id] = p;
+        });
+        const packages = Object.values(packagesById);
+
+        // Flatten and dedupe airlines by id
+        const allAirlines = airlineResponses
+          .map((r) => r.data || [])
+          .flat()
+          .filter(Boolean);
+        const airlinesById = {};
+        allAirlines.forEach((a) => {
+          if (!airlinesById[a.id]) airlinesById[a.id] = a;
+        });
+        const mergedAirlines = Object.values(airlinesById);
+
         if (packages.length === 0) {
-          console.warn("⚠️ No umrah packages found for organization ID:", orgId);
-          console.warn("� Please add packages for this organization in the Django admin panel.");
+          console.warn("⚠️ No umrah packages found for organization IDs:", orgIds);
+          console.warn("Please add packages for these organizations in the Django admin panel.");
         }
-        
+
         setPackageData(packages);
-        setAirlines(airlinesRes.data);
+        setAirlines(mergedAirlines);
       } catch (err) {
         console.error("❌ Failed to fetch packages:", err.message);
         if (err.response?.status === 401 || err.response?.status === 403) {
@@ -177,7 +203,7 @@ const AgentPackages = () => {
     };
 
     fetchData();
-  }, [token, orgId]);
+  }, [token, JSON.stringify(orgIds)]);
 
   const formatDateTime = (dateStr) => {
     const date = new Date(dateStr);
@@ -388,7 +414,7 @@ const AgentPackages = () => {
                         </div>
                         <h4 className="text-muted mb-3">No Umrah Packages Found</h4>
                         <p className="text-muted">
-                          There are currently no umrah packages available for your organization (ID: {orgId}).
+                          There are currently no umrah packages available for your organization (ID: {orgIds && orgIds.length ? orgIds.join(',') : 'N/A'}).
                         </p>
                         <p className="text-muted small">
                           Please contact your administrator to add packages to your organization.
@@ -540,6 +566,8 @@ const AgentPackages = () => {
                         const flightFrom = tripDetails[0];
                         const flightTo = tripDetails[1];
                         const airline = airlines.find((a) => a.id === ticketInfo?.airline);
+                        const airlineName = airline?.name || ticketInfo?.airline_name || "N/A";
+                        const packageType = (pkg?.package_type || pkg?.type || "Umrah").toString();
 
                         // Calculate prices for different room types
                         const sharingPrice = calculatePackagePrice(pkg, 'sharing');
@@ -551,13 +579,21 @@ const AgentPackages = () => {
                         const infantPrices = (ticketInfo?.infant_price || 0) + (pkg.infant_visa_price || 0);
                         const childPrices = (pkg?.adault_visa_price || 0) - (pkg?.child_visa_price || 0);
 
+                        // (debug logs removed)
+
                         return (
                            <div key={index} className="border rounded-3 mb-4 package-card" style={{padding: "24px", background: "white"}}>
-                            {/* Title and Seats Row */}
+                            {/* Title, Package Type, Airline and Seats Row */}
                             <div className="d-flex justify-content-between align-items-start mb-3">
-                              <h4 className="fw-bold mb-0" style={{fontSize: "22px", color: "#333"}}>
-                                {pkg?.title || "Umrah Package"}
-                              </h4>
+                              <div>
+                              {/* Child Discount */}
+                              
+
+                              {/* Hotel Prices summary moved to the bottom Pricing section to avoid duplicates */}
+                                <h4 className="fw-bold mb-0" style={{fontSize: "22px", color: "#333"}}>
+                                  {pkg?.title || "Umrah Package"}
+                                </h4>
+                              </div>
                               <div className="text-end">
                                 <h3 className="fw-bold mb-0" style={{color: "#dc3545", fontSize: "32px"}}>{pkg?.total_seats || "0"}</h3>
                                 <div className="text-danger fw-semibold" style={{fontSize: "14px"}}>Seats Left</div>
@@ -591,59 +627,58 @@ const AgentPackages = () => {
                                 <div style={{fontSize: "13px", color: "#333", lineHeight: "1.4"}}>{pkg?.rules || "N/A"}</div>
                               </div>
                             </div>
-                            {/* Pricing Section */}
-                            <div className="row g-2 mb-3">
-                              {pkg.is_sharing_active && (
-                                <div className="col-6 col-sm-4 col-lg-2 text-center">
-                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px", marginBottom: "6px"}}>SHARING</div>
-                                  <div className="fw-bold text-primary" style={{fontSize: "18px"}}>
-                                    Rs. {sharingPrice.toLocaleString()}/
+                            {/* Hotel Prices - consolidated (restored and moved to bottom) */}
+                            <div className="mb-3">
+                              <h6 className="mb-2">Hotel Prices</h6>
+                              <div className="row g-2 text-center">
+                                <div className="col-6 col-sm-4 col-lg-2">
+                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>SHARING</div>
+                                  <div className={sharingPrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
+                                    {sharingPrice > 0 ? `Rs. ${Number(sharingPrice || 0).toLocaleString()}/.` : "N/A"}
                                   </div>
-                                  <small className="text-muted" style={{fontSize: "11px"}}>per adult</small>
+                                  <small className="text-muted">per adult</small>
                                 </div>
-                              )}
-                              {pkg.is_quaint_active && (
-                                <div className="col-6 col-sm-4 col-lg-2 text-center">
-                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px", marginBottom: "6px"}}>QUINT</div>
-                                  <div className="fw-bold text-primary" style={{fontSize: "18px"}}>
-                                    Rs. {quintPrice.toLocaleString()}/
+
+                                <div className="col-6 col-sm-4 col-lg-2">
+                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>QUINT</div>
+                                  <div className={quintPrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
+                                    {quintPrice > 0 ? `Rs. ${Number(quintPrice || 0).toLocaleString()}/.` : "N/A"}
                                   </div>
-                                  <small className="text-muted" style={{fontSize: "11px"}}>per adult</small>
+                                  <small className="text-muted">per adult</small>
                                 </div>
-                              )}
-                              {pkg.is_quad_active && (
-                                <div className="col-6 col-sm-4 col-lg-2 text-center">
-                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px", marginBottom: "6px"}}>QUAD BED</div>
-                                  <div className="fw-bold text-primary" style={{fontSize: "18px"}}>
-                                    Rs. {quadPrice.toLocaleString()}/
+
+                                <div className="col-6 col-sm-4 col-lg-2">
+                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>QUAD BED</div>
+                                  <div className={quadPrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
+                                    {quadPrice > 0 ? `Rs. ${Number(quadPrice || 0).toLocaleString()}/.` : "N/A"}
                                   </div>
-                                  <small className="text-muted" style={{fontSize: "11px"}}>per adult</small>
+                                  <small className="text-muted">per adult</small>
                                 </div>
-                              )}
-                              {pkg.is_triple_active && (
-                                <div className="col-6 col-sm-4 col-lg-2 text-center">
-                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px", marginBottom: "6px"}}>TRIPLE BED</div>
-                                  <div className="fw-bold text-primary" style={{fontSize: "18px"}}>
-                                    Rs. {triplePrice.toLocaleString()}/
+
+                                <div className="col-6 col-sm-4 col-lg-2">
+                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>TRIPLE BED</div>
+                                  <div className={triplePrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
+                                    {triplePrice > 0 ? `Rs. ${Number(triplePrice || 0).toLocaleString()}/.` : "N/A"}
                                   </div>
-                                  <small className="text-muted" style={{fontSize: "11px"}}>per adult</small>
+                                  <small className="text-muted">per adult</small>
                                 </div>
-                              )}
-                              {pkg.is_double_active && (
-                                <div className="col-6 col-sm-4 col-lg-2 text-center">
-                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px", marginBottom: "6px"}}>DOUBLE BED</div>
-                                  <div className="fw-bold text-primary" style={{fontSize: "18px"}}>
-                                    Rs. {doublePrice.toLocaleString()}/
+
+                                <div className="col-6 col-sm-4 col-lg-2">
+                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>DOUBLE BED</div>
+                                  <div className={doublePrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
+                                    {doublePrice > 0 ? `Rs. ${Number(doublePrice || 0).toLocaleString()}/.` : "N/A"}
                                   </div>
-                                  <small className="text-muted" style={{fontSize: "11px"}}>per adult</small>
+                                  <small className="text-muted">per adult</small>
                                 </div>
-                              )}
-                              <div className="col-6 col-sm-4 col-lg-2 text-center">
-                                <div className="text-uppercase fw-bold" style={{fontSize: "12px", marginBottom: "6px"}}>PER INFANT</div>
-                                <div className="fw-bold text-primary" style={{fontSize: "18px"}}>
-                                  Rs. {infantPrices.toLocaleString()}/
+
+                                {/* Single infant price (always shown) */}
+                                <div className="col-6 col-sm-4 col-lg-2">
+                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px", marginBottom: "6px"}}>PER INFANT</div>
+                                  <div className="fw-bold text-primary" style={{fontSize: "18px"}}>
+                                    Rs. {Number(infantPrices ?? 0).toLocaleString()}/.
+                                  </div>
+                                  <small className="text-muted" style={{fontSize: "11px"}}>per PEX</small>
                                 </div>
-                                <small className="text-muted" style={{fontSize: "11px"}}>per PEX</small>
                               </div>
                             </div>
 
@@ -666,6 +701,8 @@ const AgentPackages = () => {
                             >
                               Book Now
                             </button>
+
+                            {/* debug panel removed */}
 
                             {showBookingModal && selectedPackage && selectedPackage.id === pkg.id && (
                               <div className="modal fade show" style={{ display: 'block', background: 'rgba(0,0,0,0.1' }}>
@@ -725,7 +762,7 @@ const AgentPackages = () => {
                                           return (
                                             <>
                                               {/* Room type cards (click to add) */}
-                                              {selectedPackage.is_sharing_active && (
+                                              {(selectedPackage.is_sharing_active || calculatePackagePrice(selectedPackage, 'sharing') > 0) && (
                                                 <div className="col-md-3 mb-3">
                                                   <div
                                                     className={`card h-100 border-secondary ${!(bedsPerRoomType['sharing'] <= remainingSeats) ? 'opacity-50' : ''}`}
@@ -734,7 +771,7 @@ const AgentPackages = () => {
                                                     <div className="card-body text-center">
                                                       <h6 className="">SHARING</h6>
                                                       <div className="mb-2">
-                                                        <h6 className="text-primary">Rs. {calculatePackagePrice(selectedPackage, 'sharing').toLocaleString()}</h6>
+                                                        <h6 className="text-primary">Rs. {Number(calculatePackagePrice(selectedPackage, 'sharing') || 0).toLocaleString()}/.</h6>
                                                         <small className="text-muted">per adult</small>
                                                       </div>
                                                       <div className="d-flex justify-content-center align-items-center gap-2">
@@ -748,13 +785,13 @@ const AgentPackages = () => {
                                                 </div>
                                               )}
 
-                                              {selectedPackage.is_quaint_active && (
+                                              {(selectedPackage.is_quaint_active || calculatePackagePrice(selectedPackage, 'quint') > 0) && (
                                                 <div className="col-md-3 mb-3">
                                                   <div className={`card h-100 border-secondary ${!(bedsPerRoomType['quint'] <= remainingSeats) ? 'opacity-50' : ''}`} style={{ transition: 'all 0.3s ease' }}>
                                                     <div className="card-body text-center">
                                                       <h6 className="">QUINT</h6>
                                                       <div className="mb-2">
-                                                        <h6 className="text-primary">Rs. {calculatePackagePrice(selectedPackage, 'quint').toLocaleString()}</h6>
+                                                        <h6 className="text-primary">Rs. {Number(calculatePackagePrice(selectedPackage, 'quint') || 0).toLocaleString()}/.</h6>
                                                         <small className="text-muted">per adult</small>
                                                       </div>
                                                       <div className="d-flex justify-content-center align-items-center gap-2">
@@ -768,13 +805,13 @@ const AgentPackages = () => {
                                                 </div>
                                               )}
 
-                                              {selectedPackage.is_quad_active && (
+                                              {(selectedPackage.is_quad_active || calculatePackagePrice(selectedPackage, 'quad') > 0) && (
                                                 <div className="col-md-3 mb-3">
                                                   <div className={`card h-100 border-secondary ${!(bedsPerRoomType['quad'] <= remainingSeats) ? 'opacity-50' : ''}`} style={{ transition: 'all 0.3s ease' }}>
                                                     <div className="card-body text-center">
                                                       <h6 className="">QUAD BED</h6>
                                                       <div className="mb-2">
-                                                        <h6 className="text-primary">Rs. {calculatePackagePrice(selectedPackage, 'quad').toLocaleString()}</h6>
+                                                          <h6 className="text-primary">Rs. {Number(calculatePackagePrice(selectedPackage, 'quad') || 0).toLocaleString()}/.</h6>
                                                         <small className="text-muted">per adult</small>
                                                       </div>
                                                       <div className="d-flex justify-content-center align-items-center gap-2">
@@ -788,13 +825,13 @@ const AgentPackages = () => {
                                                 </div>
                                               )}
 
-                                              {selectedPackage.is_triple_active && (
+                                              {(selectedPackage.is_triple_active || calculatePackagePrice(selectedPackage, 'triple') > 0) && (
                                                 <div className="col-md-3 mb-3">
                                                   <div className={`card h-100 border-secondary ${!(bedsPerRoomType['triple'] <= remainingSeats) ? 'opacity-50' : ''}`} style={{ transition: 'all 0.3s ease' }}>
                                                     <div className="card-body text-center">
                                                       <h6 className="">TRIPLE BED</h6>
                                                       <div className="mb-2">
-                                                        <h6 className="text-primary">Rs. {calculatePackagePrice(selectedPackage, 'triple').toLocaleString()}</h6>
+                                                          <h6 className="text-primary">Rs. {Number(calculatePackagePrice(selectedPackage, 'triple') || 0).toLocaleString()}/.</h6>
                                                         <small className="text-muted">per adult</small>
                                                       </div>
                                                       <div className="d-flex justify-content-center align-items-center gap-2">
@@ -808,13 +845,13 @@ const AgentPackages = () => {
                                                 </div>
                                               )}
 
-                                              {selectedPackage.is_double_active && (
+                                              {(selectedPackage.is_double_active || calculatePackagePrice(selectedPackage, 'double') > 0) && (
                                                 <div className="col-md-3 mb-3">
                                                   <div className={`card h-100 border-secondary ${!(bedsPerRoomType['double'] <= remainingSeats) ? 'opacity-50' : ''}`} style={{ transition: 'all 0.3s ease' }}>
                                                     <div className="text-center card-body">
                                                       <h6 className="">DOUBLE BED</h6>
                                                       <div className="mb-2">
-                                                        <h6 className="text-primary">Rs. {calculatePackagePrice(selectedPackage, 'double').toLocaleString()}</h6>
+                                                          <h6 className="text-primary">Rs. {Number(calculatePackagePrice(selectedPackage, 'double') || 0).toLocaleString()}/.</h6>
                                                         <small className="text-muted">per adult</small>
                                                       </div>
                                                       <div className="d-flex justify-content-center align-items-center gap-2">

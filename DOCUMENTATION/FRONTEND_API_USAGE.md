@@ -13,7 +13,7 @@ This document shows exactly how the frontend is calling the `/api/bookings/` end
 
 ### Step 1: Login and Get Token
 ```http
-POST https://saer.pk/api/token/
+POST http://127.0.0.1:8000/api/token/
 Content-Type: application/json
 
 {
@@ -35,7 +35,7 @@ Content-Type: application/json
 
 ### Step 2: Get User Organization Data
 ```http
-GET https://saer.pk/api/users/{user_id}/
+GET http://127.0.0.1:8000/api/users/{user_id}/
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
@@ -66,7 +66,7 @@ localStorage.setItem('agentOrganization', JSON.stringify(agentOrgData));
 
 ### HTTP Request Details
 ```http
-POST https://saer.pk/api/bookings/
+POST http://127.0.0.1:8000/api/bookings/
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 Content-Type: application/json
 ```
@@ -299,7 +299,7 @@ Before creating the booking, we create an internal note:
 
 ### Request
 ```http
-POST https://saer.pk/api/internal-notes/
+POST http://127.0.0.1:8000/api/internal-notes/
 Authorization: Bearer <token>
 Content-Type: application/json
 
@@ -495,7 +495,7 @@ date: p.date.split('T')[0]  // "2025-11-05T10:30:00.000Z" → "2025-11-05"
 
 ### Test with Minimal Payload:
 ```bash
-curl -X POST https://saer.pk/api/bookings/ \
+curl -X POST http://127.0.0.1:8000/api/bookings/ \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -561,7 +561,7 @@ curl -X POST https://saer.pk/api/bookings/ \
 **Project**: Saer.pk Frontend
 **Repository**: Saer-agent-front-end-main
 **Dev Server**: http://localhost:5174
-**Backend API**: https://saer.pk/
+**Backend API**: http://127.0.0.1:8000/
 
 **For Backend Team:**
 - Check Django logs for detailed error messages
@@ -587,7 +587,7 @@ console.log('🔐 Token:', token ? 'Present' : 'Missing');
 console.log('📋 Org Data:', orgData);
 
 // Test API connection
-fetch('https://saer.pk/api/bookings/', {
+fetch('http://127.0.0.1:8000/api/bookings/', {
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${token}`,

@@ -268,7 +268,7 @@ const CustomUmrahPackagesDetail = () => {
 
         // Always fetch cities data
         const citiesResponse = await axios.get(
-          `https://saer.pk/api/cities/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/cities/?organization=${orgId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         setCities(citiesResponse.data);
@@ -281,7 +281,7 @@ const CustomUmrahPackagesDetail = () => {
         } else {
           // Otherwise fetch fresh package data
           const packageResponse = await axios.get(
-            `https://saer.pk/api/custom-umrah-packages/${id}/?organization=${orgId}`,
+            `http://127.0.0.1:8000/api/custom-umrah-packages/${id}/?organization=${orgId}`,
             { headers: { Authorization: `Bearer ${token}` } }
           );
 
@@ -330,7 +330,7 @@ const CustomUmrahPackagesDetail = () => {
     const fetchRiyalRates = async () => {
       try {
         const response = await axios.get(
-          `https://saer.pk/api/riyal-rates/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/riyal-rates/?organization=${orgId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (response.data.length > 0) {

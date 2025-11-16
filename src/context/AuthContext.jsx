@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }) => {
       const decoded = jwtDecode(access);
       const userId = decoded.user_id;
 
-      const response = await fetch(`https://saer.pk/api/users/${userId}/`, {
+      const response = await fetch(`http://127.0.0.1:8000/api/users/${userId}/`, {
         headers: { Authorization: `Bearer ${access}` },
       });
 

@@ -69,7 +69,7 @@ const BookingHistory = () => {
         }
 
         const response = await axios.get(
-          `https://saer.pk/api/bookings/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/bookings/?organization=${orgId}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
