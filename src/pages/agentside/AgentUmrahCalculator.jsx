@@ -2,149 +2,99 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import AgentSidebar from "../../components/AgentSidebar";
 import AgentHeader from "../../components/AgentHeader";
 import { Link, NavLink } from "react-router-dom";
-import { Download, Import, Search } from "lucide-react";
+import { Download, Import, Search, Eye } from "lucide-react";
 import axios from "axios";
 import { Button, Dropdown, Modal } from "react-bootstrap";
-import { Gear, Printer } from "react-bootstrap-icons";
+import { Gear, Printer, Trash, PlusCircle } from "react-bootstrap-icons";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { ToastContainer } from "react-toastify";
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import mockData from "../../mock/mockData";
 
-const FlightModal = ({
-  show,
-  onClose,
-  flights,
-  onSelect,
-  airlinesMap,
-  citiesMap,
-}) => {
+const ShimmerLoader = () => (
+  <div
+    className="shimmer-loader"
+    style={{
+      height: "38px",
+      background: "linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%)",
+      backgroundSize: "200% 100%",
+      borderRadius: "4px",
+      animation: "shimmer 1.5s infinite",
+    }}
+  ></div>
+);
+
+const FlightModal = ({ show, onClose, flights, onSelect, airlinesMap, citiesMap }) => {
   // Filter flights to show only round trips with Umrah seats
-  const filteredFlights = flights.filter(flight => {
-    const hasReturnTrip = flight.trip_details?.some(
-      t => t.trip_type.toLowerCase() === "return"
-    );
+  const filteredFlights = (flights || []).filter((flight) => {
+    const hasReturnTrip = flight.trip_details?.some((t) => t.trip_type.toLowerCase() === "return");
     return flight.is_umrah_seat && hasReturnTrip;
   });
 
+  // Render flights as selectable cards (matches ticket card layout UX)
   return (
-    <div
-      className={`modal ${show ? "d-block" : "d-none"}`}
-      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-    >
+    <div className={`modal ${show ? "d-block" : "d-none"}`} style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
       <div className="modal-dialog modal-xl modal-dialog-scrollable">
         <div className="modal-content">
           <div className="modal-header">
-            <h5 className="modal-title fw-bold">Select Umrah Flight (Round Trip)</h5>
-            <button
-              type="button"
-              className="btn-close"
-              onClick={onClose}
-            ></button>
+            <h5 className="modal-title fw-bold">Select Umrah Flight</h5>
+            <button type="button" className="btn-close" onClick={onClose}></button>
           </div>
-          <div className="modal-body">
-            <table className="table table-hover">
-              <thead className="table-light">
-                <tr>
-                  <th>Airline</th>
-                  <th>PNR</th>
-                  <th>Trip Type</th>
-                  <th>Departure</th>
-                  <th>Return</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Adult Price</th>
-                  <th>Child Price</th>
-                  <th>Infant Price</th>
-                  <th>Seats</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredFlights.map((flight) => {
-                  const departureTrip = flight.trip_details?.find(
-                    (t) => t.trip_type.toLowerCase() === "departure"
-                  );
-                  const returnTrip = flight.trip_details?.find(
-                    (t) => t.trip_type.toLowerCase() === "return"
-                  );
 
-                  return (
-                    <tr key={flight.id}>
-                      <td>{airlinesMap[flight.airline]?.name || "N/A"}</td>
-                      <td>{flight.pnr || "N/A"}</td>
-                      <td>
-                        Round Trip (Umrah)
-                      </td>
-                      <td>
-                        {departureTrip?.departure_date_time
-                          ? new Date(
-                            departureTrip.departure_date_time
-                          ).toLocaleString("en-GB", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                          : "N/A"}
-                      </td>
-                      <td>
-                        {returnTrip?.arrival_date_time
-                          ? new Date(
-                            returnTrip.arrival_date_time
-                          ).toLocaleString("en-GB", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                          : "N/A"}
-                      </td>
-                      <td>
-                        {departureTrip?.departure_city
-                          ? citiesMap[departureTrip.departure_city]?.code ||
-                          "N/A"
-                          : "N/A"}
-                      </td>
-                      <td>
-                        {departureTrip?.arrival_city
-                          ? citiesMap[departureTrip.arrival_city]?.code || "N/A"
-                          : "N/A"}
-                      </td>
-                      <td className="text-success fw-bold">
-                        Rs. {flight.adult_price?.toLocaleString() || "0"}
-                      </td>
-                      <td className="text-success fw-bold">
-                        Rs. {flight.child_price?.toLocaleString() || "0"}
-                      </td>
-                      <td className="text-success fw-bold">
-                        Rs. {flight.infant_price?.toLocaleString() || "0"}
-                      </td>
-                      <td>{flight.seats || "N/A"}</td>
-                      <td>
-                        <button
-                          className="btn btn-sm"
-                          id="btn"
-                          onClick={() => onSelect(flight)}
-                        >
-                          Select
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="modal-body">
+            <div className="row g-3">
+              {filteredFlights.length === 0 && (
+                <div className="col-12 text-center text-muted">No Umrah flights available</div>
+              )}
+
+              {filteredFlights.map((flight) => {
+                const departureTrip = flight.trip_details?.find((t) => t.trip_type.toLowerCase() === "departure");
+                const returnTrip = flight.trip_details?.find((t) => t.trip_type.toLowerCase() === "return");
+
+                const fromCode = departureTrip?.departure_city ? citiesMap[departureTrip.departure_city]?.code || "N/A" : "N/A";
+                const toCode = departureTrip?.arrival_city ? citiesMap[departureTrip.arrival_city]?.code || "N/A" : "N/A";
+
+                return (
+                  <div key={flight.id} className="col-12 col-md-6">
+                    <div className="card shadow-sm p-3 h-100">
+                      <div className="d-flex align-items-center gap-3">
+                        <div style={{width:48,height:48,background:'#f5f5f5',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                          {/* Airline code or small icon */}
+                          <small>{airlinesMap[flight.airline]?.code || airlinesMap[flight.airline]?.name?.slice(0,2) || '—'}</small>
+                        </div>
+                        <div className="flex-grow-1">
+                          <div className="fw-semibold">{airlinesMap[flight.airline]?.name || 'N/A'}</div>
+                          <div className="small text-muted">{fromCode} → {toCode} • Seats: {flight.seats || 'N/A'}</div>
+                        </div>
+                        <div className="text-end">
+                          <div className="fw-bold text-success">PKR {((flight.adult_price||0)).toLocaleString()}</div>
+                          <div className="small text-muted">Adult</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 d-flex justify-content-between align-items-center">
+                        <div className="small text-muted">
+                          <div>Departure: {departureTrip?.departure_date_time ? new Date(departureTrip.departure_date_time).toLocaleString() : 'N/A'}</div>
+                          <div>Return: {returnTrip?.arrival_date_time ? new Date(returnTrip.arrival_date_time).toLocaleString() : 'N/A'}</div>
+                        </div>
+
+                        <div>
+                          <button className="btn btn-sm" id="btn" onClick={() => onSelect(flight)}>
+                            Select
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
+
           <div className="modal-footer">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={onClose}
-            >
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
               Close
             </button>
           </div>
@@ -198,22 +148,17 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
 
   const token = localStorage.getItem("agentAccessToken");
 
-  const getOrgId = () => {
-    const agentOrg = localStorage.getItem("agentOrganization");
-    if (!agentOrg) return null;
-
-    const orgData = JSON.parse(agentOrg);
-    return orgData.ids[0]; // Get the first organization ID
-  };
-
+  // Forcing orgId to 11 so the agent UI shows packages for organization 11
+  const getOrgId = () => 11;
   const orgId = getOrgId();
+
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Fetch Airlines
         const airlinesResponse = await axios.get(
-          "http://127.0.0.1:8000/api/airlines/",
+          "https://api.saer.pk/api/airlines/",
           {
             params: { organization: orgId },
             headers: { Authorization: `Bearer ${token}` },
@@ -223,7 +168,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
 
         // Fetch Cities
         const citiesResponse = await axios.get(
-          "http://127.0.0.1:8000/api/cities/",
+          "https://api.saer.pk/api/cities/",
           {
             params: { organization: orgId },
             headers: { Authorization: `Bearer ${token}` },
@@ -246,6 +191,28 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Helper to render city dropdown options (kept inside component so it can access
+  // `loading`, `error`, `cities` and `handleInputChange` defined above)
+  const renderCityOptions = (field, currentValue) => {
+    if (loading.cities) return <ShimmerLoader />;
+    if (error.cities) return <div className="text-danger small">{error.cities}</div>;
+
+    return (
+      <select
+        className="form-select  shadow-none"
+        value={currentValue}
+        onChange={(e) => handleInputChange(field, e.target.value)}
+      >
+        <option value="">Select a city</option>
+        {cities.map((city) => (
+          <option key={city.id} value={city.id}>
+            {city.code} ({city.name})
+          </option>
+        ))}
+      </select>
+    );
   };
 
   const handleSubmit = async (e) => {
@@ -274,7 +241,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
           formData.tripType === "Round-trip"
             ? formData.returnFlightType
             : "Non-Stop",
-        organization: organizationId,
+        organization: orgId,
         airline: parseInt(formData.airline),
         trip_details: [],
         stopover_details: [],
@@ -314,7 +281,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
       }
 
       const response = await axios.post(
-        "http://127.0.0.1:8000/api/tickets/",
+        "https://api.saer.pk/api/tickets/",
         payload,
         {
           headers: {
@@ -399,7 +366,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
       }
 
       const response = await axios.post(
-        "http://127.0.0.1:8000/api/tickets/",
+        "https://api.saer.pk/api/tickets/",
         payload,
         {
           headers: {
@@ -423,43 +390,6 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
     navigate("/admin/ticket-booking");
   };
 
-  // Shimmer loading component
-  const ShimmerLoader = () => (
-    <div
-      className="shimmer-loader"
-      style={{
-        height: "38px",
-        background:
-          "linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%)",
-        backgroundSize: "200% 100%",
-        borderRadius: "4px",
-        animation: "shimmer 1.5s infinite",
-      }}
-    ></div>
-  );
-
-  // Helper to render city dropdown options
-  const renderCityOptions = (field, currentValue) => {
-    if (loading.cities) return <ShimmerLoader />;
-    if (error.cities)
-      return <div className="text-danger small">{error.cities}</div>;
-
-    return (
-      <select
-        className="form-select  shadow-none"
-        value={currentValue}
-        onChange={(e) => handleInputChange(field, e.target.value)}
-      >
-        <option value="">Select a city</option>
-        {cities.map((city) => (
-          <option key={city.id} value={city.id}>
-            {city.code} ({city.name})
-          </option>
-        ))}
-      </select>
-    );
-  };
-
   return (
     <div
       className={`modal ${show ? "d-block" : "d-none"}`}
@@ -469,12 +399,9 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title text-center fw-bold">Create Custom Ticket</h5>
-            <button
-              type="button"
-              className="btn-close"
-              onClick={onClose}
-            ></button>
+            <button type="button" className="btn-close" onClick={onClose}></button>
           </div>
+
           <div className="modal-body">
             {/* Ticket Details Section */}
             <div className="mb-4">
@@ -758,18 +685,12 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
                   />
                 </div>
                 <div className="col-md-3">
-                  <label htmlFor="">
-                    Return Departure City
-                  </label>
-                  {renderCityOptions(
-                    "returnDeparture",
-                    formData.returnDeparture
-                  )}
+                  <label htmlFor="">Return Departure City</label>
+                  {renderCityOptions("returnDeparture", formData.returnDeparture)}
                 </div>
+
                 <div className="col-md-3">
-                  <label htmlFor="">
-                    Return Arrival City
-                  </label>
+                  <label htmlFor="">Return Arrival City</label>
                   {renderCityOptions("returnArrival", formData.returnArrival)}
                 </div>
               </div>
@@ -781,15 +702,11 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
             <h5 className="card-title mb-3 fw-bold">Stay (Details)</h5>
             <div className="row g-3">
               <div className="col-md-3">
-                <label htmlFor="">
-                  Flight Type (Departure)
-                </label>
+                <label htmlFor="">Flight Type (Departure)</label>
                 <select
                   className="form-select shadow-none"
                   value={formData.flightType}
-                  onChange={(e) =>
-                    handleInputChange("flightType", e.target.value)
-                  }
+                  onChange={(e) => handleInputChange("flightType", e.target.value)}
                 >
                   <option value="Non-Stop">Non-Stop</option>
                   <option value="1-Stop">1-Stop</option>
@@ -798,15 +715,11 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
 
               {formData.tripType === "Round-trip" && (
                 <div className="col-md-3">
-                  <label htmlFor="">
-                    Flight Type (Return)
-                  </label>
+                  <label htmlFor="">Flight Type (Return)</label>
                   <select
                     className="form-select shadow-none"
                     value={formData.returnFlightType}
-                    onChange={(e) =>
-                      handleInputChange("returnFlightType", e.target.value)
-                    }
+                    onChange={(e) => handleInputChange("returnFlightType", e.target.value)}
                   >
                     <option value="Non-Stop">Non-Stop</option>
                     <option value="1-Stop">1-Stop</option>
@@ -821,23 +734,19 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
                 <div className="col-12">
                   <h6 className="text-muted">Departure Stop</h6>
                 </div>
+
                 <div className="col-md-3">
-                  <label htmlFor="">
-                    1st Stop At
-                  </label>
+                  <label htmlFor="">1st Stop At</label>
                   {renderCityOptions("stopLocation1", formData.stopLocation1)}
                 </div>
+
                 <div className="col-md-3">
-                  <label htmlFor="">
-                    Wait Time
-                  </label>
+                  <label htmlFor="">Wait Time</label>
                   <input
                     type="text"
                     className="form-control rounded shadow-none px-1 py-2"
                     value={formData.stopTime1}
-                    onChange={(e) =>
-                      handleInputChange("stopTime1", e.target.value)
-                    }
+                    onChange={(e) => handleInputChange("stopTime1", e.target.value)}
                     placeholder="30 Minutes"
                   />
                 </div>
@@ -845,37 +754,29 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
             )}
 
             {/* 1-Stop Fields for Return Trip */}
-            {formData.tripType === "Round-trip" &&
-              formData.returnFlightType === "1-Stop" && (
-                <div className="row g-3 mt-2">
-                  <div className="col-12">
-                    <h6 className="text-muted">Return Stop</h6>
-                  </div>
-                  <div className="col-md-3">
-                    <label htmlFor="">
-                      1st Stop At
-                    </label>
-                    {renderCityOptions(
-                      "returnStopLocation1",
-                      formData.returnStopLocation1
-                    )}
-                  </div>
-                  <div className="col-md-3">
-                    <label htmlFor="">
-                      Wait Time
-                    </label>
-                    <input
-                      type="text"
-                      className="form-control rounded shadow-none px-1 py-2"
-                      value={formData.returnStopTime1}
-                      onChange={(e) =>
-                        handleInputChange("returnStopTime1", e.target.value)
-                      }
-                      placeholder="30 Minutes"
-                    />
-                  </div>
+            {formData.tripType === "Round-trip" && formData.returnFlightType === "1-Stop" && (
+              <div className="row g-3 mt-2">
+                <div className="col-12">
+                  <h6 className="text-muted">Return Stop</h6>
                 </div>
-              )}
+
+                <div className="col-md-3">
+                  <label htmlFor="">1st Stop At</label>
+                  {renderCityOptions("returnStopLocation1", formData.returnStopLocation1)}
+                </div>
+
+                <div className="col-md-3">
+                  <label htmlFor="">Wait Time</label>
+                  <input
+                    type="text"
+                    className="form-control rounded shadow-none px-1 py-2"
+                    value={formData.returnStopTime1}
+                    onChange={(e) => handleInputChange("returnStopTime1", e.target.value)}
+                    placeholder="30 Minutes"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
@@ -885,12 +786,14 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
               <div className="modal-footer">
                 <button
                   type="button"
-                  id="btn" className="btn px-4"
+                  id="btn"
+                  className="btn px-4"
                   onClick={handleSave}
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? "Saving..." : "Save"}
                 </button>
+
                 <button
                   type="button"
                   className="btn btn-secondary px-4"
@@ -911,7 +814,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
 const AgentUmrahCalculator = () => {
   const tabs = [
     { name: "Umrah Package", path: "/packages" },
-    { name: "Umrah Calculator", path: "/packages/umrah-calculater" },
+    { name: "Custom Umrah Package", path: "/packages/umrah-calculater" },
     // { name: "Custom Umrah", path: "/packages/custom-umrah" },
   ];
 
@@ -937,17 +840,21 @@ const AgentUmrahCalculator = () => {
   const [activeTab, setActiveTab] = useState(getActiveTab());
 
   const token = localStorage.getItem("agentAccessToken");
-
+  // Force agent to use organization 11 for agent panel/testing purposes.
+  // This ensures the agent sees packages for org 11 even if their stored
+  // `agentOrganization` points to a different org (e.g., 39).
   const getOrgId = () => {
-    const agentOrg = localStorage.getItem("agentOrganization");
-    if (!agentOrg) return null;
-    return JSON.parse(agentOrg).ids[0];
+    try {
+      // Prefer explicit override to org 11
+      return 11;
+    } catch (err) {
+      return 11;
+    }
   };
 
   const orgId = getOrgId();
 
   // State declarations
-  const [flightOptions, setFlightOptions] = useState("select");
   const [selectedFlight, setSelectedFlight] = useState(null);
   const [airlinesMap, setAirlinesMap] = useState({});
   const [citiesMap, setCitiesMap] = useState({});
@@ -969,6 +876,20 @@ const AgentUmrahCalculator = () => {
   const [returnDepartureDate, setReturnDepartureDate] = useState("");
   const [returnReturnDate, setReturnReturnDate] = useState("");
   const [airlineName, setAirlineName] = useState("");
+  // Extra flight PNR fields per Section 4 requirements
+  const [arrivalPnr, setArrivalPnr] = useState("");
+  const [returnPnr, setReturnPnr] = useState("");
+  // If user chooses no airport pickup for transport-only bookings
+  const [noAirportPickup, setNoAirportPickup] = useState(false);
+  // Extra time fields to mirror the client's Flight Details layout (ETD / ETA)
+  const [departureETD, setDepartureETD] = useState("");
+  const [departureETA, setDepartureETA] = useState("");
+  const [returnETD, setReturnETD] = useState("");
+  const [returnETA, setReturnETA] = useState("");
+
+  // Family Divider modal + groups
+  const [showFamilyModal, setShowFamilyModal] = useState(false);
+  const [familyGroups, setFamilyGroups] = useState([]);
 
   const [hotels, setHotels] = useState([]);
   const [transportSectors, setTransportSectors] = useState([]);
@@ -1039,6 +960,9 @@ const AgentUmrahCalculator = () => {
     ziarat: false,
   });
 
+  // Riyal rate fetched from API (used for currency conversions)
+  const [riyalRate, setRiyalRate] = useState(null);
+
 
   const [formData, setFormData] = useState({
     totalAdults: 0,
@@ -1083,6 +1007,114 @@ const AgentUmrahCalculator = () => {
     margin: "",
   });
 
+  // Booking Type Selection (Section 1)
+  const bookingOptionsList = [
+    { id: "vtth", label: "VISA + TRANSPORT + TICKETS + HOTEL", services: ["visa", "transport", "tickets", "hotel"], icon: "🕋" },
+    { id: "vth", label: "VISA + TRANSPORT + HOTEL", services: ["visa", "transport", "hotel"], icon: "🕋" },
+    { id: "vt", label: "VISA + TRANSPORT", services: ["visa", "transport"], icon: "🕋" },
+    { id: "v", label: "VISA", services: ["visa"], icon: "🛂" },
+    { id: "h", label: "HOTELS", services: ["hotel"], icon: "🏨" },
+    { id: "t", label: "TRANSPORT", services: ["transport"], icon: "🚐" },
+    { id: "tk", label: "TICKETS", services: ["tickets"], icon: "✈️" },
+    // Added cards for visa-related quick options
+    { id: "onlyvisa", label: "Only Visa", services: ["visa"], icon: "🛂" },
+    { id: "longtermvisa", label: "Long term visa", services: ["visa"], icon: "🕰️" },
+  ];
+
+  const [selectedBookingOptions, setSelectedBookingOptions] = useState([]);
+  const [activeSection, setActiveSection] = useState(1);
+
+  const selectedServices = useMemo(() => {
+    const s = new Set();
+    selectedBookingOptions.forEach((id) => {
+      const opt = bookingOptionsList.find((o) => o.id === id);
+      if (opt) opt.services.forEach((svc) => s.add(svc));
+    });
+    return s;
+  }, [selectedBookingOptions]);
+
+  // Auto-clear hotel / transport forms when their service is deselected
+  useEffect(() => {
+    // If hotel service removed, reset hotel forms and related main form fields
+    if (!selectedServices.has("hotel")) {
+      setHotelForms([
+        {
+          id: Date.now(),
+          hotelId: "",
+          roomType: "",
+          sharingType: "Gender or Family",
+          checkIn: "",
+          checkOut: "",
+          noOfNights: 0,
+          specialRequest: ""
+        },
+      ]);
+
+      setFormData((prev) => ({
+        ...prev,
+        hotelId: "",
+        hotelName: "",
+        hotelData: null,
+        roomType: "",
+        checkIn: "",
+        checkOut: "",
+        noOfNights: 0,
+      }));
+    }
+
+    // If transport service removed, reset transport forms and related main form fields
+    if (!selectedServices.has("transport")) {
+      setTransportForms([
+        {
+          id: Date.now(),
+          transportType: "Company Shared Bus",
+          transportSectorId: "",
+          self: false,
+        },
+      ]);
+
+      setFormData((prev) => ({
+        ...prev,
+        transportSectorId: "",
+        transportSector: "",
+      }));
+
+      setTransportSectorPrices({ adultPrice: 0, childPrice: 0, infantPrice: 0 });
+    }
+  }, [selectedServices]);
+
+  const toggleBookingOption = (id) => {
+    setSelectedBookingOptions((prev) => {
+      // If already selected, unselect and clear related flags for visa-cards
+      if (prev.includes(id)) {
+        const updated = prev.filter((x) => x !== id);
+        // handle visa-card toggles
+        if (id === "addvisa") handleCheckboxChange("addVisaPrice", false);
+        if (id === "onlyvisa") handleCheckboxChange("onlyVisa", false);
+        if (id === "longtermvisa") handleCheckboxChange("longTermVisa", false);
+        return updated;
+      }
+
+      // Otherwise, add selection. If selecting a visa-card, set corresponding flag.
+      const updated = [...prev, id];
+      if (id === "addvisa") handleCheckboxChange("addVisaPrice", true);
+      if (id === "onlyvisa") handleCheckboxChange("onlyVisa", true);
+      if (id === "longtermvisa") handleCheckboxChange("longTermVisa", true);
+
+      return updated;
+    });
+  };
+
+  const isOptionDisabled = (id) => {
+    if (selectedBookingOptions.includes(id)) return false;
+    const opt = bookingOptionsList.find((o) => o.id === id);
+    if (!opt) return false;
+    for (const s of opt.services) {
+      if (selectedServices.has(s)) return true;
+    }
+    return false;
+  };
+
   const [costs, setCosts] = useState({
     queryNumber: "",
     visaCost: "0",
@@ -1107,6 +1139,11 @@ const AgentUmrahCalculator = () => {
     includesTransport: false,
     visaType: "No Visa Selected"
   });
+
+  // Warnings/state for passenger / seats
+  const [seatWarning, setSeatWarning] = useState("");
+  const [passengerError, setPassengerError] = useState("");
+  const adultsInputRef = useRef(null);
 
   // Calculate visa prices whenever relevant state changes
   useEffect(() => {
@@ -1139,42 +1176,94 @@ const AgentUmrahCalculator = () => {
 
     try {
       const response = await axios.get(
-        `http://127.0.0.1:8000/api/all-prices/?organization_id=${orgId}`,
+        `https://api.saer.pk/api/all-prices/?organization_id=${orgId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
 
-      const data = response.data;
+      const data = response.data || {};
 
-      // Set all the data from the single API response
-      setRiyalRate(data.riyal_rates?.[0] || null);
-      setHotels(data.hotels || []);
-      setTransportSectors(data.transport_sector_prices || []);
-      setVisaTypes(data.set_visa_type || []);
-      setVisaPricesOne(data.umrah_visa_prices || []);
-      setVisaPricesTwo(data.umrah_visa_type_two || []);
-      setOnlyVisaPrices(data.only_visa_prices || []);
-      setFoodPrices(data.food_prices || []);
-      setZiaratPrices(data.ziarat_prices || []);
-      setTicketsList(data.tickets || []);
+      // Merge API data. In development merge mockData for convenient testing,
+      // but in production rely only on the API response to avoid accidentally
+      // showing mock values when live data is missing.
+      const merged = process.env.NODE_ENV === "development"
+        ? { ...mockData, ...data }
+        : { ...data };
+
+      // Set all the data from the merged response (mockData supplies defaults)
+      setRiyalRate(merged.riyal_rates?.[0] || null);
+      setHotels(merged.hotels || []);
+      setTransportSectors(merged.transport_sector_prices || []);
+      setVisaTypes(merged.set_visa_type || []);
+      setVisaPricesOne(merged.umrah_visa_prices || []);
+      setVisaPricesTwo(merged.umrah_visa_type_two || []);
+      setOnlyVisaPrices(merged.only_visa_prices || []);
+      setFoodPrices(merged.food_prices || []);
+      setZiaratPrices(merged.ziarat_prices || []);
+      setTicketsList(merged.tickets || []);
 
       // Create airlines and cities maps
       const airlinesMap = {};
-      data.airlines?.forEach((airline) => {
+      (merged.airlines || []).forEach((airline) => {
         airlinesMap[airline.id] = { name: airline.name, code: airline.code };
       });
       setAirlinesMap(airlinesMap);
 
       const citiesMap = {};
-      data.cities?.forEach((city) => {
+      (merged.cities || []).forEach((city) => {
         citiesMap[city.id] = { code: city.code, name: city.name };
       });
       setCitiesMap(citiesMap);
 
     } catch (error) {
       console.error("Error fetching all prices:", error);
-      toast.error("Failed to fetch pricing data");
+      // In production do NOT load mock data. Notify the user and clear state
+      // so the UI does not render stale/demo prices. Only allow mock data
+      // when explicitly running in development.
+      toast.error("Failed to load live data. Please try again.");
+
+      if (process.env.NODE_ENV === "development") {
+        toast.info("Using mock data for UI testing (development only)");
+
+        // Use mockData (imported at top of file)
+        setRiyalRate(mockData.riyal_rates?.[0] || null);
+        setHotels(mockData.hotels || []);
+        setTransportSectors(mockData.transport_sector_prices || []);
+        setVisaTypes(mockData.set_visa_type || []);
+        setVisaPricesOne(mockData.umrah_visa_prices || []);
+        setVisaPricesTwo(mockData.umrah_visa_type_two || []);
+        setOnlyVisaPrices(mockData.only_visa_prices || []);
+        setFoodPrices(mockData.food_prices || []);
+        setZiaratPrices(mockData.ziarat_prices || []);
+        setTicketsList(mockData.tickets || []);
+
+        const airlinesMap = {};
+        (mockData.airlines || []).forEach((airline) => {
+          airlinesMap[airline.id] = { name: airline.name, code: airline.code };
+        });
+        setAirlinesMap(airlinesMap);
+
+        const citiesMap = {};
+        (mockData.cities || []).forEach((city) => {
+          citiesMap[city.id] = { code: city.code, name: city.name };
+        });
+        setCitiesMap(citiesMap);
+      } else {
+        // Production: clear sensitive/demo state so the agent UI doesn't show mock prices
+        setRiyalRate(null);
+        setHotels([]);
+        setTransportSectors([]);
+        setVisaTypes([]);
+        setVisaPricesOne([]);
+        setVisaPricesTwo([]);
+        setOnlyVisaPrices([]);
+        setFoodPrices([]);
+        setZiaratPrices([]);
+        setTicketsList([]);
+        setAirlinesMap({});
+        setCitiesMap({});
+      }
     } finally {
       setLoading({
         hotels: false,
@@ -1200,6 +1289,17 @@ const AgentUmrahCalculator = () => {
     fetchInitialData();
   }, [orgId, token]);
 
+  // Autofocus adults input when user navigates to Section 2
+  useEffect(() => {
+    if (activeSection === 2) {
+      setTimeout(() => {
+        adultsInputRef.current && adultsInputRef.current.focus && adultsInputRef.current.focus();
+      }, 50);
+    }
+  }, [activeSection]);
+
+  // Note: flightOptions dropdown removed; skipping old effect that watched it.
+
   // Data fetching functions
   const fetchData = async (url, setData, loadingKey) => {
     if (loadingKey) setLoading((prev) => ({ ...prev, [loadingKey]: true }));
@@ -1218,51 +1318,51 @@ const AgentUmrahCalculator = () => {
   };
 
   // const fetchRiyalRate = () =>
-  //   fetchData("http://127.0.0.1:8000/api/riyal-rates/", setRiyalRate, "riyalRate");
+  //   fetchData("https://api.saer.pk/api/riyal-rates/", setRiyalRate, "riyalRate");
 
   const fetchTickets = () =>
-    fetchData("http://127.0.0.1:8000/api/tickets/", setTicketsList, "flights");
+    fetchData("https://api.saer.pk/api/tickets/", setTicketsList, "flights");
 
   const fetchTransportSectors = () =>
     fetchData(
-      "http://127.0.0.1:8000/api/transport-sector-prices/",
+      "https://api.saer.pk/api/transport-sector-prices/",
       setTransportSectors,
       "transport"
     );
 
   const fetchHotels = () =>
-    fetchData("http://127.0.0.1:8000/api/hotels/", setHotels, "hotels");
+    fetchData("https://api.saer.pk/api/hotels/", setHotels, "hotels");
 
   const fetchVisaTypes = () =>
     fetchData(
-      "http://127.0.0.1:8000/api/set-visa-type/",
+      "https://api.saer.pk/api/set-visa-type/",
       setVisaTypes,
       "visaTypes"
     );
 
   const fetchVisaPricesOne = () =>
     fetchData(
-      "http://127.0.0.1:8000/api/umrah-visa-prices/",
+      "https://api.saer.pk/api/umrah-visa-prices/",
       setVisaPricesOne,
       "visaTypes"
     );
 
   const fetchVisaPricesTwo = () =>
     fetchData(
-      "http://127.0.0.1:8000/api/umrah-visa-type-two/",
+      "https://api.saer.pk/api/umrah-visa-type-two/",
       setVisaPricesTwo,
       "visaTypes"
     );
 
   const fetchFoodPrices = () =>
-    fetchData("http://127.0.0.1:8000/api/food-prices/", setFoodPrices, "food");
+    fetchData("https://api.saer.pk/api/food-prices/", setFoodPrices, "food");
 
   const fetchZiaratPrices = () =>
-    fetchData("http://127.0.0.1:8000/api/ziarat-prices/", setZiaratPrices, "ziarat");
+    fetchData("https://api.saer.pk/api/ziarat-prices/", setZiaratPrices, "ziarat");
 
   const fetchAirlines = async () => {
     try {
-      const response = await axios.get("http://127.0.0.1:8000/api/airlines/", {
+      const response = await axios.get("https://api.saer.pk/api/airlines/", {
         params: { organization: orgId },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1278,7 +1378,7 @@ const AgentUmrahCalculator = () => {
 
   const fetchCities = async () => {
     try {
-      const response = await axios.get("http://127.0.0.1:8000/api/cities/", {
+      const response = await axios.get("https://api.saer.pk/api/cities/", {
         params: { organization: orgId },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1293,13 +1393,25 @@ const AgentUmrahCalculator = () => {
   };
 
   const fetchOnlyVisaPrices = () =>
-    fetchData("http://127.0.0.1:8000/api/only-visa-prices/", setOnlyVisaPrices);
+    fetchData("https://api.saer.pk/api/only-visa-prices/", setOnlyVisaPrices);
 
   // Helper functions
   const formatDateTimeForInput = (dateTimeString) => {
     if (!dateTimeString) return "";
     const date = new Date(dateTimeString);
     return date.toISOString().slice(0, 16);
+  };
+
+  const formatTimeForInput = (dateTimeString) => {
+    if (!dateTimeString) return "";
+    try {
+      const d = new Date(dateTimeString);
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      return `${hh}:${mm}`;
+    } catch (err) {
+      return "";
+    }
   };
 
   const resetFlightFields = () => {
@@ -1347,7 +1459,7 @@ const AgentUmrahCalculator = () => {
 
     // Rest of your existing flight selection logic...
     const departureTrip = flight.trip_details?.find(
-      (t) => t.trip_type === "departure"
+      (t) => (t.trip_type || "").toString().toLowerCase() === "departure"
     );
     if (departureTrip) {
       setAirlineName(airlinesMap[flight.airline]?.name || "");
@@ -1363,11 +1475,14 @@ const AgentUmrahCalculator = () => {
       if (departureTrip.arrival_date_time) {
         setReturnDate(formatDateTimeForInput(departureTrip.arrival_date_time));
       }
+      // Set ETD / ETA times for departure trip
+      setDepartureETD(formatTimeForInput(departureTrip.departure_date_time));
+      setDepartureETA(formatTimeForInput(departureTrip.arrival_date_time));
     }
 
     // Process return trip
     const returnTrip = flight.trip_details?.find(
-      (t) => t.trip_type === "return"
+      (t) => (t.trip_type || "").toString().toLowerCase() === "return"
     );
     if (returnTrip) {
       setReturnAirline(airlinesMap[flight.airline]?.name || "");
@@ -1385,7 +1500,17 @@ const AgentUmrahCalculator = () => {
           formatDateTimeForInput(returnTrip.arrival_date_time)
         );
       }
+      // Set ETD / ETA times for return trip
+      setReturnETD(formatTimeForInput(returnTrip.departure_date_time));
+      setReturnETA(formatTimeForInput(returnTrip.arrival_date_time));
     }
+
+    // Fill Arrival/Return PNRs if available on flight
+    setArrivalPnr(flight.pnr || "");
+    setReturnPnr(flight.return_pnr || flight.pnr || "");
+
+    // If user selected a flight, ensure airport pickup flag is reset
+    setNoAirportPickup(false);
 
     setShowFlightModal(false);
   };
@@ -1424,6 +1549,58 @@ const AgentUmrahCalculator = () => {
       );
     });
   }, [visaTypes, transportSectors]);
+
+  // Show linked (filtered) transport sectors only for booking types that include visa+transport.
+  // Otherwise return all transport sectors. Also attempt simple PAX-based filtering where possible
+  // by using visa pricing ranges (visaPricesTwo) as a best-effort hint when available.
+  const availableTransportSectors = useMemo(() => {
+    if (!transportSectors.length) return [];
+
+    // Determine if current booking type requires linked transport sectors
+    // We consider linked when either "addVisaPrice" or "onlyVisa" is selected and
+    // the calculated visa prices indicate transport included or visa-type related selections.
+    // Follow client requirement: linked transport should be shown when the
+    // booking type is one of the visa+transport variants selected via the
+    // booking option cards. Treat these booking ids as "linked transport".
+    const linkedBookingIds = ["vtth", "vth"]; // VISA+TRANSPORT+TICKETS+HOTEL, VISA+TRANSPORT+HOTEL
+    const visaSelected = linkedBookingIds.some((id) => selectedBookingOptions.includes(id));
+
+    let baseSectors = transportSectors;
+
+    if (visaSelected && filteredTransportSectors.length > 0) {
+      baseSectors = filteredTransportSectors;
+    }
+
+    // Best-effort PAX filtering: if visaPricesTwo exists and defines person ranges,
+    // try to limit sectors to those which match the current total pax range by comparing
+    // the visaPricesTwo person_from/person_to to total persons; otherwise return base.
+    try {
+      // Include infants in the total persons calculation per client spec
+      const totalPersons =
+        (parseInt(formData.totalAdults || 0) || 0) +
+        (parseInt(formData.totalChilds || 0) || 0) +
+        (parseInt(formData.totalInfants || 0) || 0);
+      if (visaPricesTwo && visaPricesTwo.length > 0 && totalPersons > 0) {
+        // Find matching visa price bracket
+        const bracket = [...visaPricesTwo].sort((a, b) => (a.person_from || 0) - (b.person_from || 0)).find(vp => {
+          const from = parseInt(vp.person_from || 0);
+          const to = parseInt(vp.person_to || 0) || 2147483647;
+          return totalPersons >= from && totalPersons <= to;
+        });
+
+        if (bracket && bracket.vehicle_types && bracket.vehicle_types.length > 0) {
+          const vehicleTypeNames = bracket.vehicle_types.map(vt => vt.name?.toString?.().toLowerCase?.()).filter(Boolean);
+          // Filter baseSectors by vehicle type name if it matches
+          const paxFiltered = baseSectors.filter(s => vehicleTypeNames.includes((s.vehicle_type || '').toString().toLowerCase()));
+          if (paxFiltered.length > 0) return paxFiltered;
+        }
+      }
+    } catch (err) {
+      // ignore and fall back to baseSectors
+    }
+
+    return baseSectors;
+  }, [transportSectors, filteredTransportSectors, selectedBookingOptions, formData.addVisaPrice, formData.onlyVisa, formData.totalAdults, formData.totalChilds, formData.totalInfants, visaPricesTwo]);
 
   const calculateVisaPrices = useCallback(() => {
     // Get selected visa type
@@ -1764,11 +1941,12 @@ const AgentUmrahCalculator = () => {
   //   setTimeout(calculateCosts, 0);
   // };
 
-  const handleCheckboxChange = (field) => {
+  // Improved checkbox handler: accepts an explicit boolean value or toggles when value omitted
+  const handleCheckboxChange = (field, value) => {
     setFormData((prev) => {
       const newFormData = {
         ...prev,
-        [field]: !prev[field],
+        [field]: typeof value === "boolean" ? value : !prev[field],
       };
 
       // Handle checkbox dependencies
@@ -1827,6 +2005,61 @@ const AgentUmrahCalculator = () => {
         parseInt(prev.flightCost.replace(/,/g, ""))
       ).toLocaleString(),
     }));
+  };
+
+  // Passenger controls for Section 2
+  const changePax = (field, delta) => {
+    setFormData((prev) => {
+      const current = parseInt(prev[field] || 0);
+      let next = current + delta;
+      if (next < 0) next = 0;
+
+      // Enforce infant <= adults
+      if (field === "totalInfants") {
+        const adults = parseInt(prev.totalAdults || 0);
+        if (next > adults) {
+          setPassengerError("Number of infants cannot exceed number of adults");
+          setTimeout(() => setPassengerError(""), 4000);
+          return prev; // reject change
+        }
+      }
+
+      // Prevent reducing adults below existing infants
+      if (field === "totalAdults" && delta < 0) {
+        const infants = parseInt(prev.totalInfants || 0);
+        if (infants > next) {
+          setPassengerError("Cannot reduce adults below current number of infants");
+          setTimeout(() => setPassengerError(""), 4000);
+          return prev;
+        }
+      }
+
+      const updated = { ...prev, [field]: next };
+
+      // clear passenger error on successful change
+      setPassengerError("");
+
+      // Update seat warning if flight selected
+      const adults = parseInt(updated.totalAdults || 0);
+      const childs = parseInt(updated.totalChilds || 0);
+      const totalPax = adults + childs;
+      if (selectedFlight && selectedFlight.seats != null) {
+        if (totalPax > selectedFlight.seats) {
+          setSeatWarning(`Selected flight has only ${selectedFlight.seats} seats for adults+children`);
+        } else {
+          setSeatWarning("");
+        }
+      }
+
+      return updated;
+    });
+
+    // trigger recalculations that depend on pax counts
+    setTimeout(() => {
+      const prices = calculateVisaPrices();
+      setCalculatedVisaPrices(prices);
+      calculateCosts && calculateCosts();
+    }, 0);
   };
 
   // const calculateCosts = () => {
@@ -2002,9 +2235,9 @@ const AgentUmrahCalculator = () => {
       const selectedDate = new Date(value);
       selectedDate.setHours(0, 0, 0, 0);
 
-      // Prevent selecting past dates
-      if (selectedDate < today) {
-        toast.error("Check-in date cannot be in the past");
+      // Prevent selecting future dates (max = today)
+      if (selectedDate > today) {
+        toast.error("Check-in date cannot be in the future");
         return;
       }
 
@@ -2038,11 +2271,7 @@ const AgentUmrahCalculator = () => {
       const selectedDate = new Date(value);
       selectedDate.setHours(0, 0, 0, 0);
 
-      // Prevent selecting past dates
-      if (selectedDate < today) {
-        toast.error("Check-out date cannot be in the past");
-        return;
-      }
+      // Allow past check-out; only ensure it's after check-in
 
       const checkInDate = new Date(formData.checkIn);
       const checkOutDate = new Date(value);
@@ -2171,7 +2400,7 @@ const AgentUmrahCalculator = () => {
 
     const payload = {
       hotel_details: hotelForms
-        .filter(form => form.hotelId)
+        .filter(form => form.hotelId || form.isSelfHotel)
         .map(form => ({
           room_type: form.roomType,
           quantity: parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0),
@@ -2181,7 +2410,11 @@ const AgentUmrahCalculator = () => {
           number_of_nights: parseInt(form.noOfNights || 0),
           special_request: form.specialRequest,
           price: 0, // This should be calculated based on your hotel pricing logic
-          hotel: parseInt(form.hotelId)
+          hotel: form.hotelId ? parseInt(form.hotelId) : null,
+          is_self_hotel: !!form.isSelfHotel,
+          self_hotel_name: form.isSelfHotel ? form.selfHotelName : null,
+          quinty: form.quinty || null,
+          assigned_families: form.assignedFamilies || []
         })),
 
       transport_details: transportForms
@@ -2232,7 +2465,7 @@ const AgentUmrahCalculator = () => {
 
     try {
       const response = await axios.post(
-        `http://127.0.0.1:8000/api/umrah-packages/?organization${orgId}`,
+        `https://api.saer.pk/api/umrah-packages/?organization=${orgId}`,
         payload,
         {
           headers: {
@@ -2632,7 +2865,14 @@ const AgentUmrahCalculator = () => {
     checkIn: "",
     checkOut: "",
     noOfNights: 0,
-    specialRequest: ""
+    specialRequest: "",
+    // New fields per Section 5
+    isSelfHotel: false,
+    selfHotelName: "",
+    quinty: "",
+    checkInLocked: false,
+    checkOutLocked: false
+    ,assignedFamilies: []
   }]);
 
   const [transportForms, setTransportForms] = useState([{
@@ -2648,6 +2888,18 @@ const AgentUmrahCalculator = () => {
     setTransportForms(prev => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
+
+      // Recalculate nights for this hotel when either date changes
+      if (field === 'checkIn' || field === 'checkOut') {
+        const ci = updated[index].checkIn;
+        const co = updated[index].checkOut;
+        if (ci && co) {
+          const checkInDate = new Date(ci);
+          const checkOutDate = new Date(co);
+          const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
+          updated[index].noOfNights = nights > 0 ? nights : 0;
+        }
+      }
       return updated;
     });
   };
@@ -2738,8 +2990,8 @@ const AgentUmrahCalculator = () => {
   };
 
   const renderTransportSectorSelect = (transportType) => {
-    // Filter sectors based on selected transport type
-    const filteredSectors = filteredTransportSectors.filter(
+    // Filter sectors based on selected transport type using availableTransportSectors
+    const filteredSectors = availableTransportSectors.filter(
       sector => sector.vehicle_type === transportType
     );
 
@@ -2778,7 +3030,7 @@ const AgentUmrahCalculator = () => {
       }}
     >
       <option value="">Select Transport Type</option>
-      {[...new Set(filteredTransportSectors.map((s) => s.vehicle_type))].map(
+      {[...new Set(availableTransportSectors.map((s) => s.vehicle_type))].map(
         (type) => (
           <option key={type} value={type}>
             {type}
@@ -2940,7 +3192,7 @@ const AgentUmrahCalculator = () => {
 
       // Prepare hotel details
       const hotelDetails = hotelForms
-        .filter(form => form.hotelId)
+        .filter(form => form.hotelId || form.isSelfHotel)
         .map(form => {
           const selectedHotel = hotels.find(h => h.id.toString() === form.hotelId);
           const activePrice = getActivePriceForDates(selectedHotel, form.checkIn);
@@ -2954,7 +3206,11 @@ const AgentUmrahCalculator = () => {
             number_of_nights: parseInt(form.noOfNights || 0),
             special_request: form.specialRequest,
             price: activePrice?.price || 0,
-            hotel: parseInt(form.hotelId)
+            hotel: form.hotelId ? parseInt(form.hotelId) : null,
+            is_self_hotel: !!form.isSelfHotel,
+            self_hotel_name: form.isSelfHotel ? form.selfHotelName : null,
+            quinty: form.quinty || null,
+            assigned_families: form.assignedFamilies || []
           };
         });
 
@@ -3028,7 +3284,7 @@ const AgentUmrahCalculator = () => {
       if (costs.queryNumber) {
         // Update existing package
         response = await axios.put(
-          `http://127.0.0.1:8000/api/custom-umrah-packages/${costs.queryNumber}/`,
+          `https://api.saer.pk/api/custom-umrah-packages/${costs.queryNumber}/`,
           payload,
           {
             headers: {
@@ -3041,7 +3297,7 @@ const AgentUmrahCalculator = () => {
       } else {
         // Create new package
         response = await axios.post(
-          `http://127.0.0.1:8000/api/custom-umrah-packages/`,
+          `https://api.saer.pk/api/custom-umrah-packages/`,
           payload,
           {
             headers: {
@@ -3075,7 +3331,7 @@ const AgentUmrahCalculator = () => {
   const handleEditCalculation = async (packageId) => {
     try {
       const response = await axios.get(
-        `http://127.0.0.1:8000/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
+        `https://api.saer.pk/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -3103,17 +3359,24 @@ const AgentUmrahCalculator = () => {
       // Set hotel forms
       if (packageData.hotel_details?.length > 0) {
         setHotelForms(packageData.hotel_details.map(hotel => ({
-          id: hotel.id || Date.now(),
-          hotelId: hotel.hotel?.toString() || "",
-          hotelName: hotels.find(h => h.id === hotel.hotel)?.name || "",
-          roomType: hotel.room_type || "",
-          sharingType: hotel.sharing_type || "Gender or Family",
-          checkIn: hotel.check_in_time?.split('T')[0] || "",
-          checkOut: hotel.check_out_time?.split('T')[0] || "",
-          noOfNights: hotel.number_of_nights || 0,
-          specialRequest: hotel.special_request || "Haraam View",
-          price: hotel.price || 0
-        })));
+            id: hotel.id || Date.now(),
+            hotelId: hotel.hotel?.toString() || "",
+            hotelName: hotels.find(h => h.id === hotel.hotel)?.name || "",
+            roomType: hotel.room_type || "",
+            sharingType: hotel.sharing_type || "Gender or Family",
+            checkIn: hotel.check_in_time?.split('T')[0] || "",
+            checkOut: hotel.check_out_time?.split('T')[0] || "",
+            noOfNights: hotel.number_of_nights || 0,
+            specialRequest: hotel.special_request || "Haraam View",
+            price: hotel.price || 0,
+            // New fields
+            isSelfHotel: hotel.is_self_hotel || false,
+            selfHotelName: hotel.self_hotel_name || "",
+            quinty: hotel.quinty || "",
+            checkInLocked: false,
+            checkOutLocked: false,
+            assignedFamilies: hotel.assigned_families || []
+          })));
       }
 
       // Set transport forms
@@ -3131,17 +3394,15 @@ const AgentUmrahCalculator = () => {
       if (packageData.ticket_details?.length > 0) {
         try {
           const flightResponse = await axios.get(
-            `http://127.0.0.1:8000/api/tickets/${packageData.ticket_details[0].ticket}/?organization=${orgId}`,
+            `https://api.saer.pk/api/tickets/${packageData.ticket_details[0].ticket}/?organization=${orgId}`,
             {
               headers: { Authorization: `Bearer ${token}` },
             }
           );
           setSelectedFlight(flightResponse.data);
-          setFlightOptions("select");
         } catch (error) {
           console.error("Error fetching flight details:", error);
           setSelectedFlight(null);
-          setFlightOptions("select");
         }
       }
 
@@ -3219,7 +3480,7 @@ const AgentUmrahCalculator = () => {
       // Prepare the payload according to your API structure
       const payload = {
         hotel_details: hotelForms
-          .filter(form => form.hotelId)
+          .filter(form => form.hotelId || form.isSelfHotel)
           .map(form => ({
             id: form.id, // Include ID for existing records
             room_type: form.roomType,
@@ -3230,7 +3491,11 @@ const AgentUmrahCalculator = () => {
             number_of_nights: parseInt(form.noOfNights || 0),
             special_request: form.specialRequest,
             price: form.price || 0,
-            hotel: parseInt(form.hotelId)
+            hotel: form.hotelId ? parseInt(form.hotelId) : null,
+            is_self_hotel: !!form.isSelfHotel,
+            self_hotel_name: form.isSelfHotel ? form.selfHotelName : null,
+            quinty: form.quinty || null,
+            assigned_families: form.assignedFamilies || []
           })),
 
         transport_details: transportForms
@@ -3290,7 +3555,7 @@ const AgentUmrahCalculator = () => {
 
       // Make the PUT request
       const response = await axios.put(
-        `http://127.0.0.1:8000/api/custom-umrah-packages/${costs.queryNumber}/`,
+        `https://api.saer.pk/api/custom-umrah-packages/${costs.queryNumber}/`,
         payload,
         {
           headers: {
@@ -3314,15 +3579,16 @@ const AgentUmrahCalculator = () => {
     try {
       const agencyId = localStorage.getItem("agencyId") 
       console.log(agencyId);
+      // Build URL only including agency when it's present and non-empty
+      const params = new URLSearchParams();
+      params.append('organization', orgId);
+      if (agencyId && agencyId !== 'null') params.append('agency', agencyId);
 
-      // if (!agencyId) return;
+      const url = `https://api.saer.pk/api/custom-umrah-packages/?${params.toString()}`;
 
-      const response = await axios.get(
-        `http://127.0.0.1:8000/api/custom-umrah-packages/?agency=${agencyId}&organization=${orgId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setCustomPackages(response.data || []);
       // console.log(response.data)
     } catch (error) {
@@ -3345,7 +3611,7 @@ const AgentUmrahCalculator = () => {
     if (window.confirm("Are you sure you want to delete this package?")) {
       try {
         await axios.delete(
-          `http://127.0.0.1:8000/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
+          `https://api.saer.pk/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -3416,6 +3682,7 @@ const AgentUmrahCalculator = () => {
       checkOut: "",
       noOfNights: 0,
       specialRequest: "Haraam View"
+    , assignedFamilies: []
     }]);
 
     setTransportForms([{
@@ -3436,6 +3703,23 @@ const AgentUmrahCalculator = () => {
       return false;
     }
 
+    // Infants cannot exceed adults
+    if (parseInt(formData.totalInfants || 0) > parseInt(formData.totalAdults || 0)) {
+      toast.error("Number of infants cannot exceed number of adults");
+      return false;
+    }
+
+    // If a flight is selected, ensure seats are sufficient (adults + children)
+    const adults = parseInt(formData.totalAdults || 0);
+    const childs = parseInt(formData.totalChilds || 0);
+    const totalPax = adults + childs;
+    if (selectedFlight && selectedFlight.seats != null) {
+      if (totalPax > selectedFlight.seats) {
+        toast.error(`Selected flight only has ${selectedFlight.seats} seats for adults+children`);
+        return false;
+      }
+    }
+
     // Validate visa type selection when visa-related options are checked
     if ((formData.addVisaPrice || formData.onlyVisa) && !formData.visaTypeId) {
       toast.error("Visa Type is required when adding visa price or only visa");
@@ -3451,8 +3735,10 @@ const AgentUmrahCalculator = () => {
         return false;
       }
 
-      // Check flight selection
-      if (!selectedFlight && flightOptions !== "none") {
+      // Check flight selection (respect booking-type rules and noAirportPickup flag)
+      const requiresFlight = selectedServices.has('visa') || selectedServices.has('transport');
+      const transportOnlySkip = selectedServices.has('transport') && !selectedServices.has('visa') && noAirportPickup;
+      if (requiresFlight && !transportOnlySkip && !selectedFlight) {
         toast.error("Flight selection is required when adding visa price");
         return false;
       }
@@ -3460,8 +3746,10 @@ const AgentUmrahCalculator = () => {
 
     // Rule 2: If "Only Visa" is checked, flight is required but hotel is optional
     if (formData.onlyVisa) {
-      // Check flight selection
-      if (!selectedFlight && flightOptions !== "none") {
+      // Check flight selection (respect noAirportPickup if transport-only)
+      const requiresFlight = selectedServices.has('visa') || selectedServices.has('transport');
+      const transportOnlySkip = selectedServices.has('transport') && !selectedServices.has('visa') && noAirportPickup;
+      if (requiresFlight && !transportOnlySkip && !selectedFlight) {
         toast.error("Flight selection is required for only visa option");
         return false;
       }
@@ -3470,6 +3758,54 @@ const AgentUmrahCalculator = () => {
 
     // Rule 3: If neither is checked, no specific requirements
     // (No additional validation needed)
+    // City Linking Rule: If transport is added, and flight is provided, ensure
+    // flight's arrival/departure cities match the transport sector route.
+    // Only validate when at least one transport route is present and a flight is selected.
+    try {
+      const transportWithSector = transportForms.find(f => f.transportSectorId && !f.self);
+      if (transportWithSector && selectedFlight) {
+        const sector = transportSectors.find(s => s.id.toString() === transportWithSector.transportSectorId);
+        if (sector) {
+          // Derive first and last city names/labels from sector if available
+          let firstCity = sector.start_city || sector.from_city || sector.city_from || null;
+          let lastCity = sector.end_city || sector.to_city || sector.city_to || null;
+
+          if (!firstCity || !lastCity) {
+            // Try parsing from sector.name: e.g. "LHE - JED" or "LHE to JED"
+            const parts = (sector.name || "").split(/[-–—→]| to /i).map(p => p.trim()).filter(Boolean);
+            if (parts.length >= 2) {
+              firstCity = firstCity || parts[0];
+              lastCity = lastCity || parts[parts.length - 1];
+            }
+          }
+
+          // Get flight trip details
+          const departureTrip = selectedFlight.trip_details?.find(t => t.trip_type?.toLowerCase() === 'departure');
+          const returnTrip = selectedFlight.trip_details?.find(t => t.trip_type?.toLowerCase() === 'return');
+
+          // Compare arrival city of departure trip to firstCity
+          if (departureTrip && firstCity) {
+            const flightArrival = citiesMap[departureTrip.arrival_city]?.code || citiesMap[departureTrip.arrival_city]?.name || null;
+            if (flightArrival && firstCity && flightArrival.toString().toLowerCase() !== firstCity.toString().toLowerCase()) {
+              toast.error("Arrival city must match the first transport city");
+              return false;
+            }
+          }
+
+          // Compare departure city of return trip to lastCity
+          if (returnTrip && lastCity) {
+            const flightDeparture = citiesMap[returnTrip.departure_city]?.code || citiesMap[returnTrip.departure_city]?.name || null;
+            if (flightDeparture && lastCity && flightDeparture.toString().toLowerCase() !== lastCity.toString().toLowerCase()) {
+              toast.error("Departure city must match the last transport city");
+              return false;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // don't block form submission on unexpected parsing errors
+      console.error('Error validating transport <-> flight city linkage', err);
+    }
 
     return true;
   };
@@ -3499,12 +3835,10 @@ const AgentUmrahCalculator = () => {
     );
   };
 
-  const [riyalRate, setRiyalRate] = useState(null)
-
   // And update the fetchRiyalRate function:
   const fetchRiyalRate = async () => {
     try {
-      const response = await axios.get("http://127.0.0.1:8000/api/riyal-rates/", {
+      const response = await axios.get("https://api.saer.pk/api/riyal-rates/", {
         params: { organization: orgId },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -3627,14 +3961,31 @@ const AgentUmrahCalculator = () => {
         // First hotel gets check-in = flight departure
         updated[0] = {
           ...updated[0],
-          checkIn: departureDate.toISOString().split("T")[0]
+          checkIn: departureDate.toISOString().split("T")[0],
+          checkInLocked: true
         };
 
         // Last hotel gets check-out = flight return
         updated[updated.length - 1] = {
           ...updated[updated.length - 1],
-          checkOut: returnDate.toISOString().split("T")[0]
+          checkOut: returnDate.toISOString().split("T")[0],
+          checkOutLocked: true
         };
+
+        // Distribute total nights across hotels (simple even distribution)
+        const totalNights = Math.ceil((returnDate - departureDate) / (1000 * 60 * 60 * 24));
+        if (totalNights > 0) {
+          if (updated.length === 1) {
+            updated[0].noOfNights = totalNights;
+          } else {
+            const base = Math.floor(totalNights / updated.length);
+            let remainder = totalNights % updated.length;
+            for (let i = 0; i < updated.length; i++) {
+              updated[i].noOfNights = base + (remainder > 0 ? 1 : 0);
+              if (remainder > 0) remainder--; 
+            }
+          }
+        }
 
         return updated;
       });
@@ -3657,15 +4008,22 @@ const AgentUmrahCalculator = () => {
     setHotelForms(prev => {
       const updated = [...prev];
 
-      // If updating check-in date, validate it's not in the past
+      // If updating check-in date, validate it's not in the past (min = today), unless locked by flight
       if (field === 'checkIn') {
+        // If this field is locked (synced with flight), disallow manual changes
+        if (updated[index].checkInLocked) {
+          toast.error("Check-in date is locked to the flight arrival date");
+          return prev;
+        }
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const selectedDate = new Date(value);
         selectedDate.setHours(0, 0, 0, 0);
 
+        // Disallow selecting dates before today
         if (selectedDate < today) {
-          toast.error("Check-in date cannot be in the past");
+          toast.error("Check-in date cannot be before today");
           return prev;
         }
 
@@ -3676,15 +4034,11 @@ const AgentUmrahCalculator = () => {
         }
       }
 
-      // If updating check-out date, validate it's after check-in and not in the past
+      // If updating check-out date, validate it's after check-in
       if (field === 'checkOut') {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const selectedDate = new Date(value);
-        selectedDate.setHours(0, 0, 0, 0);
-
-        if (selectedDate < today) {
-          toast.error("Check-out date cannot be in the past");
+        // If this field is locked (synced with flight), disallow manual changes
+        if (updated[index].checkOutLocked) {
+          toast.error("Check-out date is locked to the flight departure date");
           return prev;
         }
 
@@ -3724,6 +4078,13 @@ const AgentUmrahCalculator = () => {
         checkOut: "",
         noOfNights: 0,
         specialRequest: "Haraam View"
+        ,
+        isSelfHotel: false,
+        selfHotelName: "",
+        quinty: "",
+        checkInLocked: false,
+        checkOutLocked: false
+        ,assignedFamilies: []
       };
 
       return [...prev, newHotel];
@@ -3736,133 +4097,208 @@ const AgentUmrahCalculator = () => {
   };
 
   const renderHotelForm = (form, index) => (
-    <div key={form.id} className="pb-3 mb-3">
-      <div className="d-flex justify-content-between">
-        <h5 className="mb-3 fw-semibold">Hotel Details {index + 1}</h5>
+    <div key={form.id} className="card mb-3 shadow-sm border rounded-3 p-3">
+      <div className="d-flex justify-content-between align-items-start">
+        <h5 className="mb-2 fw-semibold">Hotel Details {index + 1}</h5>
         <div>
           <button
-            className="btn btn-danger btn-sm"
+            className="btn btn-sm btn-outline-danger d-flex align-items-center"
             onClick={() => removeHotelForm(index)}
-            disabled={hotelForms.length <= 1}
+            disabled={hotelForms.length <= 1 || !selectedServices.has('hotel')}
+            aria-label={`Remove hotel ${index + 1}`}
           >
-            Remove
+            <Trash size={14} className="me-1" /> Remove
           </button>
         </div>
       </div>
-      <div className="row">
-        <div className="col-md-2 mb-3">
-          <label htmlFor="" className="Control-label">Hotel Name</label>
-          <select
-            className="form-select shadow-none"
-            value={form.hotelId}
-            onChange={(e) => updateHotelForm(index, 'hotelId', e.target.value)}
-            disabled={loading.hotels}
-          >
-            <option value="">Select Hotel</option>
-            {hotels.map((hotel) => (
-              <option key={hotel.id} value={hotel.id}>{hotel.name}</option>
-            ))}
-          </select>
-        </div>
-        {/* <div className="col-md-2 mb-3">
-          <label htmlFor="" className="Control-label">Quantity</label>
-          <input
-            type="number"
-            className="form-control shadow-none"
-            placeholder="quantity"
-          />
-        </div> */}
-        <div className="col-md-2 mb-3">
-          <label htmlFor="" className="Control-label">Room Type</label>
-          <select
-            className="form-select shadow-none"
-            value={form.roomType}
-            onChange={(e) => updateHotelForm(index, 'roomType', e.target.value)}
-          >
-            <option value="">Select Room Type</option>
-            {form.hotelId && hotels.find(h => h.id.toString() === form.hotelId)?.prices
-              ?.filter(price => price.room_type !== "Only-Room")
-              .map((price, i) => (
-                <option key={i} value={price.room_type}>{price.room_type}</option>
+
+      <div className="mb-3 border rounded p-3">
+        <div className="row g-3">
+          <div className="col-12 mb-2">
+            <small className="fw-semibold">Hotel Info</small>
+          </div>
+
+          <div className="col-md-6">
+            <label className="Control-label">Hotel Name</label>
+            <select
+              className="form-select shadow-none"
+              value={form.isSelfHotel ? "__SELF__" : form.hotelId}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__SELF__") {
+                  updateHotelForm(index, 'hotelId', "");
+                  updateHotelForm(index, 'isSelfHotel', true);
+                } else {
+                  updateHotelForm(index, 'hotelId', v);
+                  updateHotelForm(index, 'isSelfHotel', false);
+                }
+              }}
+              disabled={loading.hotels || !selectedServices.has('hotel')}
+            >
+              <option value="">Select Hotel</option>
+              {hotels.filter(h=>h.active !== false).map((hotel) => (
+                <option key={hotel.id} value={hotel.id}>{hotel.name}</option>
               ))}
-          </select>
-        </div>
-        <div className="col-md-2 mb-3">
-          <label htmlFor="" className="Control-label">Sharing Type</label>
-          <select
-            className="form-select shadow-none"
-            value={form.sharingType}
-            onChange={(e) => updateHotelForm(index, 'sharingType', e.target.value)}
-            disabled={form.roomType !== "Sharing"} // Disable if room type is not Sharing
-          >
-            <option value="Gender or Family">Gender or Family</option>
-            <option value="Male Only">Male Only</option>
-            <option value="Female Only">Female Only</option>
-            <option value="Family Only">Family Only</option>
-          </select>
-        </div>
-        <div className="col-md-2 mb-3">
-          <label htmlFor="" className="Control-label">Check In</label>
-          <input
-            type="date"
-            className="form-control shadow-none"
-            value={form.checkIn}
-            min={new Date().toISOString().split('T')[0]} // Set min to today
-            onChange={(e) => {
-              updateHotelForm(index, 'checkIn', e.target.value);
-              if (e.target.value && form.noOfNights) {
-                const checkOut = new Date(e.target.value);
-                checkOut.setDate(checkOut.getDate() + parseInt(form.noOfNights));
-                updateHotelForm(index, 'checkOut', checkOut.toISOString().split('T')[0]);
-              }
-            }}
-          />
-        </div>
-        <div className="col-md-2 mb-3">
-          <label htmlFor="" className="Control-label">No. of Night</label>
-          <input
-            type="number"
-            className="form-control shadow-none"
-            value={form.noOfNights}
-            onChange={(e) => {
-              updateHotelForm(index, 'noOfNights', e.target.value);
-              if (e.target.value && form.checkIn) {
-                const checkOut = new Date(form.checkIn);
-                checkOut.setDate(checkOut.getDate() + parseInt(e.target.value));
-                updateHotelForm(index, 'checkOut', checkOut.toISOString().split('T')[0]);
-              }
-            }}
-          />
+              <option value="__SELF__">Self Hotel (Enter manually)</option>
+            </select>
+
+            {form.isSelfHotel && (
+              <div className="mt-2">
+                <label className="Control-label">Self Hotel Name</label>
+                <input
+                  type="text"
+                  className="form-control shadow-none"
+                  placeholder="Enter hotel name"
+                  value={form.selfHotelName}
+                  onChange={(e) => updateHotelForm(index, 'selfHotelName', e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="col-md-6">
+            <label className="Control-label">Quinty / Room Title</label>
+            <input
+              type="text"
+              className="form-control shadow-none"
+              value={form.quinty}
+              onChange={(e) => updateHotelForm(index, 'quinty', e.target.value)}
+              placeholder="Quinty / Room Title"
+            />
+          </div>
         </div>
       </div>
-      <div className="row">
-        <div className="col-md-2 mb-3">
-          <label htmlFor="" className="Control-label">Check Out</label>
-          <input
-            type="date"
-            className="form-control shadow-none"
-            value={form.checkOut}
-            min={form.checkIn || new Date().toISOString().split('T')[0]} // Set min to check-in date or today
-            onChange={(e) => {
-              updateHotelForm(index, 'checkOut', e.target.value);
-              if (e.target.value && form.checkIn) {
-                const checkIn = new Date(form.checkIn);
-                const checkOut = new Date(e.target.value);
-                const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
-                updateHotelForm(index, 'noOfNights', nights > 0 ? nights : 0);
-              }
-            }}
-          />
+
+      <div className="mb-3 border rounded p-3">
+        <div className="row g-3">
+          <div className="col-12 mb-2"><small className="fw-semibold">Dates</small></div>
+          <div className="col-md-4">
+            <label className="Control-label">Check In</label>
+            <input
+              type="date"
+              className="form-control shadow-none"
+              value={form.checkIn}
+              min={new Date().toISOString().split('T')[0]}
+              readOnly={form.checkInLocked}
+              onChange={(e) => {
+                updateHotelForm(index, 'checkIn', e.target.value);
+                if (e.target.value && form.noOfNights) {
+                  const checkOut = new Date(e.target.value);
+                  checkOut.setDate(checkOut.getDate() + parseInt(form.noOfNights));
+                  updateHotelForm(index, 'checkOut', checkOut.toISOString().split('T')[0]);
+                }
+              }}
+            />
+          </div>
+          <div className="col-md-4">
+            <label className="Control-label">No. of Night</label>
+            <input
+              type="number"
+              className="form-control shadow-none"
+              value={form.noOfNights}
+              onChange={(e) => {
+                updateHotelForm(index, 'noOfNights', e.target.value);
+                if (e.target.value && form.checkIn) {
+                  const checkOut = new Date(form.checkIn);
+                  checkOut.setDate(checkOut.getDate() + parseInt(e.target.value));
+                  updateHotelForm(index, 'checkOut', checkOut.toISOString().split('T')[0]);
+                }
+              }}
+            />
+          </div>
+          <div className="col-md-4">
+            <label className="Control-label">Check Out</label>
+            <input
+              type="date"
+              className="form-control shadow-none"
+              value={form.checkOut}
+              readOnly
+            />
+            {form.checkOutLocked && <div className="small text-muted mt-1">Locked to flight departure date</div>}
+          </div>
+
+          <div className="col-12">
+            <label className="Control-label">Special Request</label>
+            <input
+              type="text"
+              className="form-control shadow-none"
+              placeholder="Haraam View"
+              value={form.specialRequest}
+              onChange={(e) => updateHotelForm(index, 'specialRequest', e.target.value)}
+            />
+          </div>
         </div>
-        <div className="col-md-2 mb-3">
-          <label htmlFor="" className="Control-label">Special Request</label>
-          <input
-            type="text"
-            className="form-control shadow-none"
-            placeholder="Haraam View"
-            value={form.specialRequest}
-            onChange={(e) => updateHotelForm(index, 'specialRequest', e.target.value)}
-          />
+      </div>
+
+      <div className="mb-3 border rounded p-3">
+        <div className="row g-3">
+          <div className="col-12 mb-2"><small className="fw-semibold">Room Type</small></div>
+          <div className="col-md-6">
+            <label className="Control-label">Room Type</label>
+            <select
+              className="form-select shadow-none"
+              value={form.roomType}
+              onChange={(e) => updateHotelForm(index, 'roomType', e.target.value)}
+            >
+              <option value="">Select Room Type</option>
+              {form.hotelId && hotels.find(h => h.id.toString() === form.hotelId)?.prices
+                ?.filter(price => price.room_type !== "Only-Room")
+                .map((price, i) => (
+                  <option key={i} value={price.room_type}>{price.room_type}</option>
+                ))}
+            </select>
+          </div>
+
+          <div className="col-md-6">
+            <label className="Control-label">Sharing Type</label>
+            <select
+              className="form-select shadow-none"
+              value={form.sharingType}
+              onChange={(e) => updateHotelForm(index, 'sharingType', e.target.value)}
+              disabled={form.roomType !== "Sharing"}
+            >
+              <option value="Gender or Family">Gender or Family</option>
+              <option value="Male Only">Male Only</option>
+              <option value="Female Only">Female Only</option>
+              <option value="Family Only">Family Only</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-3 border rounded p-3 d-flex align-items-center justify-content-between">
+        <div>
+          <small className="fw-semibold d-block mb-1">Family Divider</small>
+          {form.assignedFamilies && form.assignedFamilies.length > 0 ? (
+            <div className="small text-muted">Assigned: {form.assignedFamilies.join(', ')}</div>
+          ) : (
+            <div className="small text-muted">Assigned: —</div>
+          )}
+        </div>
+
+        <div>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-primary"
+            onClick={() => {
+              const totalPax = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
+              const groups = computeFamilyGroups(totalPax);
+              setFamilyGroups(groups);
+              setShowFamilyModal(true);
+            }}
+          >Open Divider
+          </button>
+        </div>
+      </div>
+
+      <div className="row mt-3">
+        <div className="col-12">
+          <div className="small text-muted">Food: {selectedFood ? (foodPrices.find(f=>f.id.toString()===selectedFood)?.title || selectedFood) : 'None'}</div>
+          <div className="small text-muted">Ziarat: {selectedZiarat ? (ziaratPrices.find(z=>z.id.toString()===selectedZiarat)?.title || selectedZiarat) : 'None'}</div>
+          <div className="small text-muted">Quinty / Room Title: {form.quinty || '—'}</div>
+          {form.assignedFamilies && form.assignedFamilies.length > 0 && (
+            <div className="small text-muted">Assigned Families: {form.assignedFamilies.join(', ')}</div>
+          )}
         </div>
       </div>
     </div>
@@ -3892,6 +4328,20 @@ const AgentUmrahCalculator = () => {
         const match = roomType.match(/\d+/);
         return match ? parseInt(match[0]) : 1;
     }
+  };
+
+  // Compute family groups greedily given total pax
+  const computeFamilyGroups = (totalPax) => {
+    const capacities = [5,4,3,2,1]; // quint, quad, triple, double, sharing
+    const groups = [];
+    let remaining = totalPax;
+    while (remaining > 0) {
+      // pick largest capacity <= remaining, else pick smallest (1)
+      let picked = capacities.find(c => c <= remaining) || 1;
+      groups.push(picked);
+      remaining -= picked;
+    }
+    return groups;
   };
 
   return (
@@ -3931,7 +4381,7 @@ const AgentUmrahCalculator = () => {
                         <NavLink
                           key={index}
                           to={tab.path}
-                          className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${tab.name === "Umrah Calculator"
+                          className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${tab.name === "Custom Umrah Package"
                             ? "text-primary fw-semibold"
                             : "text-muted"
                             }`}
@@ -3945,131 +4395,156 @@ const AgentUmrahCalculator = () => {
                   <div className="min-vh-100 border  rounded-4 p-3">
                     <div className="card border-0 p-2">
                       <h4 className="mb-0 text-dark fw-bold">
-                        Umrah Package Calculator
+                        Custom Umrah Package
                       </h4>
                       <div className="card-body">
+                        {/* Booking Type Selection - Section 1 */}
+                        <div className="row mb-4">
+                          <div className="col-12">
+                            <h6 className="fw-semibold">Which type of booking is this?</h6>
+                            <div className="d-flex flex-wrap gap-2 mt-2">
+                              {bookingOptionsList.map((opt) => {
+                                const disabled = isOptionDisabled(opt.id);
+                                const active = selectedBookingOptions.includes(opt.id);
+                                return (
+                                  <button
+                                    key={opt.id}
+                                    type="button"
+                                    className={`card p-3 btn text-start ${active ? "border-primary bg-light" : ""} ${disabled && !active ? "opacity-50" : ""}`}
+                                    disabled={disabled && !active}
+                                    onClick={() => toggleBookingOption(opt.id)}
+                                    style={{ minWidth: "220px" }}
+                                  >
+                                    <div className="d-flex align-items-center gap-2">
+                                      <div style={{ fontSize: "20px" }}>{opt.icon}</div>
+                                      <div>
+                                        <div className="fw-bold" style={{ fontSize: "0.95rem" }}>{opt.label}</div>
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                              <div className="mt-3">
+                                <small className="text-muted">Selected: {selectedBookingOptions.length > 0 ? selectedBookingOptions.map(id => bookingOptionsList.find(o=>o.id===id)?.label).join(' • ') : 'None'}</small>
+                                {/* Next button removed per request */}
+                              </div>
+                          </div>
+                        </div>
+
                         {/* Top Section - Counts */}
                         <div className="row mb-4">
-                          <div className="col-md-3 mb-3">
-                            <label htmlFor="" className="Control-label">Total Adults</label>
-                            <input
-                              type="number"
-                              className="form-control bg-light shadow-none"
-                              value={formData.totalAdults}
-                              onChange={(e) =>
-                                handleInputChange("totalAdults", e.target.value)
-                              }
-                            />
+                          <div className="col-12">
+                            <h6 className="fw-semibold">Passenger Details</h6>
+                            <p className="small text-muted">Adjust passengers by category. Total PAX updates automatically.</p>
                           </div>
-                          <div className="col-md-3 mb-3">
-                            <label htmlFor="" className="Control-label">Total Childs</label>
 
-                            <input
-                              type="number"
-                              className="form-control bg-light shadow-none"
-                              value={formData.totalChilds}
-                              onChange={(e) =>
-                                handleInputChange("totalChilds", e.target.value)
-                              }
-                            />
+                          <div className="col-12 col-md-4 mb-3">
+                            <label className="Control-label d-block">Adults (12+)</label>
+                            <div className="d-flex align-items-center gap-2">
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary"
+                                onClick={() => changePax("totalAdults", -1)}
+                                aria-label="decrease adults"
+                              >
+                                ➖
+                              </button>
+                              <input
+                                type="text"
+                                readOnly
+                                ref={adultsInputRef}
+                                className="form-control text-center bg-light shadow-none"
+                                value={formData.totalAdults}
+                                aria-label="total adults"
+                                style={{ maxWidth: "120px" }}
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary"
+                                onClick={() => changePax("totalAdults", 1)}
+                                aria-label="increase adults"
+                              >
+                                ➕
+                              </button>
+                            </div>
                           </div>
-                          <div className="col-md-3 mb-3">
-                            <label htmlFor="" className="Control-label">Total Infants</label>
 
-                            <input
-                              type="number"
-                              className="form-control bg-light shadow-none"
-                              value={formData.totalInfants}
-                              onChange={(e) =>
-                                handleInputChange("totalInfants", e.target.value)
-                              }
-                            />
-                          </div>
-                        </div>
-                        {/* Options Section */}
-                        <div className="row">
-                          <div className="col-md-2">
-                            <div className="form-check d-flex align-items-center gap-2">
-                              <input
-                                className="form-check-input border border-black"
-                                type="checkbox"
-                                id="addVisaPrice"
-                                checked={formData.addVisaPrice}
-                                onChange={() => handleCheckboxChange("addVisaPrice")}
-                              />
-                              <label
-                                className="form-check-label"
-                                htmlFor="addVisaPrice"
+                          <div className="col-12 col-md-4 mb-3">
+                            <label className="Control-label d-block">Children (2–11)</label>
+                            <div className="d-flex align-items-center gap-2">
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary"
+                                onClick={() => changePax("totalChilds", -1)}
+                                aria-label="decrease children"
                               >
-                                Add visa price
-                              </label>
-                            </div>
-                          </div>
-                          <div className="col-md-2 mb-2">
-                            <div className="form-check d-flex align-items-center gap-2">
+                                ➖
+                              </button>
                               <input
-                                className="form-check-input border border-black"
-                                type="checkbox"
-                                checked={formData.onlyVisa}
-                                onChange={() => handleCheckboxChange("onlyVisa")}
-                                id="onlyvisa"
+                                type="text"
+                                readOnly
+                                className="form-control text-center bg-light shadow-none"
+                                value={formData.totalChilds}
+                                aria-label="total children"
+                                style={{ maxWidth: "120px" }}
                               />
-                              <label htmlFor="onlyvisa">Only Visa</label>
-                            </div>
-                          </div>
-                          <div className="col-md-2">
-                            <div className="form-check d-flex align-items-center gap-2">
-                              <input
-                                className="form-check-input border border-black"
-                                type="checkbox"
-                                id="longTermVisa"
-                                checked={formData.longTermVisa}
-                                onChange={() => handleCheckboxChange("longTermVisa")}
-                              />
-                              <label
-                                className="form-check-label"
-                                htmlFor="longTermVisa"
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary"
+                                onClick={() => changePax("totalChilds", 1)}
+                                aria-label="increase children"
                               >
-                                Long term visa
-                              </label>
+                                ➕
+                              </button>
                             </div>
                           </div>
-                          {/* <div className="col-md-3">
-                      <div className="form-check d-flex align-items-center gap-2">
-                        <input
-                          className="form-check-input border border-black"
-                          type="checkbox"
-                          id="withOneSideTransport"
-                          checked={formData.withOneSideTransport}
-                          onChange={() =>
-                            handleCheckboxChange("withOneSideTransport")
-                          }
-                        />
-                        <label
-                          className="form-check-label"
-                          htmlFor="withOneSideTransport"
-                        >
-                          With one side transport
-                        </label>
-                      </div>
-                    </div>
-                    <div className="col-md-2 mb-2">
-                      <div className="form-check d-flex align-items-center gap-2">
-                        <input
-                          className="form-check-input border border-black"
-                          type="checkbox"
-                          checked={formData.withFullTransport}
-                          onChange={() =>
-                            handleCheckboxChange("withFullTransport")
-                          }
-                          id="withfulltransport"
-                        />
-                        <label htmlFor="withfulltransport">
-                          With full transport
-                        </label>
-                      </div>
-                    </div> */}
+
+                          <div className="col-12 col-md-4 mb-3">
+                            <label className="Control-label d-block">Infants (&lt;2)</label>
+                            <div className="d-flex align-items-center gap-2">
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary"
+                                onClick={() => changePax("totalInfants", -1)}
+                                aria-label="decrease infants"
+                              >
+                                ➖
+                              </button>
+                              <input
+                                type="text"
+                                readOnly
+                                className="form-control text-center bg-light shadow-none"
+                                value={formData.totalInfants}
+                                aria-label="total infants"
+                                style={{ maxWidth: "120px" }}
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary"
+                                onClick={() => changePax("totalInfants", 1)}
+                                aria-label="increase infants"
+                              >
+                                ➕
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="col-12 mt-2">
+                            <div className="fw-semibold">Total PAX: <span className="text-primary">{(parseInt(formData.totalAdults||0) + parseInt(formData.totalChilds||0) + parseInt(formData.totalInfants||0))}</span></div>
+                          </div>
+                          {seatWarning && (
+                            <div className="col-12 mt-2">
+                              <div className="alert alert-warning">{seatWarning}</div>
+                            </div>
+                          )}
+                          {passengerError && (
+                            <div className="col-12 mt-2">
+                              <div className="text-danger small">{passengerError}</div>
+                            </div>
+                          )}
                         </div>
+                        {/* Options Section (visa controls moved to booking cards) */}
                         {renderVisaPriceInfo()}
                       </div>
                       {/* Hotel Details */}
@@ -4219,23 +4694,121 @@ const AgentUmrahCalculator = () => {
                         ))}
                       </div> */}
 
-                      <div className="mb-4 mt-5">
-                        {hotelForms.map((form, index) => renderHotelForm(form, index))}
-                        <button
-                          id="btn" className="btn"
-                          onClick={addHotelForm}
-                        >
-                          Add Another Hotel
-                        </button>
-                      </div>
+                      
 
                       {/* Transport Details */}
                       <div className="mb-4">
-                        {transportForms.map((form, index) => (
-                          <div key={form.id} className=" pb-3 mb-3">
-                            <div className="d-flex justify-content-between">
-                              <h5 className="mb-3 fw-semibold">Transport Details {index + 1}</h5>
-                              <div className="d-flex align-items-center mb-3">
+                        <div className="card shadow-sm border p-3">
+                          <h5 className="mb-3 fw-bold">Transport Details</h5>
+
+                          {transportForms.map((form, index) => (
+                            <div key={form.id} className="card mb-3 shadow-sm border p-3">
+                              <div className="d-flex justify-content-between align-items-start">
+                                <h6 className="mb-2 fw-semibold">Route {index + 1}</h6>
+                              </div>
+
+                              {/* Transport Info */}
+                              <div className="mb-3 border rounded p-3">
+                                <small className="fw-semibold">Transport Info</small>
+                                <div className="row g-3 mt-2">
+                                  <div className="col-12 col-md-6">
+                                    <label className="form-label small mb-1">Transport Type</label>
+                                    <select
+                                      className="form-select shadow-none"
+                                      value={form.transportType}
+                                      onChange={(e) => {
+                                        updateTransportForm(index, 'transportType', e.target.value);
+                                        updateTransportForm(index, 'transportSectorId', '');
+                                      }}
+                                      disabled={form.self || !selectedServices.has('transport')}
+                                    >
+                                      <option value="">Select Transport Type</option>
+                                      {[...new Set(availableTransportSectors.map(s => s.vehicle_type))].map(type => (
+                                        <option key={type} value={type}>{type}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <div className="col-12 col-md-6">
+                                    <label className="form-label small mb-1">Transport Sector</label>
+                                    <select
+                                      className="form-select shadow-none"
+                                      value={form.transportSectorId}
+                                      onChange={(e) => updateTransportForm(index, 'transportSectorId', e.target.value)}
+                                      disabled={form.self || !form.transportType || !selectedServices.has('transport')}
+                                    >
+                                      <option value="">Select Sector</option>
+                                      {availableTransportSectors
+                                        .filter(s => s.vehicle_type === form.transportType)
+                                        .map(sector => (
+                                          <option key={sector.id} value={sector.id}>
+                                            {sector.name}
+                                          </option>
+                                        ))}
+                                    </select>
+                                  </div>
+
+                                  <div className="col-12 col-md-4 d-flex align-items-center">
+                                    <div className="form-check d-flex align-items-center gap-2">
+                                      <input
+                                        className="form-check-input border border-black"
+                                        type="checkbox"
+                                        checked={form.self}
+                                        onChange={(e) => updateTransportForm(index, 'self', e.target.checked)}
+                                        id={`transportSelf-${form.id}`}
+                                      />
+                                      <label htmlFor={`transportSelf-${form.id}`} className="form-label small mb-1">Self</label>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Pricing */}
+                              <div className="mb-3 border rounded p-3">
+                                <small className="fw-semibold">Pricing</small>
+                                {form.transportSectorId && !form.self && (
+                                  <div className="row mt-2">
+                                    <div className="col-12 col-md-4 mb-2 mb-md-0">
+                                      <div className="alert alert-info p-2">
+                                        <small>
+                                          Adult Transport: Rs. {transportSectors.find(s => s.id.toString() === form.transportSectorId)?.adault_price.toLocaleString()}
+                                        </small>
+                                      </div>
+                                    </div>
+                                    <div className="col-12 col-md-4 mb-2 mb-md-0">
+                                      <div className="alert alert-info p-2">
+                                        <small>
+                                          Child Transport: Rs. {transportSectors.find(s => s.id.toString() === form.transportSectorId)?.child_price.toLocaleString()}
+                                        </small>
+                                      </div>
+                                    </div>
+                                    <div className="col-12 col-md-4">
+                                      <div className="alert alert-info p-2">
+                                        <small>
+                                          Infant Transport: Rs. {transportSectors.find(s => s.id.toString() === form.transportSectorId)?.infant_price.toLocaleString()}
+                                        </small>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {form.transportSectorId && !form.self && (() => {
+                                  const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
+                                  const note = sector?.note || sector?.description || sector?.transport_note || sector?.note_text || sector?.details;
+                                  if (!note) return null;
+                                  return (
+                                    <div className="row mt-2">
+                                      <div className="col-12">
+                                        <div className="alert alert-secondary p-2">
+                                          <small><strong>Note:</strong> {note}</small>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+
+                              <div className="d-flex justify-content-end mt-3">
                                 <button
                                   className="btn btn-danger btn-sm"
                                   onClick={() => removeTransportForm(index)}
@@ -4245,156 +4818,224 @@ const AgentUmrahCalculator = () => {
                                 </button>
                               </div>
                             </div>
-                            <div className="row">
-                              <div className="col-md-4 mb-3">
-                                <label htmlFor="" className="Control-label">Transport Type</label>
-                                <select
-                                  className="form-select shadow-none"
-                                  value={form.transportType}
-                                  onChange={(e) => {
-                                    updateTransportForm(index, 'transportType', e.target.value);
-                                    updateTransportForm(index, 'transportSectorId', '');
-                                  }}
-                                  disabled={form.self}
-                                >
-                                  <option value="">Select Transport Type</option>
-                                  {[...new Set(filteredTransportSectors.map(s => s.vehicle_type))].map(type => (
-                                    <option key={type} value={type}>{type}</option>
+                          ))}
+
+                          <div className="mt-3">
+                            <button
+                              id="btn"
+                              className="btn btn-primary btn-lg w-100 d-flex justify-content-center align-items-center"
+                              onClick={addTransportForm}
+                              disabled={!selectedServices.has('transport')}
+                              style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
+                            >
+                              <PlusCircle size={18} className="me-2" /> Add Another Route
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Family Divider Modal */}
+                      {showFamilyModal && (
+                        <div className="modal d-block" tabIndex="-1" role="dialog">
+                          <div className="modal-dialog modal-dialog-centered" role="document">
+                            <div className="modal-content">
+                              <div className="modal-header">
+                                <h5 className="modal-title">Family Divider</h5>
+                                <button type="button" className="btn-close" onClick={() => setShowFamilyModal(false)} />
+                              </div>
+                              <div className="modal-body">
+                                <p>Suggested groups (greedy allocation): edit sizes or add/remove groups.</p>
+                                <div>
+                                  {familyGroups.map((g, i) => (
+                                    <div className="d-flex align-items-center mb-2" key={i}>
+                                      <div className="me-2">Family {i + 1}</div>
+                                      <input type="number" className="form-control form-control-sm me-2" style={{ width: 100 }} value={g}
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value) || 0;
+                                          setFamilyGroups(prev => {
+                                            const copy = [...prev];
+                                            copy[i] = val;
+                                            return copy;
+                                          });
+                                        }} />
+                                      <button className="btn btn-sm btn-outline-danger" onClick={() => {
+                                        setFamilyGroups(prev => prev.filter((_, idx) => idx !== i));
+                                      }}>Remove</button>
+                                    </div>
                                   ))}
-                                </select>
+                                  <div>
+                                    <button className="btn btn-sm btn-outline-primary" onClick={() => setFamilyGroups(prev => [...prev, 1])}>Add Family</button>
+                                  </div>
+                                </div>
+                                <div className="small text-muted mt-2">You can edit family sizes before applying. Apply will persist these groups and assign them to hotels (round-robin).</div>
                               </div>
-
-                              {/* Transport Details */}
-
-                              <div className="col-md-4 mb-3">
-                                <label htmlFor="" className="Control-label">Transport Sector</label>
-
-                                <select
-                                  className="form-select shadow-none"
-                                  value={form.transportSectorId}
-                                  onChange={(e) => updateTransportForm(index, 'transportSectorId', e.target.value)}
-                                  disabled={form.self || !form.transportType}
-                                >
-                                  <option value="">Select Sector</option>
-                                  {filteredTransportSectors
-                                    .filter(s => s.vehicle_type === form.transportType)
-                                    .map(sector => (
-                                      <option key={sector.id} value={sector.id}>
-                                        {sector.name}
-                                      </option>
-                                    ))}
-                                </select>
-                              </div>
-                              <div className="form-check col-md-2 d-flex align-items-center">
-                                <input
-                                  className="form-check-input border border-black me-2"
-                                  type="checkbox"
-                                  checked={form.self}
-                                  onChange={(e) => updateTransportForm(index, 'self', e.target.checked)}
-                                  style={{ width: "1.3rem", height: "1.3rem" }}
-                                />
-                                <label className="form-check-label">Self</label>
+                              <div className="modal-footer">
+                                <button className="btn btn-primary" onClick={() => {
+                                  // Persist groups and assign them to hotels (round-robin)
+                                  setHotelForms(prev => {
+                                    const updated = prev.map(h => ({ ...h, assignedFamilies: [] }));
+                                    if (updated.length === 0) return updated;
+                                    let idx = 0;
+                                    for (let i = 0; i < familyGroups.length; i++) {
+                                      const g = familyGroups[i] || 0;
+                                      updated[idx].assignedFamilies = updated[idx].assignedFamilies || [];
+                                      updated[idx].assignedFamilies.push(g);
+                                      idx = (idx + 1) % updated.length;
+                                    }
+                                    return updated;
+                                  });
+                                  setShowFamilyModal(false);
+                                  toast.success('Family groups applied and assigned to hotels');
+                                }}>
+                                  Apply
+                                </button>
+                                <button className="btn btn-secondary" onClick={() => setShowFamilyModal(false)}>Close</button>
                               </div>
                             </div>
-                            {form.transportSectorId && !form.self && (
-                              <div className="row mt-3">
-                                <div className="col-md-3">
-                                  <div className="alert alert-info p-2">
-                                    <small>
-                                      Adult Transport: Rs.{" "}
-                                      {transportSectors.find(s => s.id.toString() === form.transportSectorId)?.adault_price.toLocaleString()}
-                                    </small>
-                                  </div>
-                                </div>
-                                <div className="col-md-3">
-                                  <div className="alert alert-info p-2">
-                                    <small>
-                                      Child Transport: Rs.{" "}
-                                      {transportSectors.find(s => s.id.toString() === form.transportSectorId)?.child_price.toLocaleString()}
-                                    </small>
-                                  </div>
-                                </div>
-                                <div className="col-md-3">
-                                  <div className="alert alert-info p-2">
-                                    <small>
-                                      Infant Transport: Rs.{" "}
-                                      {transportSectors.find(s => s.id.toString() === form.transportSectorId)?.infant_price.toLocaleString()}
-                                    </small>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
                           </div>
-                        ))}
-                        <button
-                          id="btn" className="btn"
-                          onClick={addTransportForm}
-                        >
-                          Add Another Route
-                        </button>
-                      </div>
+                        </div>
+                      )}
                       {/* Flight Details Section */}
                       <div className="">
                         <div className="row">
                           <div className="d-flex justify-content-between align-items-center mb-3">
                             <h5 className="fw-semibold">Flight Details</h5>
                             <div className="d-flex gap-3 align-items-center justify-content-between">
-                              <select
-                                className="form-select"
-                                value={flightOptions}
-                                onChange={(e) => {
-                                  setFlightOptions(e.target.value);
-                                  if (e.target.value === "none") {
-                                    setWithoutFlight(true);
-                                    resetFlightFields();
-                                    setSelectedFlight(null);
-                                  } else {
-                                    setWithoutFlight(false);
-                                  }
+                              <button
+                                id="btn"
+                                className="btn px-3 py-2"
+                                onClick={() => {
+                                  setShowFlightModal(true);
+                                  // reset no-pickup when user chooses to pick a flight
+                                  setNoAirportPickup(false);
                                 }}
                               >
-                                <option value="select">Select Existing Flight</option>
-                                <option value="custom">Create Custom Flight</option>
-                                <option value="none">Without Flight</option>
-                              </select>
-                              {flightOptions === "select" && (
-                                <button
-                                  id="btn" className="btn px-3 py-2 w-100"
-                                  onClick={() => setShowFlightModal(true)}
-                                >
-                                  Select Flight
-                                </button>
-                              )}
-                              {flightOptions === "custom" && (
-                                <button
-                                  id="btn" className="btn px-3 py-2 w-100"
-                                  onClick={() => setShowCustomTicketModal(true)}
-                                >
-                                  Create Custom Flight
-                                </button>
+                                Select from Available Umrah Flights
+                              </button>
+
+                              {/* Custom flight creation removed per client request */}
+
+                              {/* If booking is transport-only (no visa), allow skipping airport pickup */}
+                              {selectedServices.has('transport') && !selectedServices.has('visa') && (
+                                <div className="form-check ms-2">
+                                  <input
+                                    className="form-check-input"
+                                    type="checkbox"
+                                    id="noAirportPickup"
+                                    checked={noAirportPickup}
+                                    onChange={(e) => setNoAirportPickup(e.target.checked)}
+                                  />
+                                  <label className="form-check-label ms-1" htmlFor="noAirportPickup">No airport pickup</label>
+                                </div>
                               )}
                             </div>
                           </div>
-                          {selectedFlight && flightOptions === "select" && (
-                            <div className="alert alert-info mb-4">
-                              <div className="d-flex justify-content-between align-items-center">
-                                <div>
-                                  <strong>Selected Flight:</strong>{" "}
-                                  {airlinesMap[selectedFlight.airline]?.name} - PNR:{" "}
-                                  {selectedFlight.pnr} - Seats: {selectedFlight.seats}
-                                </div>
-                                <button
-                                  className="btn btn-sm btn-outline-danger"
-                                  onClick={() => {
-                                    setSelectedFlight(null);
-                                    resetFlightFields();
-                                  }}
-                                >
-                                  Change Flight
-                                </button>
+                              {/* Flight details table matching client design */}
+                              <div className="table-responsive mb-3">
+                                <table className="table table-sm align-middle">
+                                  <thead>
+                                    <tr>
+                                      <th style={{ width: "90px" }}></th>
+                                      <th style={{ width: "160px" }}>Flight</th>
+                                      <th style={{ width: "90px" }}>No</th>
+                                      <th style={{ width: "120px" }}>FROM</th>
+                                      <th style={{ width: "120px" }}>TO</th>
+                                      <th style={{ width: "160px" }}>Date</th>
+                                      <th style={{ width: "90px" }}>ETD</th>
+                                      <th style={{ width: "90px" }}>ETA</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <tr>
+                                      <td><strong>Departure</strong></td>
+                                      <td>
+                                        <select
+                                          className="form-select form-select-sm"
+                                          value={ticketId || ""}
+                                          onChange={(e) => {
+                                            const id = e.target.value;
+                                            if (!id) {
+                                              setTicketId(0);
+                                              setSelectedFlight(null);
+                                              resetFlightFields();
+                                              return;
+                                            }
+                                            const f = ticketsList.find(t => t.id.toString() === id.toString());
+                                            if (f) handleFlightSelect(f);
+                                          }}
+                                        >
+                                          <option value="">Select Flight</option>
+                                          {ticketsList.map(f => (
+                                            <option key={f.id} value={f.id}>{airlinesMap[f.airline]?.name || f.airline} - {f.pnr || f.id}</option>
+                                          ))}
+                                        </select>
+                                      </td>
+                                      <td>
+                                        <input type="text" className="form-control form-control-sm" value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} />
+                                      </td>
+                                      <td>
+                                        <input type="text" className="form-control form-control-sm" value={fromSector} onChange={(e) => setFromSector(e.target.value)} />
+                                      </td>
+                                      <td>
+                                        <input type="text" className="form-control form-control-sm" value={toSector} onChange={(e) => setToSector(e.target.value)} />
+                                      </td>
+                                      <td>
+                                        <input type="datetime-local" className="form-control form-control-sm" value={departureDate || ""} onChange={(e) => setDepartureDate(e.target.value)} />
+                                      </td>
+                                      <td>
+                                        <input type="time" className="form-control form-control-sm" value={departureETD} onChange={(e) => setDepartureETD(e.target.value)} />
+                                      </td>
+                                      <td>
+                                        <input type="time" className="form-control form-control-sm" value={departureETA} onChange={(e) => setDepartureETA(e.target.value)} />
+                                      </td>
+                                    </tr>
+
+                                    <tr>
+                                      <td><strong>Return</strong></td>
+                                      <td>
+                                        <select
+                                          className="form-select form-select-sm"
+                                          value={ticketId || ""}
+                                          onChange={(e) => {
+                                            const id = e.target.value;
+                                            if (!id) {
+                                              setTicketId(0);
+                                              setSelectedFlight(null);
+                                              resetFlightFields();
+                                              return;
+                                            }
+                                            const f = ticketsList.find(t => t.id.toString() === id.toString());
+                                            if (f) handleFlightSelect(f);
+                                          }}
+                                        >
+                                          <option value="">Select Flight</option>
+                                          {ticketsList.map(f => (
+                                            <option key={f.id} value={f.id}>{airlinesMap[f.airline]?.name || f.airline} - {f.pnr || f.id}</option>
+                                          ))}
+                                        </select>
+                                      </td>
+                                      <td>
+                                        <input type="text" className="form-control form-control-sm" value={returnFlightNumber} onChange={(e) => setReturnFlightNumber(e.target.value)} />
+                                      </td>
+                                      <td>
+                                        <input type="text" className="form-control form-control-sm" value={returnFromSector} onChange={(e) => setReturnFromSector(e.target.value)} />
+                                      </td>
+                                      <td>
+                                        <input type="text" className="form-control form-control-sm" value={returnToSector} onChange={(e) => setReturnToSector(e.target.value)} />
+                                      </td>
+                                      <td>
+                                        <input type="datetime-local" className="form-control form-control-sm" value={returnDepartureDate || ""} onChange={(e) => setReturnDepartureDate(e.target.value)} />
+                                      </td>
+                                      <td>
+                                        <input type="time" className="form-control form-control-sm" value={returnETD} onChange={(e) => setReturnETD(e.target.value)} />
+                                      </td>
+                                      <td>
+                                        <input type="time" className="form-control form-control-sm" value={returnETA} onChange={(e) => setReturnETA(e.target.value)} />
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
                               </div>
-                            </div>
-                          )}
                         </div>
                       </div>
                       <FlightModal
@@ -4411,157 +5052,455 @@ const AgentUmrahCalculator = () => {
                         onSubmit={(ticket) => {
                           setTicketId(ticket.id);
                           setSelectedFlight(ticket);
-                          setFlightOptions("custom");
                           setShowCustomTicketModal(false);
                           toast.success("Custom ticket created successfully!");
                         }}
                       />
 
+                      <div className="mb-4 mt-5">
+                        {hotelForms.map((form, index) => renderHotelForm(form, index))}
+                        <div className="mt-3">
+                          <button
+                            id="btn" className="btn btn-primary btn-lg w-100 d-flex justify-content-center align-items-center"
+                            onClick={addHotelForm}
+                            disabled={!selectedServices.has('hotel')}
+                            style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
+                          >
+                            <PlusCircle size={18} className="me-2" /> Add Another Hotel
+                          </button>
+
+                          <div className="d-flex justify-content-end mt-2">
+                            <button
+                              id="btn" className="btn btn-outline-primary btn-sm"
+                              onClick={() => {
+                                const totalPax = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
+                                const groups = computeFamilyGroups(totalPax);
+                                setFamilyGroups(groups);
+                                setShowFamilyModal(true);
+                              }}
+                              disabled={!(parseInt(formData.totalAdults||0) + parseInt(formData.totalChilds||0) + parseInt(formData.totalInfants||0) > 0)}
+                            >
+                              Family Divider
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Food Details */}
                       <div className="mb-3">
                         <div className="d-flex justify-content-between align-items-center mb-3">
                           <h5 className="fw-semibold">Food Details</h5>
-                          <div className="d-flex gap-2">
-                            <button
-                              id="btn" className="btn"
-                              onClick={() => {
-                                setFoodForms([...foodForms, { id: Date.now(), foodId: "" }]);
-                              }}
-                            >
-                              Add
-                            </button>
-                          </div>
                         </div>
 
-                        {foodForms.map((form, index) => (
-                          <div key={form.id} className="row mb-3">
-                            <div className="col-md-3">
-                              <label htmlFor="" className="Control-label">Food</label>
+                        {foodForms.map((form, index) => {
+                          const selectedFoodItem = foodPrices.find(f => f.id.toString() === form.foodId);
+                          const totalPersons = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0);
+                          const unitRate = selectedFoodItem ? (selectedFoodItem.per_pex || 0) : (form.price || 0);
+                          const computedTotal = unitRate * totalPersons;
 
-                              <select
-                                className="form-select shadow-none"
-                                value={form.foodId}
-                                onChange={(e) => {
-                                  const updated = [...foodForms];
-                                  updated[index].foodId = e.target.value;
-                                  setFoodForms(updated);
-                                }}
-                                disabled={foodSelf || loading.food}
-                              >
-                                <option value="">Select Food</option>
-                                {loading.food ? (
-                                  <option>Loading food options...</option>
-                                ) : foodPrices.length === 0 ? (
-                                  <option>No food options available</option>
-                                ) : (
-                                  foodPrices
-                                    .filter(food => food.active)
-                                    .map((food) => (
-                                      <option key={food.id} value={food.id}>
-                                        {food.title} (Min {food.min_pex} persons)
-                                      </option>
-                                    ))
-                                )}
-                              </select>
+                          return (
+                            <div key={form.id} className="card mb-3 shadow-sm border p-3">
+                              {/* Food Info */}
+                              <div className="mb-3 pb-2 border-bottom">
+                                <h6 className="small text-muted mb-2">Food Info</h6>
+                                <div className="row g-2 align-items-center">
+                                  <div className="col-md-6">
+                                    <label className="small">Food</label>
+                                    <select
+                                      className="form-select shadow-none"
+                                      value={form.foodId}
+                                      onChange={(e) => {
+                                        const updated = [...foodForms];
+                                        updated[index].foodId = e.target.value;
+                                        setFoodForms(updated);
+                                      }}
+                                      disabled={foodSelf || loading.food}
+                                    >
+                                      <option value="">Select Food</option>
+                                      {loading.food ? (
+                                        <option>Loading food options...</option>
+                                      ) : foodPrices.length === 0 ? (
+                                        <option>No food options available</option>
+                                      ) : (
+                                        foodPrices
+                                          .filter(food => food.active)
+                                          .map((food) => (
+                                            <option key={food.id} value={food.id}>
+                                              {food.title} (Min {food.min_pex} persons)
+                                            </option>
+                                          ))
+                                      )}
+                                    </select>
+                                  </div>
+
+                                  <div className="col-md-4">
+                                    <label className="small">City / Hotel</label>
+                                    <input
+                                      type="text"
+                                      className="form-control shadow-none"
+                                      placeholder="City or Hotel name (optional)"
+                                      value={form.city || ""}
+                                      onChange={(e) => {
+                                        const updated = [...foodForms];
+                                        updated[index].city = e.target.value;
+                                        setFoodForms(updated);
+                                      }}
+                                    />
+                                  </div>
+
+                                  <div className="col-md-2 d-flex align-items-center">
+                                    <div className="form-check d-flex align-items-center gap-2">
+                                      <input
+                                        className="form-check-input border border-black"
+                                        type="checkbox"
+                                        checked={foodSelf}
+                                        onChange={() => setFoodSelf(!foodSelf)}
+                                        id={`foodSelf-${form.id}`}
+                                      />
+                                      <label htmlFor={`foodSelf-${form.id}`}>Self</label>
+                                    </div>
+                                  </div>
+
+                                  <div className="col-12 mt-2">
+                                    <label className="small">Note</label>
+                                    <textarea
+                                      className="form-control shadow-none"
+                                      rows={2}
+                                      placeholder="Optional note"
+                                      value={form.note || ""}
+                                      onChange={(e) => {
+                                        const updated = [...foodForms];
+                                        updated[index].note = e.target.value;
+                                        setFoodForms(updated);
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Dates */}
+                              <div className="mb-3 pb-2 border-bottom">
+                                <h6 className="small text-muted mb-2">Dates</h6>
+                                <div className="row g-2">
+                                  <div className="col-md-6">
+                                    <label className="small">Start Date</label>
+                                    <input
+                                      type="date"
+                                      className="form-control shadow-none"
+                                      value={form.startDate || ""}
+                                      onChange={(e) => {
+                                        const updated = [...foodForms];
+                                        updated[index].startDate = e.target.value;
+                                        setFoodForms(updated);
+                                      }}
+                                    />
+                                  </div>
+
+                                  <div className="col-md-6">
+                                    <label className="small">Days / Meals</label>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      className="form-control shadow-none"
+                                      value={form.noOfDays || ""}
+                                      onChange={(e) => {
+                                        const updated = [...foodForms];
+                                        updated[index].noOfDays = e.target.value;
+                                        setFoodForms(updated);
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Pricing */}
+                              <div className="mb-3 pb-2 border-bottom">
+                                <h6 className="small text-muted mb-2">Pricing</h6>
+                                <div className="row g-2 align-items-center">
+                                  <div className="col-md-4">
+                                    <label className="small">Rate (per person)</label>
+                                    <input
+                                      type="text"
+                                      className="form-control shadow-none"
+                                      value={unitRate ? unitRate.toString() : ""}
+                                      readOnly
+                                    />
+                                  </div>
+
+                                  <div className="col-md-4">
+                                    <label className="small">Min Persons</label>
+                                    <input
+                                      type="text"
+                                      className="form-control shadow-none"
+                                      value={selectedFoodItem ? (selectedFoodItem.min_pex || "") : (form.minPersons || "")}
+                                      readOnly
+                                    />
+                                  </div>
+
+                                  <div className="col-md-4">
+                                    <label className="small">Total Price</label>
+                                    <input
+                                      type="text"
+                                      className="form-control shadow-none"
+                                      value={computedTotal.toString()}
+                                      readOnly
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Actions */}
+                              <div className="d-flex justify-content-end">
+                                {index === foodForms.length - 1 && foodForms.length > 1 ? (
+                                  <button
+                                    className="btn btn-danger btn-sm"
+                                    onClick={() => {
+                                      const updated = foodForms.filter((_, i) => i !== index);
+                                      setFoodForms(updated);
+                                    }}
+                                  >
+                                    Remove
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
-                            <div className="form-check d-flex mt-3 align-items-center gap-2 col-md-2">
-                              <input
-                                className="form-check-input border border-black"
-                                type="checkbox"
-                                checked={foodSelf}
-                                onChange={() => setFoodSelf(!foodSelf)}
-                                id="foodSelf"
-                              />
-                              <label htmlFor="foodSelf">Self</label>
-                            </div>
-                            <div className="col-md-2 d-flex align-items-center">
-                              {index === foodForms.length - 1 && foodForms.length > 1 ? (
-                                <button
-                                  className="btn btn-danger btn-sm"
-                                  onClick={() => {
-                                    const updated = foodForms.filter((_, i) => i !== index);
-                                    setFoodForms(updated);
-                                  }}
-                                >
-                                  Remove
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
+
+                        
+
+                        {/* Add More Food button: use same filled primary style as Hotel (JSX-only) */}
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-lg w-100 d-flex justify-content-center align-items-center"
+                            onClick={() => setFoodForms([...foodForms, { id: Date.now(), foodId: "" }])}
+                            style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
+                          >
+                            <PlusCircle size={18} className="me-2" /> Add More Food
+                          </button>
+                        </div>
                       </div>
 
                       {/* Ziarat Details */}
                       <div className="mb-3">
                         <div className="d-flex justify-content-between align-items-center mb-3">
                           <h5 className="fw-semibold">Ziarat Details</h5>
-                          <div className="d-flex gap-2">
-
-                            <button
-                              id="btn" className="btn"
-                              onClick={() => {
-                                setZiaratForms([...ziaratForms, { id: Date.now(), ziaratId: "" }]);
-                              }}
-                            >
-                              Add
-                            </button>
-                          </div>
                         </div>
 
-                        {ziaratForms.map((form, index) => (
-                          <div key={form.id} className="row mb-3">
-                            <div className="col-md-3">
-                              <label htmlFor="" className="Control-label">Ziarat</label>
+                        {ziaratForms.map((form, index) => {
+                          const ziaratItem = ziaratPrices.find(z => z.id.toString() === form.ziaratId);
+                          const totalPersons = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0);
+                          const perPersonPrice = ziaratItem?.price || 0;
+                          const totalPrice = perPersonPrice * totalPersons;
 
-                              <select
-                                className="form-select shadow-none"
-                                value={form.ziaratId}
-                                onChange={(e) => {
-                                  const updated = [...ziaratForms];
-                                  updated[index].ziaratId = e.target.value;
-                                  setZiaratForms(updated);
-                                }}
-                                disabled={ziaratSelf || loading.ziarat}
-                              >
-                                <option value="">Select Ziarat</option>
-                                {loading.ziarat ? (
-                                  <option>Loading ziarat options...</option>
-                                ) : ziaratPrices.length === 0 ? (
-                                  <option>No ziarat options available</option>
-                                ) : (
-                                  ziaratPrices.map((ziarat) => (
-                                    <option key={ziarat.id} value={ziarat.id}>
-                                      {ziarat.Name}
-                                    </option>
-                                  ))
-                                )}
-                              </select>
+                          return (
+                            <div key={form.id} className="card mb-3 shadow-sm border p-3">
+                              {/* Ziyarat Info */}
+                              <div className="mb-3 pb-2 border-bottom">
+                                <div className="d-flex justify-content-between align-items-center">
+                                  <div className="fw-semibold small">Ziyarat Info</div>
+                                </div>
+
+                                <div className="row g-2 mt-2">
+                                  <div className="col-md-6">
+                                    <label className="form-label small">Ziarat</label>
+                                    <select
+                                      className="form-select shadow-none"
+                                      value={form.ziaratId}
+                                      onChange={(e) => {
+                                        const updated = [...ziaratForms];
+                                        const selectedId = e.target.value;
+                                        updated[index].ziaratId = selectedId;
+
+                                        // Try to auto-fill city from the selected ziarat entry
+                                        try {
+                                          const z = ziaratPrices.find(z => z.id?.toString() === selectedId?.toString());
+                                          const cityName = z ? (citiesMap[(z.city_id || z.city)?.toString?.()]?.name || z.city_name || z.city?.name || "") : "";
+                                          updated[index].city = cityName;
+                                        } catch (err) {
+                                          updated[index].city = updated[index].city || "";
+                                        }
+
+                                        setZiaratForms(updated);
+
+                                        // Recalculate visa and totals immediately after selection
+                                        setTimeout(() => {
+                                          try {
+                                            const prices = calculateVisaPrices();
+                                            setCalculatedVisaPrices(prices);
+                                          } catch (err) {
+                                            // ignore if calculation not ready
+                                          }
+                                          try {
+                                            calculateCosts();
+                                          } catch (err) {
+                                            // ignore
+                                          }
+                                        }, 0);
+                                      }}
+                                      disabled={ziaratSelf || loading.ziarat}
+                                    >
+                                      <option value="">Select Ziarat</option>
+                                      {loading.ziarat ? (
+                                        <option>Loading ziarat options...</option>
+                                      ) : ziaratPrices.length === 0 ? (
+                                        <option>No ziarat options available</option>
+                                      ) : (
+                                        ziaratPrices.map((z) => (
+                                          <option key={z.id} value={z.id}>{z.ziarat_title || z.title || z.name}</option>
+                                        ))
+                                      )}
+                                    </select>
+                                  </div>
+
+                                  <div className="col-md-3">
+                                    <label className="form-label small">City</label>
+                                    <input
+                                      type="text"
+                                      className="form-control shadow-none"
+                                      placeholder="City"
+                                      value={form.city || ""}
+                                      onChange={(e) => {
+                                        const updated = [...ziaratForms];
+                                        updated[index].city = e.target.value;
+                                        setZiaratForms(updated);
+                                      }}
+                                    />
+                                  </div>
+
+                                  <div className="col-md-3">
+                                    <label className="form-label small mb-1">Note (optional)</label>
+                                    <input
+                                      type="text"
+                                      className="form-control shadow-none border rounded px-2 py-1"
+                                      placeholder="Add note"
+                                      value={form.note || ""}
+                                      onChange={(e) => {
+                                        const updated = [...ziaratForms];
+                                        updated[index].note = e.target.value;
+                                        setZiaratForms(updated);
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Dates */}
+                              <div className="mb-3 pb-2 border-bottom">
+                                <div className="fw-semibold small mb-2">Dates</div>
+                                <div className="row g-2">
+                                  <div className="col-md-4">
+                                    <label className="form-label small">Visit Date</label>
+                                    <input
+                                      type="date"
+                                      className="form-control shadow-none"
+                                      value={form.visitDate || ""}
+                                      onChange={(e) => {
+                                        const updated = [...ziaratForms];
+                                        updated[index].visitDate = e.target.value;
+                                        setZiaratForms(updated);
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Transport & Pricing */}
+                              <div className="mb-3 pb-2 border-bottom">
+                                <div className="d-flex justify-content-between align-items-center">
+                                  <div className="fw-semibold small">Transport & Pricing</div>
+                                </div>
+
+                                <div className="row g-2 mt-2 align-items-center">
+                                  <div className="col-md-4">
+                                    <label className="form-label small">Transport Type</label>
+                                    <select
+                                      className="form-select shadow-none"
+                                      value={form.transportType || ""}
+                                      onChange={(e) => {
+                                        const updated = [...ziaratForms];
+                                        updated[index].transportType = e.target.value;
+                                        setZiaratForms(updated);
+                                      }}
+                                    >
+                                      <option value="">Select Transport</option>
+                                      <option value="Company Shared Bus">Company Shared Bus</option>
+                                      <option value="Private">Private</option>
+                                      <option value="No Transport">No Transport</option>
+                                    </select>
+                                  </div>
+
+                                  <div className="col-md-3">
+                                    <label className="form-label small">Per Person</label>
+                                    <input
+                                      type="text"
+                                      readOnly
+                                      className="form-control shadow-none"
+                                      value={formatPriceWithCurrency(perPersonPrice, "ziarat", false)}
+                                    />
+                                  </div>
+
+                                  <div className="col-md-3 text-end">
+                                    <label className="form-label small mb-1 d-block">Total Price</label>
+                                    <input
+                                      type="text"
+                                      readOnly
+                                      className="form-control shadow-none text-end fw-bold"
+                                      value={formatPriceWithCurrency(totalPrice, "ziarat", true)}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Actions */}
+                              <div className="d-flex justify-content-end">
+                                <div className="me-auto align-self-center small text-muted">&nbsp;</div>
+                                <div className="d-flex gap-2">
+                                  <div className="form-check d-flex align-items-center gap-2">
+                                    <input
+                                      className="form-check-input border border-black"
+                                      type="checkbox"
+                                      checked={ziaratSelf}
+                                      onChange={() => setZiaratSelf(!ziaratSelf)}
+                                      id={`ziaratSelf-${form.id}`}
+                                    />
+                                    <label htmlFor={`ziaratSelf-${form.id}`}>Self</label>
+                                  </div>
+
+                                  {index === ziaratForms.length - 1 && ziaratForms.length > 1 ? (
+                                    <div className="text-end">
+                                      <button
+                                        className="btn btn-outline-danger btn-sm d-flex align-items-center justify-content-center px-3"
+                                        onClick={() => {
+                                          const updated = ziaratForms.filter((_, i) => i !== index);
+                                          setZiaratForms(updated);
+                                        }}
+                                      >
+                                        <span className="me-2"><Trash /></span>
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </div>
                             </div>
-                            <div className="form-check d-flex align-items-center gap-2 mt-3 col-md-2">
-                              <input
-                                className="form-check-input border border-black"
-                                type="checkbox"
-                                checked={ziaratSelf}
-                                onChange={() => setZiaratSelf(!ziaratSelf)}
-                                id="ziaratSelf"
-                              />
-                              <label htmlFor="ziaratSelf">Self</label>
-                            </div>
-                            <div className="col-md-2 d-flex align-items-center">
-                              {index === ziaratForms.length - 1 && ziaratForms.length > 1 ? (
-                                <button
-                                  className="btn btn-danger btn-sm"
-                                  onClick={() => {
-                                    const updated = ziaratForms.filter((_, i) => i !== index);
-                                    setZiaratForms(updated);
-                                  }}
-                                >
-                                  Remove
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
+
+                        {/* Add More Ziyarat button: use same filled primary style as Hotel (JSX-only) */}
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-lg w-100 d-flex align-items-center justify-content-between"
+                            onClick={() => setZiaratForms([...ziaratForms, { id: Date.now(), ziaratId: "" }])}
+                            style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
+                          >
+                            <span style={{ width: 24 }} />
+                            <span className="mx-auto">Add More Ziyarat</span>
+                            <PlusCircle size={18} />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="row">
@@ -4579,9 +5518,9 @@ const AgentUmrahCalculator = () => {
                         </div>
                       </div>
 
-                      <div className="text-end mb-4 d-flex justify-content-end gap-5">
-                        <button id="btn" className="btn" onClick={handleViewClick}>
-                          View
+                      <div className="text-end mb-4 d-flex justify-content-end gap-3">
+                        <button id="btn" className="btn btn-primary btn-sm d-flex align-items-center px-3 py-2" onClick={handleViewClick} style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}>
+                          <Eye size={16} className="me-2" /> View
                         </button>
 
                         <Modal show={showViewModal} onHide={handleCloseViewModal} size="xl">
@@ -4675,13 +5614,13 @@ const AgentUmrahCalculator = () => {
                                               <td>{form.noOfNights}</td>
                                               <td>{form.checkOut}</td>
                                               <td>
-                                                {riyalRate.is_hotel_pkr ? "PKR " : "SAR "}
+                                                {riyalRate?.is_hotel_pkr ? "PKR " : "SAR "}
                                                 {hotelCost?.perNight}
                                               </td>
                                               <td>{quantity}</td>
-                                              <td> {riyalRate.is_hotel_pkr ? "PKR " : "SAR "} {hotelCost?.total}</td>
+                                              <td> {riyalRate?.is_hotel_pkr ? "PKR " : "SAR "} {hotelCost?.total}</td>
                                               <td>
-                                                {riyalRate.rate}
+                                                {riyalRate?.rate ?? '—'}
                                               </td>
                                               <td>
                                                 {formatPriceWithCurrencyNetPrice(
@@ -4991,7 +5930,7 @@ const AgentUmrahCalculator = () => {
 
                                           return (
                                             <tr key={index}>
-                                              <td>{ziaratItem?.Name || 'N/A'}</td>
+                                              <td>{ziaratItem?.ziarat_title || ziaratItem?.title || ziaratItem?.name || 'N/A'}</td>
                                               <td>
                                                 {formatPriceWithCurrency(
                                                   ziaratItem?.price || 0,
@@ -5052,7 +5991,7 @@ const AgentUmrahCalculator = () => {
                                         <div className="d-flex justify-content-between mb-2">
                                           <div>
                                             <span>Visa:</span>
-                                            <span className="fw-bold ms-2">@{riyalRate.rate}</span>
+                                            <span className="fw-bold ms-2">@{riyalRate?.rate ?? '—'}</span>
                                           </div>
                                           <strong>
                                             {formatPriceWithCurrency(
@@ -5085,7 +6024,7 @@ const AgentUmrahCalculator = () => {
                                         <div className="d-flex justify-content-between mb-2">
                                           <div>
                                             <span>Hotel:</span>
-                                            <span className="fw-bold ms-2">@{riyalRate.rate}</span>
+                                            <span className="fw-bold ms-2">@{riyalRate?.rate ?? '—'}</span>
                                           </div>
                                           <strong>
                                             {formatPriceWithCurrency(
@@ -5105,7 +6044,7 @@ const AgentUmrahCalculator = () => {
                                         <div className="d-flex justify-content-between mb-2">
                                           <div>
                                             <span>Transport:</span>
-                                            <span className="fw-bold ms-2">@{riyalRate.rate}</span>
+                                            <span className="fw-bold ms-2">@{riyalRate?.rate ?? '—'}</span>
                                           </div>
                                           <strong>
                                             {formatPriceWithCurrency(
@@ -5124,7 +6063,7 @@ const AgentUmrahCalculator = () => {
                                         <div className="d-flex justify-content-between mb-2">
                                           <div>
                                             <span>Food:</span>
-                                            <span className="fw-bold ms-2">@{riyalRate.rate}</span>
+                                            <span className="fw-bold ms-2">@{riyalRate?.rate ?? '—'}</span>
                                           </div>
                                           <strong>
                                             {formatPriceWithCurrency(
@@ -5145,7 +6084,7 @@ const AgentUmrahCalculator = () => {
                                         <div className="d-flex justify-content-between mb-3">
                                           <div>
                                             <span>Ziarat:</span>
-                                            <span className="fw-bold ms-2">@{riyalRate.rate}</span>
+                                            <span className="fw-bold ms-2">@{riyalRate?.rate ?? '—'}</span>
                                           </div>
                                           <strong>
                                             {formatPriceWithCurrency(
