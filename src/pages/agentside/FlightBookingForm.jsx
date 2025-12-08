@@ -411,7 +411,7 @@ const FlightBookingForm = () => {
         // Try each org id sequentially until we find a usable ticket
         for (let i = 0; i < tryOrgIds.length; i++) {
           const org = tryOrgIds[i];
-          const queryUrl = org ? `https://api.saer.pk/api/tickets/?id=${id}&organization=${org}` : `https://api.saer.pk/api/tickets/?id=${id}`;
+          const queryUrl = org ? `http://127.0.0.1:8000/api/tickets/?id=${id}&organization=${org}` : `http://127.0.0.1:8000/api/tickets/?id=${id}`;
           console.debug('Attempting ticket fetch for organization:', org, 'url:', queryUrl);
 
           const resp = await tryFetch(queryUrl, headers);
@@ -518,9 +518,33 @@ const FlightBookingForm = () => {
   }
 
   // Flight details processing
-  const airlineInfo = airlineMap[ticket.airline] || {};
   const tripDetails = ticket.trip_details || [];
   const stopoverDetails = ticket.stopover_details || [];
+
+  // Resolve city name whether the API returned an id, a string, or an object
+  const resolveCityName = (city) => {
+    if (!city && city !== 0) return "Unknown City";
+    if (typeof city === "string") return city;
+    if (typeof city === "number") return cityMap && cityMap[city] ? cityMap[city] : "Unknown City";
+    if (typeof city === "object") {
+      return city.name || city.city || city.display_name || "Unknown City";
+    }
+    return "Unknown City";
+  };
+
+  // Resolve airline info from a trip segment or fallback to ticket-level mapping
+  const resolveAirlineInfoFromTrip = (trip) => {
+    if (!trip) return {};
+    const a = trip.airline;
+    if (!a && ticket && ticket.airline) {
+      // fallback to ticket.airline which may be id or object
+      if (typeof ticket.airline === 'object') return { name: ticket.airline.name, logo: ticket.airline.logo };
+      return airlineMap[ticket.airline] || {};
+    }
+    if (typeof a === 'number' || typeof a === 'string') return airlineMap && airlineMap[a] ? airlineMap[a] : {};
+    if (typeof a === 'object') return { name: a.name, logo: a.logo };
+    return {};
+  };
 
   // Support tickets where trip_details entries don't include explicit
   // `trip_type` values (common for one-way tickets that only have a
@@ -529,8 +553,14 @@ const FlightBookingForm = () => {
   const outboundTrip = (tripDetails.find((t) => t && t.trip_type === "Departure") || (tripDetails.length ? tripDetails[0] : undefined));
   const returnTrip = (tripDetails.find((t) => t && t.trip_type === "Return") || (tripDetails.length > 1 ? tripDetails[1] : undefined));
 
-  const outboundStopover = stopoverDetails.find((s) => s.trip_type === "Departure");
-  const returnStopover = stopoverDetails.find((s) => s.trip_type === "Return");
+  const outboundStopover =
+    stopoverDetails.find((s) => s && s.trip_type === "Departure") ||
+    (stopoverDetails.length ? stopoverDetails[0] : undefined);
+  const returnStopover =
+    stopoverDetails.find((s) => s && s.trip_type === "Return") ||
+    (stopoverDetails.length > 1 ? stopoverDetails[1] : undefined);
+
+  const airlineInfo = resolveAirlineInfoFromTrip(outboundTrip) || (airlineMap[ticket.airline] || {});
 
   if (!outboundTrip) {
     return (
@@ -569,6 +599,16 @@ const FlightBookingForm = () => {
     } catch (e) {
       return "-- ---";
     }
+  };
+
+  // Stopover summary helper: prefer stopover_city then arrival_city, include duration if present
+  const stopoverSummary = (stopover) => {
+    if (!stopover) return "Non-stop";
+    const city = resolveCityName(stopover.stopover_city || stopover.arrival_city);
+    const dur = stopover.stopover_duration || stopover.duration || null;
+    if (city && dur) return `${city} (${dur})`;
+    if (city) return city;
+    return "1 Stop";
   };
 
   const getDuration = (departure, arrival) => {
@@ -848,7 +888,7 @@ const FlightBookingForm = () => {
                         {formatDate(outboundTrip.departure_date_time)}
                       </div>
                       <div className="text-muted small">
-                        {cityMap[outboundTrip.departure_city] || "Unknown City"}
+                        {resolveCityName(outboundTrip.departure_city)}
                       </div>
                     </div>
 
@@ -869,7 +909,7 @@ const FlightBookingForm = () => {
                                   style={{ width: "10px", height: "10px", backgroundColor: "#699FC9", position: "relative", zIndex: 1 }}></span>
                                 <div className="text-muted small"
                                   style={{ position: "absolute", top: "14px", whiteSpace: "nowrap" }}>
-                                  {cityMap[outboundStopover.stopover_city] || "Unknown City"}
+                                  {resolveCityName(outboundStopover?.stopover_city) || "Unknown City"}
                                 </div>
                               </div>
                               <hr className="w-50 m-0" />
@@ -881,7 +921,7 @@ const FlightBookingForm = () => {
                       </div>
 
                       <div className="text-muted mt-4 small mt-1">
-                        {outboundStopover ? "1 Stop" : "Non-stop"}
+                        {stopoverSummary(outboundStopover)}
                       </div>
                     </div>
                     <div className="col-md-2 text-center text-md-start">
@@ -892,7 +932,7 @@ const FlightBookingForm = () => {
                         {formatDate(outboundTrip.arrival_date_time)}
                       </div>
                       <div className="text-muted small">
-                        {cityMap[outboundTrip.arrival_city] || "Unknown City"}
+                        {resolveCityName(outboundTrip.arrival_city)}
                       </div>
                     </div>
                     <div className="col-md-2 text-center">
@@ -903,7 +943,7 @@ const FlightBookingForm = () => {
                         )}
                       </div>
                       <div className="text-uppercase fw-semibold small mt-1" style={{ color: "#699FC9" }}>
-                        {outboundStopover ? "1 Stop" : "Non-stop"}
+                        {stopoverSummary(outboundStopover)}
                       </div>
                       <div className="small mt-1 px-2 py-1 rounded" style={seatWarningStyle}>
                         {ticket.left_seats <= 9
@@ -912,6 +952,52 @@ const FlightBookingForm = () => {
                       </div>
                     </div>
                   </div>
+
+                  {outboundStopover && (
+                    <div className="row mt-3 p-3 border rounded-2" style={{ background: "#fbfcff" }}>
+                      <div className="col-12">
+                        <div className="d-flex align-items-center">
+                          <img
+                            src={(outboundStopover.airline && outboundStopover.airline.logo) || airlineInfo.logo}
+                            alt={(outboundStopover.airline && (outboundStopover.airline.name || "Airline")) || airlineInfo.name || "Airline"}
+                            style={{ width: 48, height: 48, objectFit: "contain" }}
+                            className="me-3"
+                          />
+                          <div>
+                            <div className="fw-bold">{(outboundStopover.airline && outboundStopover.airline.name) || airlineInfo.name || "Unknown Airline"}</div>
+                            <div className="small text-muted">{outboundStopover.flight_number ? `${outboundStopover.flight_number}` : ""}</div>
+                          </div>
+                        </div>
+
+                        <div className="row mt-3">
+                          <div className="col-md-3 text-center text-md-start">
+                            <div className="fw-semibold">{formatTime(outboundStopover.departure_date_time)}</div>
+                            <div className="text-muted small">{formatDate(outboundStopover.departure_date_time)}</div>
+                            <div className="text-muted small">{resolveCityName(outboundStopover.departure_city || outboundTrip.arrival_city)}</div>
+                          </div>
+
+                          <div className="col-md-3 text-center">
+                            <div className="fw-semibold">{getDuration(outboundStopover.departure_date_time, outboundStopover.arrival_date_time)}</div>
+                            <div className="text-muted small">Stopover — {outboundStopover.stopover_duration || "--"}</div>
+                          </div>
+
+                          <div className="col-md-3 text-center text-md-start">
+                            <div className="fw-semibold">{formatTime(outboundStopover.arrival_date_time)}</div>
+                            <div className="text-muted small">{formatDate(outboundStopover.arrival_date_time)}</div>
+                            <div className="text-muted small">{resolveCityName(outboundStopover.arrival_city)}</div>
+                          </div>
+
+                          <div className="col-md-3 text-center">
+                            <div className="small mt-1 px-2 py-1 rounded" style={seatWarningStyle}>
+                              {ticket.left_seats <= 9
+                                ? `Only ${ticket.left_seats} seats left`
+                                : `${ticket.left_seats} seats left`}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Return Flight Segment (if exists) */}
                   {returnTrip && (
@@ -937,7 +1023,7 @@ const FlightBookingForm = () => {
                             {formatDate(returnTrip.departure_date_time)}
                           </div>
                           <div className="text-muted small">
-                            {cityMap[returnTrip.departure_city] || "Unknown City"}
+                            {resolveCityName(returnTrip.departure_city)}
                           </div>
                         </div>
 
@@ -958,7 +1044,7 @@ const FlightBookingForm = () => {
                                       style={{ width: "10px", height: "10px", backgroundColor: "#699FC9", position: "relative", zIndex: 1 }}></span>
                                     <div className="text-muted small"
                                       style={{ position: "absolute", top: "14px", whiteSpace: "nowrap" }}>
-                                      {cityMap[returnStopover.stopover_city] || "Unknown City"}
+                                      {resolveCityName(returnStopover?.stopover_city) || "Unknown City"}
                                     </div>
                                   </div>
                                   <hr className="w-50 m-0" />
@@ -970,7 +1056,7 @@ const FlightBookingForm = () => {
                           </div>
 
                           <div className="text-muted mt-4 small mt-1">
-                            {returnStopover ? "1 Stop" : "Non-stop"}
+                            {stopoverSummary(returnStopover)}
                           </div>
                         </div>
                         <div className="col-md-2 text-center text-md-start">
@@ -981,7 +1067,7 @@ const FlightBookingForm = () => {
                             {formatDate(returnTrip.arrival_date_time)}
                           </div>
                           <div className="text-muted small">
-                            {cityMap[returnTrip.arrival_city] || "Unknown City"}
+                            {resolveCityName(returnTrip.arrival_city)}
                           </div>
                         </div>
                         <div className="col-md-2 text-center">
@@ -992,7 +1078,7 @@ const FlightBookingForm = () => {
                             )}
                           </div>
                           <div className="text-uppercase fw-semibold small mt-1" style={{ color: "#699FC9" }}>
-                            {returnStopover ? "1 Stop" : "Non-stop"}
+                            {stopoverSummary(returnStopover)}
                           </div>
                           <div className="small mt-1 px-2 py-1 rounded" style={seatWarningStyle}>
                             {ticket.left_seats <= 9
@@ -1001,9 +1087,55 @@ const FlightBookingForm = () => {
                           </div>
                         </div>
                       </div>
+
+                      {returnStopover && (
+                        <div className="row mt-3 p-3 border rounded-2" style={{ background: "#fbfcff" }}>
+                          <div className="col-12">
+                            <div className="d-flex align-items-center">
+                              <img
+                                src={(returnStopover.airline && returnStopover.airline.logo) || airlineInfo.logo}
+                                alt={(returnStopover.airline && (returnStopover.airline.name || "Airline")) || airlineInfo.name || "Airline"}
+                                style={{ width: 48, height: 48, objectFit: "contain" }}
+                                className="me-3"
+                              />
+                              <div>
+                                <div className="fw-bold">{(returnStopover.airline && returnStopover.airline.name) || airlineInfo.name || "Unknown Airline"}</div>
+                                <div className="small text-muted">{returnStopover.flight_number ? `${returnStopover.flight_number}` : ""}</div>
+                              </div>
+                            </div>
+
+                            <div className="row mt-3">
+                              <div className="col-md-3 text-center text-md-start">
+                                <div className="fw-semibold">{formatTime(returnStopover.departure_date_time)}</div>
+                                <div className="text-muted small">{formatDate(returnStopover.departure_date_time)}</div>
+                                <div className="text-muted small">{resolveCityName(returnStopover.departure_city || returnTrip.departure_city)}</div>
+                              </div>
+
+                              <div className="col-md-3 text-center">
+                                <div className="fw-semibold">{getDuration(returnStopover.departure_date_time, returnStopover.arrival_date_time)}</div>
+                                <div className="text-muted small">Stopover — {returnStopover.stopover_duration || "--"}</div>
+                              </div>
+
+                              <div className="col-md-3 text-center text-md-start">
+                                <div className="fw-semibold">{formatTime(returnStopover.arrival_date_time)}</div>
+                                <div className="text-muted small">{formatDate(returnStopover.arrival_date_time)}</div>
+                                <div className="text-muted small">{resolveCityName(returnStopover.arrival_city)}</div>
+                              </div>
+
+                              <div className="col-md-3 text-center">
+                                <div className="small mt-1 px-2 py-1 rounded" style={seatWarningStyle}>
+                                  {ticket.left_seats <= 9
+                                    ? `Only ${ticket.left_seats} seats left`
+                                    : `${ticket.left_seats} seats left`}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                     </>
                   )}
-
                   <hr className="" />
 
                   <div className="row align-items-center gy-3">
@@ -1085,7 +1217,7 @@ const FlightBookingForm = () => {
                       <div className="row fw-semibold d-flex align-items-center">
                         <h6 className="col-md-6 text-end fw-bold">Grand Total:</h6>
                         <div className="col-md-6 text-end fw-bold text-primary">
-                          {priceDetails.hasZeroPrice ? "Fare on call" : `PKR ${priceDetails.grandTotal.toLocaleString()}`} /.
+                          {priceDetails.grandTotal === 0 ? "Fare on call /." : `PKR ${priceDetails.grandTotal.toLocaleString()} /.`}
                         </div>
                       </div>
                     </div>

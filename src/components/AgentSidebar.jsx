@@ -35,6 +35,8 @@ const Sidebar = () => {
   const handleShow = () => setShow(true);
 
   const [organization, setOrganization] = useState([]);
+  const [finalBalance, setFinalBalance] = useState(null);
+  const [balanceLoading, setBalanceLoading] = useState(true);
 
   // Updated class function with active styling
   const getNavLinkClass = ({ isActive }) =>
@@ -61,7 +63,7 @@ const Sidebar = () => {
 
         const orgData = JSON.parse(agentOrg);
         const orgId = orgData.ids?.[0];
-        
+
         if (!orgId) {
           console.warn("No organization ID found. Please log in again.");
           return;
@@ -69,7 +71,7 @@ const Sidebar = () => {
 
         // ✅ Step 3: fetch from API
         const orgRes = await axios.get(
-          `https://api.saer.pk/api/organizations/${orgId}/`,
+          `http://127.0.0.1:8000/api/organizations/${orgId}/`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -88,7 +90,41 @@ const Sidebar = () => {
       }
     };
 
+    const fetchFinalBalance = async () => {
+      try {
+        setBalanceLoading(true);
+        const token = localStorage.getItem("agentAccessToken");
+
+        if (!token) {
+          console.warn("No token found. Please log in again.");
+          setBalanceLoading(false);
+          return;
+        }
+
+        const response = await axios.get(
+          "http://127.0.0.1:8000/api/final-balance/",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        // The API might return different formats, handle both
+        const balance = response.data?.final_balance ?? response.data?.balance ?? response.data;
+        setFinalBalance(balance);
+      } catch (err) {
+        console.error("Error fetching final balance:", err);
+        if (err.response?.status === 401) {
+          console.error("Unauthorized. Please log in again.");
+        }
+        // Set to null on error so we can show a fallback
+        setFinalBalance(null);
+      } finally {
+        setBalanceLoading(false);
+      }
+    };
+
     fetchOrganization();
+    fetchFinalBalance();
   }, []);
 
 
@@ -204,7 +240,15 @@ const Sidebar = () => {
                 >
                   <h5 className="fw-bold">Balance</h5>
                   <hr />
-                  <h6>Rs.100,000/.</h6>
+                  <h6>
+                    {balanceLoading ? (
+                      <span className="text-muted">Loading...</span>
+                    ) : finalBalance !== null ? (
+                      `Rs. ${Number(finalBalance).toLocaleString()}/.`
+                    ) : (
+                      <span className="text-muted">0</span>
+                    )}
+                  </h6>
                 </div>
               </div>
               <Nav.Item className="mb-3 mt-3">
@@ -310,7 +354,7 @@ const Sidebar = () => {
 
       {/* Desktop Sidebar */}
       <div className="custom-sidebar-position shadow">
-          <div className="d-none d-lg-flex flex-column vh-100 px-2">
+        <div className="d-none d-lg-flex flex-column vh-100 px-2">
           <div className="d-flex justify-content-center mt-3">
             <img
               src={organization.logo}
@@ -327,7 +371,15 @@ const Sidebar = () => {
                 >
                   <h5 className="fw-bold">Balance</h5>
                   <hr />
-                  <h6>Rs.100,000/.</h6>
+                  <h6>
+                    {balanceLoading ? (
+                      <span className="text-muted">Loading...</span>
+                    ) : finalBalance !== null ? (
+                      `Rs. ${Number(finalBalance).toLocaleString()}/.`
+                    ) : (
+                      <span className="text-muted">Rs.0.000</span>
+                    )}
+                  </h6>
                 </div>
               </div>
               <Nav.Item className="mb-3 mt-3">

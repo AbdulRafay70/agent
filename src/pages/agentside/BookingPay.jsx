@@ -17,6 +17,11 @@ const BookingPay = () => {
   const tripDetails = ticket?.trip_details || [];
   const outboundTrip = tripDetails.find(t => t && t.trip_type === "Departure") || (tripDetails.length ? tripDetails[0] : null);
   const returnTrip = tripDetails.find(t => t && t.trip_type === "Return") || (tripDetails.length > 1 ? tripDetails[1] : null);
+  const stopoverDetails = ticket?.stopover_details || [];
+  const outboundStopover = stopoverDetails.find(s => s && s.trip_type === 'Departure') || (stopoverDetails.length ? stopoverDetails[0] : undefined);
+  const returnStopover = stopoverDetails.find(s => s && s.trip_type === 'Return') || (stopoverDetails.length > 1 ? stopoverDetails[1] : undefined);
+
+  
 
   const airlineInfo = ticket && airlineMap ? (airlineMap[ticket.airline] || {}) : {};
 
@@ -25,7 +30,7 @@ const BookingPay = () => {
     try {
       const date = new Date(dateString);
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-    } catch (e) {
+    } catch {
       return "--:--";
     }
   };
@@ -35,21 +40,121 @@ const BookingPay = () => {
     try {
       const date = new Date(dateString);
       return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-    } catch (e) {
+    } catch {
       return "-- ---";
     }
   };
 
   const cityDisplay = (cityId) => {
-    if (!cityId || !cityMap) return "Unknown";
-    return cityMap[cityId] || String(cityId);
+    // kept for backward-compat but delegate to resolveCityName
+    return resolveCityName(cityId);
   };
 
   const cityCode = (cityId) => {
-    const name = cityDisplay(cityId);
+    const name = resolveCityName(cityId);
     if (!name) return "---";
     // return 3-letter uppercase code if available
-    return name.split(' ')[0].substring(0,3).toUpperCase();
+    try {
+      return String(name).split(' ')[0].substring(0,3).toUpperCase();
+    } catch {
+      return "---";
+    }
+  };
+
+  // Robust resolver to accept id, code, string, or object shapes for cities
+  const resolveCityName = (city) => {
+    if (!city) return "Unknown";
+    // number -> try map lookup
+    if (typeof city === 'number') {
+      return (cityMap && cityMap[city]) || String(city);
+    }
+    // string -> direct
+    if (typeof city === 'string') {
+      // empty string fallback
+      return city.trim() ? city : 'Unknown';
+    }
+    // object -> try common keys
+    if (typeof city === 'object') {
+      try {
+        if (city.name) return city.name;
+        if (city.full_name) return city.full_name;
+        if (city.city) return city.city;
+        if (city.code) return city.code;
+        if (city.id && cityMap && cityMap[city.id]) return cityMap[city.id];
+        if (city.id) return String(city.id);
+      } catch {
+        // fall through
+      }
+      return JSON.stringify(city);
+    }
+    // fallback
+    return String(city);
+  };
+
+  
+
+  // Resolve airline display name from id/object/string
+  const resolveAirlineName = (airline) => {
+    if (!airline) return '';
+    if (typeof airline === 'string') return airline;
+    if (typeof airline === 'number') {
+      return (airlineMap && airlineMap[airline] && (airlineMap[airline].name || airlineMap[airline].full_name)) || String(airline);
+    }
+    if (typeof airline === 'object') {
+      return airline.name || airline.full_name || airline.display_name || airline.title || airline.airline_name || airline.code || JSON.stringify(airline);
+    }
+    return String(airline);
+  };
+
+  // Resolve airline code (IATA) from id/object/string
+  const resolveAirlineCode = (airline) => {
+    if (!airline) return '';
+    if (typeof airline === 'string') return airline;
+    if (typeof airline === 'number') {
+      return (airlineMap && airlineMap[airline] && (airlineMap[airline].code || airlineMap[airline].iata || airlineMap[airline].iata_code)) || String(airline);
+    }
+    if (typeof airline === 'object') {
+      return airline.code || airline.iata || airline.iata_code || airline.code_iata || airline.airline_code || '';
+    }
+    return '';
+  };
+
+  // Resolve stopover city robustly
+  const resolveStopoverCity = (stopover) => {
+    if (!stopover) return '';
+    const candidate = stopover.stopover_city || stopover.arrival_city || stopover.city || stopover.to_city || stopover.destination;
+    // ensure we always return a string (resolveCityName handles objects/ids/strings)
+    return resolveCityName(candidate);
+  };
+
+  // Format stopover time/date if available
+  const formatStopoverTime = (stopover) => {
+    if (!stopover) return '';
+    const t = stopover.stopover_time || stopover.arrival_time || stopover.arrival_date_time || stopover.stopover_date_time || stopover.time || stopover.date_time;
+    if (!t) return '';
+    try {
+      const d = new Date(t);
+      return d.toLocaleString([], { hour: '2-digit', minute: '2-digit', hour12: true, day: 'numeric', month: 'short' });
+    } catch {
+      return String(t);
+    }
+  };
+
+  // Render a compact stopover details block (city, time, airline)
+  const renderStopoverDetails = (stopover) => {
+    if (!stopover) return <small className="text-muted">NON STOP</small>;
+    const city = resolveStopoverCity(stopover);
+    const time = formatStopoverTime(stopover);
+    const airline = stopover.airline || stopover.airline_id || stopover.operating_airline || null;
+    const name = resolveAirlineName(airline) || '';
+    const code = resolveAirlineCode(airline) || '';
+
+    return (
+      <div className="text-muted small">
+        {city ? <div>{city}{time ? ` — ${time}` : ''}</div> : null}
+        {(name || code) ? <div>{name}{code ? ` (${code})` : ''}</div> : null}
+      </div>
+    );
   };
 
   useEffect(() => {
@@ -112,7 +217,7 @@ const BookingPay = () => {
   const [beneficiaryError, setBeneficiaryError] = useState(null);
   const [agentAccounts, setAgentAccounts] = useState([]);
   const [isConfirming, setIsConfirming] = useState(false);
-  const [confirmError, setConfirmError] = useState(null);
+  const [, setConfirmError] = useState(null);
   const navigate = useNavigate();
   const [slipFile, setSlipFile] = useState(null);
   const fileInputRef = useRef(null);
@@ -131,7 +236,7 @@ const BookingPay = () => {
     try {
       const orgData = JSON.parse(agentOrg);
       return orgData.ids ? orgData.ids[0] : orgData.id || null;
-    } catch (e) {
+    } catch {
       return null;
     }
   };
@@ -146,7 +251,7 @@ const BookingPay = () => {
       const agency = parsed.agency_id || parsed.agency?.id || null;
       const user = parsed.user_id || parsed.user?.id || parsed.id || null;
       return { organization, branch, agency, user };
-    } catch (e) {
+    } catch {
       return { organization: null, branch: null, agency: null, user: null };
     }
   };
@@ -159,7 +264,7 @@ const BookingPay = () => {
       // This avoids cases like "Rs.12,000/-" becoming ".12000" which parses to 0.12
       const digitsOnly = String(val).replace(/[^0-9]/g, '');
       return digitsOnly ? Number(digitsOnly) : 0;
-    } catch (e) { return 0; }
+    } catch { return 0; }
   };
 
   // Fetch beneficiary bank accounts from API for the agent organization
@@ -174,7 +279,7 @@ const BookingPay = () => {
       const token = localStorage.getItem('agentAccessToken') || localStorage.getItem('accessToken') || localStorage.getItem('token');
 
       try {
-        const resp = await axios.get(`https://api.saer.pk/api/bank-accounts/?organization=${orgId}`, {
+        const resp = await axios.get(`http://127.0.0.1:8000/api/bank-accounts/?organization=${orgId}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
 
@@ -295,7 +400,7 @@ const BookingPay = () => {
       }
 
       // send payment to backend
-      const resp = await axios.post('https://api.saer.pk/api/payments/', formPayload, {
+      const resp = await axios.post('http://127.0.0.1:8000/api/payments/', formPayload, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
 
@@ -308,7 +413,7 @@ const BookingPay = () => {
         payment_status: 'Pending',
         is_paid: false
       };
-      await axios.patch(`https://api.saer.pk/api/bookings/${bookingId}/`, patchBody, { headers: paymentPatchHeaders });
+      await axios.patch(`http://127.0.0.1:8000/api/bookings/${bookingId}/`, patchBody, { headers: paymentPatchHeaders });
       console.log('Booking patched to Confirmed with payment pending');
 
       // Navigate to booking history (the Add Payment page will show the deposit as pending)
@@ -331,7 +436,7 @@ const BookingPay = () => {
       const token = localStorage.getItem('agentAccessToken') || localStorage.getItem('accessToken') || localStorage.getItem('token');
       const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
       // ensure booking.status and payment_status are both Pending
-      await axios.patch(`https://api.saer.pk/api/bookings/${bookingId}/`, { status: 'Pending', payment_status: 'Pending', is_paid: false }, { headers });
+      await axios.patch(`http://127.0.0.1:8000/api/bookings/${bookingId}/`, { status: 'Pending', payment_status: 'Pending', is_paid: false }, { headers });
       navigate('/booking-history');
     } catch (err) {
       console.error('Failed to put booking on hold:', err);
@@ -449,7 +554,10 @@ const BookingPay = () => {
                         <small>{ticket?.is_meal_included ? 'Meal Included' : 'No Meal'}</small>
                       </div>
                     </div>
-                    <div className="text-muted small mt-2">{airlineInfo.name || ''}</div>
+                    <div className="text-muted small mt-2">
+                      {airlineInfo.name || resolveAirlineName(ticket?.airline) || ''}
+                      {(airlineInfo.code || resolveAirlineCode(ticket?.airline)) ? ` (${airlineInfo.code || resolveAirlineCode(ticket?.airline)})` : ''}
+                    </div>
                   </div>
 
                   <div className="col-md-8">
@@ -462,7 +570,7 @@ const BookingPay = () => {
                       </div>
 
                       <div className="flex-grow-1 text-center">
-                        <small className="text-muted">NON STOP</small>
+                        {renderStopoverDetails(outboundStopover)}
                         <div
                           style={{
                             height: "2px",

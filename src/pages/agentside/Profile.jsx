@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import AgentSidebar from "../../components/AgentSidebar";
 import AgentHeader from "../../components/AgentHeader";
 import axios from "axios";
-import { jwtDecode } from "jwt-decode";
+import jwtDecode from "../../utils/jwtDecode";
 import { toast, ToastContainer } from "react-toastify";
 
 const ProfileShimmer = () => {
@@ -94,7 +94,7 @@ const Profile = () => {
         localStorage.setItem("userId", JSON.stringify(userId));
         // Step 1: Get current user
         const userRes = await axios.get(
-          `https://api.saer.pk/api/users/${userId}/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/users/${userId}/?organization=${orgId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -112,7 +112,7 @@ const Profile = () => {
 
         // Step 3: Get agency details
         const agencyRes = await axios.get(
-          `https://api.saer.pk/api/agencies/${agencyId}/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/agencies/${agencyId}/?organization=${orgId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -203,7 +203,7 @@ const Profile = () => {
       };
 
       const response = await axios.put(
-        `https://api.saer.pk/api/agencies/${agencyId}/?organization=${orgId}`,
+        `http://127.0.0.1:8000/api/agencies/${agencyId}/?organization=${orgId}`,
         payload,
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -253,7 +253,7 @@ const Profile = () => {
       formData.append("description", "Agency logo");
 
       const response = await axios.post(
-        `https://api.saer.pk/api/agencies/${agencyId}/files/`,
+        `http://127.0.0.1:8000/api/agencies/${agencyId}/files/`,
         formData,
         {
           headers: {
@@ -439,7 +439,7 @@ const Profile = () => {
                                 <img
                                   src={
                                     typeof profileData.logo === "string"
-                                      ? `https://api.saer.pk/${profileData.logo}`
+                                      ? `http://127.0.0.1:8000/${profileData.logo}`
                                       : URL.createObjectURL(profileData.logo)
                                   }
                                   alt="Logo Preview"

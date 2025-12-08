@@ -160,7 +160,7 @@ const AgentKuickpay = () => {
     try {
       const token = localStorage.getItem("token");
       const response = await axios.post(
-        "https://api.saer.pk/api/kuickpay/payment/",
+        "http://127.0.0.1:8000/api/kuickpay/payment/",
         {
           ...paymentForm,
           amount: parseFloat(paymentForm.amount),
@@ -208,7 +208,7 @@ const AgentKuickpay = () => {
     try {
       const token = localStorage.getItem("token");
       const response = await axios.post(
-        "https://api.saer.pk/api/kuickpay/inquiry/",
+        "http://127.0.0.1:8000/api/kuickpay/inquiry/",
         {
           transaction_id: inquiryForm.transaction_id,
         },

@@ -4,6 +4,9 @@ import AgentHeader from "../../components/AgentHeader";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { CloudUpload, PersonDash } from "react-bootstrap-icons";
 import { Plus, Upload } from "lucide-react";
+import RawSelect from 'react-select';
+import { toast } from 'react-toastify';
+import * as jwtDecode from 'jwt-decode';
 
 const AgentPackagesDetail = () => {
   const location = useLocation();
@@ -293,7 +296,9 @@ const AgentPackagesDetail = () => {
 
   // Initialize passengers and prices based on room types on first load
   useEffect(() => {
-    if (!pkg) {
+    // Check for saved draft from Book Now before redirecting
+    const savedDraft = sessionStorage.getItem('umrah_booknow_v1');
+    if (!pkg && !savedDraft) {
       navigate('/packages');
       return;
     }
@@ -316,8 +321,8 @@ const AgentPackagesDetail = () => {
           for (let i = 0; i < count; i++) {
             newPassengers.push({
               id: `${groupId}-${i}`,
-              type: i === 0 ? "" : "",
-              title: i === 0 ? "" : "",
+              type: "Adult",
+              title: "",
               name: "",
               lName: "",
               passportNumber: "",
@@ -508,23 +513,9 @@ const AgentPackagesDetail = () => {
   //   const groupId = `${type}-${Math.random().toString(36).substr(2, 9)}`;
   //   const newPassengers = [...passengers];
 
-  //   for (let i = 0; i < count; i++) {
-  //     newPassengers.push({
-  //       id: `${groupId}-${i}`,
-  //       type: i === 0 ? "" : "",
-  //       title: i === 0 ? "" : "",
-  //       name: "",
-  //       lName: "",
-  //       passportNumber: "",
-  //       passportIssue: "",
-  //       passportExpiry: "",
-  //       country: "",
-  //       passportFile: null,
-  //       roomType: type,
-  //       groupId: groupId,
-  //       isFamilyHead: i === 0
-  //     });
-  //   }
+    // Orphaned loop removed: the `addRoomType` implementation was commented out
+    // and this loop referenced `count` which is undefined here. If you
+    // re-enable `addRoomType`, reintroduce the loop inside that function.
 
   //   setPassengers(newPassengers);
   //   setRoomTypes([...roomTypes, type]);
@@ -669,6 +660,17 @@ const AgentPackagesDetail = () => {
     return isValid;
   };
 
+  // Convert File to base64 string
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      if (!file) { resolve(null); return; }
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
   const handleNavigation = (path, options = {}) => {
     navigate(path, {
       ...options,
@@ -681,20 +683,66 @@ const AgentPackagesDetail = () => {
     });
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     console.log('Validating form...');
     if (validateForm()) {
       console.log('Validation passed');
-      handleNavigation("/packages/review", {
-        state: {
-          package: pkg,
-          passengers,
-          roomTypes,
-          totalPrice,
-          childPrices,
-          infantPrices
-        }
-      });
+      try {
+        // Convert passport files to base64 and prepare passenger payload
+        const passengersWithBase64 = await Promise.all(passengers.map(async (p) => {
+          if (p.passportFile && typeof p.passportFile !== 'string') {
+            try {
+              const base64 = await fileToBase64(p.passportFile);
+              return { ...p, passportFile: base64 };
+            } catch (err) {
+              console.error('Failed to convert passport file to base64 for', p.id, err);
+              return { ...p, passportFile: null };
+            }
+          }
+          return p;
+        }));
+
+        // compute expiry from token
+        const token = localStorage.getItem('agentAccessToken') || localStorage.getItem('token');
+        let expiresAt = Date.now() + 60 * 60 * 1000;
+        try {
+          if (token) {
+            const decodeFn = (jwtDecode && jwtDecode.default) ? jwtDecode.default : jwtDecode;
+            const decoded = decodeFn(token);
+            if (decoded && decoded.exp) expiresAt = decoded.exp * 1000;
+          }
+        } catch (e) { /* ignore */ }
+
+        // Save package selection to sessionStorage
+        const bookPayload = {
+          __version: 1,
+          __expiresAt: expiresAt,
+          value: {
+            package: pkg,
+            roomTypes,
+            totalPrice,
+            childPrices,
+            infantPrices
+          }
+        };
+        sessionStorage.setItem('agent_package_book_v1', JSON.stringify(bookPayload));
+
+        // Save passengers to sessionStorage
+        const passengerPayload = {
+          __version: 1,
+          __expiresAt: expiresAt,
+          value: {
+            passengers: passengersWithBase64
+          }
+        };
+        sessionStorage.setItem('agent_package_passengers_v1', JSON.stringify(passengerPayload));
+
+        // Navigate to review page (Review will read session data)
+        navigate('/packages/review');
+      } catch (err) {
+        console.error('Error during continue booking:', err);
+        toast.error('Failed to prepare booking. Please try again.');
+      }
     } else {
       // console.log('Validation failed, errors:', formErrors);
       // Scroll to first error
@@ -729,7 +777,7 @@ const AgentPackagesDetail = () => {
   //     try {
   //       // Always fetch cities data
   //       const citiesResponse = await axios.get(
-  //         `https://api.saer.pk/api/cities/?organization=${orgId}`,
+  //         `http://127.0.0.1:8000/api/cities/?organization=${orgId}`,
   //         { headers: { Authorization: `Bearer ${token}` } }
   //       );
   //       setCities(citiesResponse.data);
@@ -1065,17 +1113,13 @@ const AgentPackagesDetail = () => {
                                   {/* Passenger Type */}
                                   <div className="col-lg-2 mb-2">
                                     <label className="control-label">Type</label>
-                                    <select
-                                      className={`form-select bg-light shadow-none ${formErrors[`passenger-${passenger.id}-type`] ? "is-invalid" : ""}`}
-                                      value={passenger.type}
+                                    <input
+                                      type="text"
+                                      className={`form-control bg-light shadow-none ${formErrors[`passenger-${passenger.id}-type`] ? "is-invalid" : ""}`}
+                                      value={passenger.type || 'Adult'}
                                       onChange={(e) => updatePassenger(passenger.id, "type", e.target.value)}
                                       required
-                                    >
-                                      <option value="">Select Type</option>
-                                      <option value="Adult">Adult</option>
-                                      <option value="Child">Child</option>
-                                      {passenger.type === "Infant" && <option value="Infant">Infant</option>}
-                                    </select>
+                                    />
                                     {formErrors[`passenger-${passenger.id}-type`] && (
                                       <div className="invalid-feedback">{formErrors[`passenger-${passenger.id}-type`]}</div>
                                     )}
@@ -1180,20 +1224,31 @@ const AgentPackagesDetail = () => {
                                   {/* Country */}
                                   <div className="col-lg-2 mb-2">
                                     <label className="control-label">Country</label>
-                                    <select
-                                      className={`form-select bg-light shadow-none ${formErrors[`passenger-${passenger.id}-country`] ? "is-invalid" : ""}`}
-                                      value={passenger.country}
-                                      onChange={(e) => updatePassenger(passenger.id, "country", e.target.value)}
-                                      required
-                                    >
-                                      <option value="">Select Country</option>
-                                      {countries.map(country => (
-                                        <option key={country} value={country}>{country}</option>
-                                      ))}
-                                    </select>
-                                    {formErrors[`passenger-${passenger.id}-country`] && (
-                                      <div className="invalid-feedback">{formErrors[`passenger-${passenger.id}-country`]}</div>
-                                    )}
+                                    <div>
+                                      <RawSelect
+                                        options={countries.map(c => ({ label: c, value: c }))}
+                                        value={passenger.country ? { label: passenger.country, value: passenger.country } : null}
+                                        onChange={(opt) => updatePassenger(passenger.id, "country", opt ? opt.value : "")}
+                                        placeholder="Select Country"
+                                        isSearchable={true}
+                                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                                        styles={{
+                                          menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+                                          control: (base, state) => ({
+                                            ...base,
+                                            minHeight: 38,
+                                            height: 38,
+                                            borderRadius: 4,
+                                            border: formErrors[`passenger-${passenger.id}-country`] ? '1px solid #dc3545' : '1px solid #ced4da'
+                                          }),
+                                          singleValue: (base) => ({ ...base, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' })
+                                        }}
+                                        classNamePrefix="react-select"
+                                      />
+                                      {formErrors[`passenger-${passenger.id}-country`] && (
+                                        <div className="invalid-feedback d-block">{formErrors[`passenger-${passenger.id}-country`]}</div>
+                                      )}
+                                    </div>
                                   </div>
 
                                   {/* Passport Upload */}

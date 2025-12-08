@@ -5,45 +5,131 @@ import AgentHeader from "../../components/AgentHeader";
 import { Modal, Button } from "react-bootstrap";
 import { CloudUpload, Search, Utensils } from "lucide-react";
 import { Bag } from "react-bootstrap-icons";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 const BookingReview = () => {
   const [currentStep] = useState(2);
   const [showModal, setShowModal] = useState(false);
   const [currentPassport, setCurrentPassport] = useState(null);
-  const { state } = useLocation();
-
+  const [packageData, setPackageData] = useState(null);
+  const [passengers, setPassengers] = useState([]);
+  const [manualFamilies, setManualFamilies] = useState([]);
   const navigate = useNavigate();
 
-  const handleBackToEdit = () => {
-    navigate(`/packages/custom-umrah/detail/${state.id}`, {
-      state: {
-        packageData: state.packageData,
-        passengers: state.passengers || [],
-        totalPrice: state.totalPrice || 0,
-        cities: state.cities || [],
-        id: state.id
+  // Load data from sessionStorage on mount
+  React.useEffect(() => {
+    // Load package data
+    const packageStorage = sessionStorage.getItem('umrah_booknow_v1');
+    if (packageStorage) {
+      try {
+        const parsed = JSON.parse(packageStorage);
+        setPackageData(parsed.value || null);
+      } catch (e) {
+        console.error('Error parsing package data:', e);
       }
+    }
+
+    // Load passenger data
+    const passengerStorage = sessionStorage.getItem('umrah_passengers_v1');
+    if (passengerStorage) {
+      try {
+        const parsed = JSON.parse(passengerStorage);
+        setPassengers(parsed.value?.passengers || []);
+        setManualFamilies(parsed.value?.manualFamilies || []);
+      } catch (e) {
+        console.error('Error parsing passenger data:', e);
+      }
+    }
+  }, []);
+
+  const handleBackToEdit = () => {
+    const draftId = `draft-${Date.now()}`;
+    navigate(`/packages/custom-umrah/detail/${draftId}`);
+  };
+
+  // Calculate total price
+  const totalPrice = React.useMemo(() => {
+    if (!packageData) return 0;
+    
+    let total = 0;
+    const adults = packageData.total_adaults || 0;
+    const children = packageData.total_children || 0;
+    const infants = packageData.total_infants || 0;
+
+    // Hotel prices
+    packageData.hotel_details?.forEach(hotel => {
+      total += hotel.price || 0;
     });
-  };
 
-  // Use passed data or fallback to defaults
-  const packageData = state?.packageData || {
-    hotel_details: [],
-    ticket_details: [],
-    transport_details: [],
-    total_adaults: 0,
-    total_children: 0,
-    total_infants: 0,
-  };
+    // Transport prices
+    packageData.transport_details?.forEach(transport => {
+      const adultPrice = transport.transport_sector_info?.adault_price || 0;
+      const childPrice = transport.transport_sector_info?.child_price || 0;
+      const infantPrice = transport.transport_sector_info?.infant_price || 0;
+      total += (adultPrice * adults) + (childPrice * children) + (infantPrice * infants);
+    });
 
-  const passengers = state?.passengers || [];
-  const totalPrice = state?.totalPrice || 0;
+    // Flight prices
+    packageData.ticket_details?.forEach(ticket => {
+      const adultPrice = ticket.ticket_info?.adult_price || 0;
+      const childPrice = ticket.ticket_info?.child_price || 0;
+      const infantPrice = ticket.ticket_info?.infant_price || 0;
+      total += (adultPrice * adults) + (childPrice * children) + (infantPrice * infants);
+    });
+
+    // Food prices (per pax)
+    packageData.food_details?.forEach(food => {
+      const price = food.food_info?.price || food.food_info?.selling_price || food.price || 0;
+      const pax = (adults + children + infants) || 0;
+      total += price * pax;
+    });
+
+    // Ziarat prices (per pax by type)
+    packageData.ziarat_details?.forEach(ziarat => {
+      const adultPrice = ziarat.ziarat_info?.adult_price || 0;
+      const childPrice = ziarat.ziarat_info?.child_price || 0;
+      const infantPrice = ziarat.ziarat_info?.infant_price || 0;
+      total += (adultPrice * adults) + (childPrice * children) + (infantPrice * infants);
+    });
+
+    // Visa prices (if present)
+    packageData.visa_details?.forEach(visa => {
+      const adultPrice = visa?.adult_price || visa?.visa_info?.adult_price || 0;
+      const childPrice = visa?.child_price || visa?.visa_info?.child_price || 0;
+      const infantPrice = visa?.infant_price || visa?.visa_info?.infant_price || 0;
+      total += (adultPrice * adults) + (childPrice * children) + (infantPrice * infants);
+    });
+
+    return total;
+  }, [packageData]);
+
+  if (!packageData) {
+    return (
+      <div className="min-vh-100 d-flex align-items-center justify-content-center">
+        <div className="text-center">
+          <h4>No package data found</h4>
+          <Link to="/packages/umrah-calculater" className="btn btn-primary mt-3">
+            Go to Calculator
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
     return date.toLocaleDateString();
+  };
+
+  const safeText = (val) => {
+    if (val === null || val === undefined) return 'N/A';
+    if (typeof val === 'string' || typeof val === 'number') return val;
+    if (typeof val === 'object') {
+      // prefer name, then code, then id
+      return val.name || val.code || val.id || JSON.stringify(val);
+    }
+    return String(val);
   };
 
   const handleShowPassport = (passportFile) => {
@@ -185,13 +271,37 @@ const BookingReview = () => {
                           <React.Fragment key={index}>
                             {ticket.ticket_info?.trip_details?.map((trip, tripIndex) => (
                               <div key={tripIndex} className="small text-muted">
-                                {trip.trip_type === "Departure" ? "Travel Date" : "Return Date"}: {trip.departure_city} to {trip.arrival_city} -
+                                {trip.trip_type === "Departure" ? "Travel Date" : "Return Date"}: {safeText(trip.departure_city)} to {safeText(trip.arrival_city)} -
                                 {formatDate(trip.departure_date_time)} to {formatDate(trip.arrival_date_time)}
                               </div>
                             ))}
                           </React.Fragment>
                         ))}
                       </div>
+
+                      {/* Food Details */}
+                      {packageData.food_details?.length > 0 && (
+                        <div className="mb-2">
+                          <strong>Food:</strong>
+                          {packageData.food_details.map((food, idx) => (
+                            <div key={idx} className="small text-muted">
+                              {food.food_info?.title || food.title || 'Food'} - {safeText(food.food_info?.description) || ''}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Ziarat Details */}
+                      {packageData.ziarat_details?.length > 0 && (
+                        <div className="mb-2">
+                          <strong>Ziarat:</strong>
+                          {packageData.ziarat_details.map((z, idx) => (
+                            <div key={idx} className="small text-muted">
+                              {z.ziarat_info?.ziarat_title || z.title || 'Ziarat'} - {safeText(z.ziarat_info?.description) || ''}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="col-md-4">
@@ -227,6 +337,37 @@ const BookingReview = () => {
                         </div>
                       </div>
 
+                      {/* Food Prices */}
+                      {packageData.food_details?.length > 0 && (
+                        <div className="mb-2">
+                          <div className="small text-muted">Food:</div>
+                          <div className="small">
+                            {packageData.food_details.map((food, idx) => {
+                              const price = food.food_info?.price || food.food_info?.selling_price || food.price || 0;
+                              return (
+                                <div key={idx}>SAR {price} per pax</div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Ziarat Prices */}
+                      {packageData.ziarat_details?.length > 0 && (
+                        <div className="mb-2">
+                          <div className="small text-muted">Ziarat:</div>
+                          <div className="small">
+                            {packageData.ziarat_details.map((z, idx) => (
+                              <div key={idx}>
+                                SAR {z.ziarat_info?.adult_price || 0}/Adult |
+                                SAR {z.ziarat_info?.child_price || 0}/Child |
+                                SAR {z.ziarat_info?.infant_price || 0}/Infant
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Total Price */}
                       <div className="mt-3 pt-2 border-top">
                         <h5 className="fw-bold">Total Price: SAR {totalPrice.toFixed(2)}</h5>
@@ -250,34 +391,48 @@ const BookingReview = () => {
                         <th>Passport No</th>
                         <th>Passport Expiry</th>
                         <th>Country</th>
+                        <th>Family</th>
                         <th>Passport Copy</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {passengers.map((passenger, index) => (
-                        <tr key={index}>
-                          <td>{passenger.type}</td>
-                          <td>{passenger.title}</td>
-                          <td>{passenger.name}</td>
-                          <td>{passenger.lName}</td>
-                          <td>{passenger.passportNumber}</td>
-                          <td>{formatDate(passenger.passportExpiry)}</td>
-                          <td>{passenger.country}</td>
-                          <td>
-                            {passenger.passportFile ? (
-                              <Button
-                                variant="link"
-                                onClick={() => handleShowPassport(passenger.passportFile)}
-                                className="p-0"
-                              >
-                                View Passport
-                              </Button>
-                            ) : (
-                              "Not Provided"
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {passengers.map((passenger, index) => {
+                        const family = manualFamilies[passenger.familyIndex];
+                        return (
+                          <tr key={index}>
+                            <td>{passenger.type}</td>
+                            <td>{passenger.title}</td>
+                            <td>
+                              {passenger.name}
+                              {passenger.isHead && (
+                                <span className="badge bg-success ms-2" style={{ fontSize: '0.7rem' }}>
+                                  Head of Family
+                                </span>
+                              )}
+                            </td>
+                            <td>{passenger.lName}</td>
+                            <td>{passenger.passportNumber}</td>
+                            <td>{formatDate(passenger.passportExpiry)}</td>
+                            <td>{passenger.country}</td>
+                            <td>
+                              {family ? family.name : 'N/A'}
+                            </td>
+                            <td>
+                              {passenger.passportFile ? (
+                                <Button
+                                  variant="link"
+                                  onClick={() => handleShowPassport(passenger.passportFile)}
+                                  className="p-0"
+                                >
+                                  View Passport
+                                </Button>
+                              ) : (
+                                "Not Provided"
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -328,7 +483,6 @@ const BookingReview = () => {
                   to="/packages/custom-umrah/pay"
                   className="btn px-4"
                   id="btn"
-                  state={state} // Pass the same state forward
                 >
                   Make Booking
                 </Link>

@@ -30,7 +30,7 @@ const BookingReview = () => {
       try {
         const token = localStorage.getItem("agentAccessToken");
         const orgId = getOrgId();
-        const response = await axios.get(`https://api.saer.pk/api/booking-expiry/?organization=${orgId}`, {
+        const response = await axios.get(`http://127.0.0.1:8000/api/booking-expiry/?organization=${orgId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -54,8 +54,30 @@ const BookingReview = () => {
 
   if (!ticket) return null;
 
-  // Get airline info
-  const airlineInfo = airlineMap[ticket.airline] || {};
+  // Resolve helpers to support id/string/object shapes (match FlightBookingForm behavior)
+  const resolveCityName = (city) => {
+    if (!city && city !== 0) return "Unknown City";
+    if (typeof city === "string") return city;
+    if (typeof city === "number") return cityMap && cityMap[city] ? cityMap[city] : "Unknown City";
+    if (typeof city === "object") {
+      return city.name || city.city || city.display_name || "Unknown City";
+    }
+    return "Unknown City";
+  };
+
+  const resolveAirlineInfoFromTrip = (trip) => {
+    if (!trip) return {};
+    const a = trip.airline;
+    if (!a && ticket && ticket.airline) {
+      if (typeof ticket.airline === 'object') return { name: ticket.airline.name, logo: ticket.airline.logo };
+      return airlineMap[ticket.airline] || {};
+    }
+    if (typeof a === 'number' || typeof a === 'string') return airlineMap && airlineMap[a] ? airlineMap[a] : {};
+    if (typeof a === 'object') return { name: a.name, logo: a.logo };
+    return {};
+  };
+
+  // airlineInfo will be resolved after outboundTrip is known
 
   // Safely get trip and stopover details
   const tripDetails = ticket.trip_details || [];
@@ -65,10 +87,15 @@ const BookingReview = () => {
   const outboundTrip = (tripDetails.find((t) => t && t.trip_type === "Departure") || (tripDetails.length ? tripDetails[0] : undefined));
   const returnTrip = (tripDetails.find((t) => t && t.trip_type === "Return") || (tripDetails.length > 1 ? tripDetails[1] : undefined));
 
-  const outboundStopover = stopoverDetails.find(
-    (s) => s.trip_type === "Departure"
-  );
-  const returnStopover = stopoverDetails.find((s) => s.trip_type === "Return");
+  const outboundStopover =
+    stopoverDetails.find((s) => s && s.trip_type === "Departure") ||
+    (stopoverDetails.length ? stopoverDetails[0] : undefined);
+  const returnStopover =
+    stopoverDetails.find((s) => s && s.trip_type === "Return") ||
+    (stopoverDetails.length > 1 ? stopoverDetails[1] : undefined);
+
+  // Resolve airline info now that outboundTrip is available
+  const airlineInfo = resolveAirlineInfoFromTrip(outboundTrip) || (airlineMap[ticket.airline] || {});
 
   const getDuration = (departure, arrival) => {
     if (!departure || !arrival) return "--h --m";
@@ -111,6 +138,16 @@ const BookingReview = () => {
     } catch (e) {
       return "-- ---";
     }
+  };
+
+  // Stopover summary: show city and optional duration when available
+  const stopoverSummary = (stopover) => {
+    if (!stopover) return "Non-stop";
+    const city = resolveCityName(stopover.stopover_city || stopover.arrival_city);
+    const dur = stopover.stopover_duration || stopover.duration || null;
+    if (city && dur) return `${city} (${dur})`;
+    if (city) return city;
+    return "1 Stop";
   };
 
   if (!ticket) {
@@ -191,43 +228,21 @@ const BookingReview = () => {
     // Calculate price details
     const priceDetails = calculateTotalPrice();
 
-    // Prepare ticket details - ensure all IDs are integers and include *_id variants for backend compatibility
+    // Prepare ticket details. Backend nested serializer requires several
+    // non-null fields on BookingTicketDetails. Provide a fuller minimal
+    // object so server-side validation passes.
+    const seatsCount = passengerData.length || 1;
+    const ticketId = Number(ticket.id ?? ticket.ticket ?? ticket.ticket_id ?? 0) || 0;
     const ticketDetails = [{
-      trip_details: tripDetails.map((trip, idx) => ({
-        departure_date_time: trip.departure_date_time,
-        arrival_date_time: trip.arrival_date_time,
-        // ensure trip_type is not blank — default to Departure/Return based on index
-        trip_type: trip.trip_type || (idx === 0 ? "Departure" : "Return"),
-        departure_city: parseInt(trip.departure_city?.id || trip.departure_city) || 0,
-        departure_city_id: parseInt(trip.departure_city?.id || trip.departure_city) || 0,
-        arrival_city: parseInt(trip.arrival_city?.id || trip.arrival_city) || 0,
-        arrival_city_id: parseInt(trip.arrival_city?.id || trip.arrival_city) || 0
-      })),
-      stopover_details: stopoverDetails.map(stopover => ({
-        stopover_duration: stopover.stopover_duration || "",
-        trip_type: stopover.trip_type || "",
-        stopover_city: parseInt(stopover.stopover_city?.id || stopover.stopover_city) || 0,
-        stopover_city_id: parseInt(stopover.stopover_city?.id || stopover.stopover_city) || 0
-      })),
-      is_meal_included: ticket.is_meal_included || false,
-      is_refundable: ticket.is_refundable || false,
-      pnr: ticket.pnr || "",
-      child_price: parseFloat(ticket.child_price) || 0,
-      infant_price: parseFloat(ticket.infant_price) || 0,
-      adult_price: parseFloat(ticket.adult_price) || 0,
-      seats: parseInt(ticket.seats) || 0,
-      weight: parseFloat(ticket.weight) || 0,
-      pieces: parseInt(ticket.pieces) || 0,
-      is_umrah_seat: ticket.is_umrah_seat || false,
-      trip_type: ticket.trip_type || "",
-      // backend requires these non-blank — provide a sensible default
-      departure_stay_type: ticket.departure_stay_type || "None",
-      return_stay_type: ticket.return_stay_type || "None",
-      status: "confirmed",
-      is_price_pkr: true,
-      riyal_rate: 0,
-      ticket: parseInt(ticket.id || ticket.ticket) || 0,
-      ticket_id: parseInt(ticket.id || ticket.ticket) || 0
+      ticket: ticketId,
+      pnr: ticket.pnr || ticket.ticket_number || "N/A",
+      trip_type: ticket.trip_type || (outboundTrip ? outboundTrip.trip_type || "Departure" : "Departure"),
+      departure_stay_type: ticket.departure_stay_type || "standard",
+      return_stay_type: ticket.return_stay_type || "standard",
+      seats: seatsCount,
+      adult_price: ticket.adult_price || ticket.adult_fare || 0,
+      child_price: ticket.child_price || ticket.child_fare || 0,
+      infant_price: ticket.infant_price || ticket.infant_fare || 0,
     }];
 
     // Prepare person details
@@ -274,10 +289,17 @@ const BookingReview = () => {
       };
     });
 
-    const orgId = parseInt(getOrgId());
-    const userIdNum = parseInt(userId);
-    const agencyIdNum = parseInt(agencyId);
-    const branchIdNum = parseInt(branchId);
+    const orgId = parseInt(getOrgId()) || (ticket.organization_id || ticket.organization || ticket.owner_organization_id || 0);
+    const userIdNum = parseInt(userId) || 0;
+    const agencyIdNum = parseInt(agencyId) || (ticket.agency_id || 0);
+    const branchIdNum = parseInt(branchId) || (ticket.branch_id || 0);
+
+    // Validate required context IDs before building payload
+    if (!orgId || !userIdNum || !agencyIdNum || !branchIdNum) {
+      console.error('Missing required organization/branch/agency/user ids', { orgId, userIdNum, agencyIdNum, branchIdNum });
+      alert('Cannot make booking: missing agent/organization context (organization_id, branch_id, agency_id or user_id). Please ensure you are logged in as an agent.');
+      return null;
+    }
 
     // Prepare booking data
     const bookingData = {
@@ -321,6 +343,10 @@ const BookingReview = () => {
     setIsSubmitting(true);
     try {
       const bookingData = prepareBookingData();
+      if (!bookingData) {
+        setIsSubmitting(false);
+        return;
+      }
       const token = localStorage.getItem("agentAccessToken");
 
       // Log the data being sent for debugging
@@ -328,7 +354,7 @@ const BookingReview = () => {
 
       // Make API call with proper axios syntax
       const response = await axios.post(
-        `https://api.saer.pk/api/bookings/`,
+        `http://127.0.0.1:8000/api/bookings/`,
         bookingData,
         {
           headers: {
@@ -524,7 +550,7 @@ const BookingReview = () => {
                         {formatDate(outboundTrip?.departure_date_time)}
                       </div>
                       <div className="text-muted small">
-                        {cityMap[outboundTrip?.departure_city] || "Unknown City"}
+                        {resolveCityName(outboundTrip?.departure_city)}
                       </div>
                     </div>
 
@@ -562,7 +588,7 @@ const BookingReview = () => {
                                     whiteSpace: "nowrap",
                                   }}
                                 >
-                                  {cityMap[outboundStopover.stopover_city] ||
+                                  {resolveCityName(outboundStopover.stopover_city) ||
                                     "Unknown City"}
                                 </div>
                               </div>
@@ -575,7 +601,7 @@ const BookingReview = () => {
                       </div>
 
                         <div className="text-muted mt-4 small mt-1">
-                        {outboundStopover ? "1 Stop" : "Non-stop"}
+                        {stopoverSummary(outboundStopover)}
                       </div>
                     </div>
                     <div className="col-md-2 text-center text-md-start">
@@ -586,7 +612,7 @@ const BookingReview = () => {
                         {formatDate(outboundTrip?.arrival_date_time)}
                       </div>
                       <div className="text-muted small">
-                        {cityMap[outboundTrip?.arrival_city] || "Unknown City"}
+                        {resolveCityName(outboundTrip?.arrival_city)}
                       </div>
                     </div>
                     <div className="col-md-2 text-center">
@@ -600,7 +626,7 @@ const BookingReview = () => {
                         className="text-uppercase fw-semibold small mt-1"
                         style={{ color: "#699FC9" }}
                       >
-                        {outboundStopover ? "1 Stop" : "Non-stop"}
+                        {stopoverSummary(outboundStopover)}
                       </div>
                       <div
                         className="small mt-1 px-2 py-1 rounded"
@@ -637,7 +663,7 @@ const BookingReview = () => {
                             {formatDate(returnTrip?.departure_date_time)}
                           </div>
                           <div className="text-muted small">
-                            {cityMap[returnTrip?.departure_city] || "Unknown City"}
+                            {resolveCityName(returnTrip?.departure_city)}
                           </div>
                         </div>
 
@@ -675,7 +701,7 @@ const BookingReview = () => {
                                         whiteSpace: "nowrap",
                                       }}
                                     >
-                                      {cityMap[returnStopover?.stopover_city] ||
+                                      {resolveCityName(returnStopover?.stopover_city) ||
                                         "Unknown City"}
                                     </div>
                                   </div>
@@ -688,7 +714,7 @@ const BookingReview = () => {
                           </div>
 
                           <div className="text-muted mt-4 small mt-1">
-                            {returnStopover ? "1 Stop" : "Non-stop"}
+                            {stopoverSummary(returnStopover)}
                           </div>
                         </div>
                         <div className="col-md-2 text-center text-md-start">
@@ -699,7 +725,7 @@ const BookingReview = () => {
                             {formatDate(returnTrip?.arrival_date_time)}
                           </div>
                           <div className="text-muted small">
-                            {cityMap[returnTrip?.arrival_city] || "Unknown City"}
+                            {resolveCityName(returnTrip?.arrival_city) || "Unknown City"}
                           </div>
                         </div>
                         <div className="col-md-2 text-center">
@@ -713,7 +739,7 @@ const BookingReview = () => {
                             className="text-uppercase fw-semibold small mt-1"
                             style={{ color: "#699FC9" }}
                           >
-                            {returnStopover ? "1 Stop" : "Non-stop"}
+                            {stopoverSummary(returnStopover)}
                           </div>
                           <div
                             className="small mt-1 px-2 py-1 rounded"

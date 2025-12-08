@@ -91,10 +91,11 @@ const ShimmerLoader = ({ count = 3 }) => {
 // --- Missing Modal Component (Added for completeness) ---
 
 /**
- * Renders a basic, non-functional modal to complete the parent component logic.
- * In a real application, this would contain the form/logic for selecting rooms and submitting the booking.
+ * Modal for selecting room types and proceeding to booking details page
  */
 const RoomBookingModal = ({ pkg, show, onClose, bedsPerRoomType, calculatePrice, rooms, setRooms }) => {
+  const navigate = useNavigate();
+  
   if (!show || !pkg) return null;
 
   const roomTypes = Object.keys(bedsPerRoomType);
@@ -125,9 +126,21 @@ const RoomBookingModal = ({ pkg, show, onClose, bedsPerRoomType, calculatePrice,
       toast.error("Please select at least one room type.");
       return;
     }
-    // In a real application, you would navigate or call an API here.
-    toast.success(`Booking initiated for ${totalAdults} adults across ${Object.values(rooms).reduce((a, b) => a + b, 0)} rooms. Total: Rs. ${totalPrice.toLocaleString()}`);
-    console.log("Booking Data:", { packageId: pkg.id, selectedRooms: rooms, totalAdults, totalPrice });
+    
+    // Get the first selected room type for initial navigation
+    const selectedRoomTypes = Object.keys(rooms).filter(type => rooms[type] > 0);
+    const firstRoomType = selectedRoomTypes[0];
+    
+    // Navigate to booking detail page
+    navigate('/packages/detail', {
+      state: {
+        package: pkg,
+        roomType: firstRoomType.toUpperCase(),
+        roomTypes: selectedRoomTypes.map(rt => rt.toUpperCase()),
+        totalPrice: totalPrice,
+      }
+    });
+    
     onClose();
   };
 
@@ -193,7 +206,6 @@ const AgentPackages = () => {
     quad: 4,
     triple: 3,
     double: 2,
-    single: 1,
   };
   const tabs = [
     { name: "Umrah Package", path: "/packages" },
@@ -239,7 +251,7 @@ const AgentPackages = () => {
 
         // Fetch packages and airlines for all organization IDs (agent may be linked to a parent org)
         const packagePromises = orgIds.map((id) =>
-          axios.get(`https://api.saer.pk/api/umrah-packages/?organization=${id}`, {
+          axios.get(`http://127.0.0.1:8000/api/umrah-packages/?organization=${id}`, {
             headers: {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
@@ -248,7 +260,7 @@ const AgentPackages = () => {
         );
 
         const airlinePromises = orgIds.map((id) =>
-          axios.get("https://api.saer.pk/api/airlines/", {
+          axios.get("http://127.0.0.1:8000/api/airlines/", {
             params: { organization: id },
             headers: {
               Authorization: `Bearer ${token}`,

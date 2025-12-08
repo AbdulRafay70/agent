@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { jwtDecode } from "jwt-decode";
+import jwtDecode from "../utils/jwtDecode";
 import Modal from "react-bootstrap/Modal";
 import Button from "react-bootstrap/Button";
 
@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }) => {
       const decoded = jwtDecode(access);
       const userId = decoded.user_id;
 
-      const response = await fetch(`https://api.saer.pk/api/users/${userId}/`, {
+      const response = await fetch(`http://127.0.0.1:8000/api/users/${userId}/`, {
         headers: { Authorization: `Bearer ${access}` },
       });
 

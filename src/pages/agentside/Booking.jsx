@@ -23,7 +23,45 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
   if (!ticket) return null;
 
   // Get airline info
-  const airlineInfo = airlineMap[ticket.airline] || {};
+  // Robust resolver for airline info (accepts id, object, string)
+  const resolveAirline = (airline) => {
+    // airlineMap keys are usually numeric ids
+    try {
+      if (!airline) return { name: 'Unknown Airline', logo: flightlogo, code: '' };
+      // numeric id or string id that maps to airlineMap
+      if ((typeof airline === 'number' || typeof airline === 'string') && airlineMap && airlineMap[airline]) {
+        const info = airlineMap[airline];
+        return {
+          name: info.name || info.full_name || info.display_name || 'Unknown Airline',
+          logo: info.logo || info.image || flightlogo,
+          code: info.code || info.iata || info.iata_code || ''
+        };
+      }
+
+      // if airline is an object, try common keys
+      if (typeof airline === 'object') {
+        return {
+          name: airline.name || airline.full_name || airline.display_name || airline.title || airline.airline_name || 'Unknown Airline',
+          logo: airline.logo || airline.image || airline.logo_url || flightlogo,
+          code: airline.code || airline.iata || airline.iata_code || airline.code_iata || ''
+        };
+      }
+
+      // fallback: treat as string name/code
+      return { name: String(airline), logo: flightlogo, code: '' };
+    } catch {
+      return { name: 'Unknown Airline', logo: flightlogo, code: '' };
+    }
+  };
+
+  // Try multiple possible fields on ticket that may contain airline info
+  let airlineCandidate = ticket.airline ?? ticket.airline_id ?? ticket.airline_code ?? ticket.operating_airline ?? ticket.operator ?? ticket.airline_info ?? ticket.airlineObj ?? null;
+  // If still missing, try to pick airline object from trip_details (common in API responses)
+  if (!airlineCandidate && Array.isArray(ticket.trip_details) && ticket.trip_details.length) {
+    const td = ticket.trip_details.find(t => t && (t.airline || t.operating_airline));
+    if (td) airlineCandidate = td.airline || td.operating_airline || null;
+  }
+  const airlineInfo = resolveAirline(airlineCandidate);
 
   // Safely get trip and stopover details
   const tripDetails = ticket.trip_details || [];
@@ -36,8 +74,12 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
   if (!outboundTrip && tripDetails.length > 0) outboundTrip = tripDetails[0];
   if (!returnTrip && tripDetails.length > 1) returnTrip = tripDetails[1];
 
-  const outboundStopover = stopoverDetails.find((s) => s.trip_type === "Departure");
-  const returnStopover = stopoverDetails.find((s) => s.trip_type === "Return");
+  const outboundStopover =
+    stopoverDetails.find((s) => s && s.trip_type === "Departure") ||
+    (stopoverDetails.length ? stopoverDetails[0] : undefined);
+  const returnStopover =
+    stopoverDetails.find((s) => s && s.trip_type === "Return") ||
+    (stopoverDetails.length > 1 ? stopoverDetails[1] : undefined);
 
   if (!outboundTrip) {
     return (
@@ -91,6 +133,23 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
     }
   };
 
+  // Helper to resolve city name from id or object using cityMap
+  const getCityName = (city) => {
+    if (!city) return "Unknown City";
+    if (typeof city === 'object') return city.name || city.city_name || city.display_name || city.title || 'Unknown City';
+    return (cityMap && (cityMap[city] || cityMap[String(city)])) || 'Unknown City';
+  };
+
+  // Stopover summary helper
+  const stopoverSummary = (stopover) => {
+    if (!stopover) return "Non-stop";
+    const city = getCityName(stopover.stopover_city || stopover.arrival_city);
+    const dur = stopover.stopover_duration || stopover.duration || null;
+    if (city && dur) return `${city} (${dur})`;
+    if (city) return city;
+    return "1 Stop";
+  };
+
   // Determine seat warning style
   const seatWarningStyle =
     ticket.left_seats <= 9
@@ -133,6 +192,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
 
             <div className="text-muted mt-2 small fw-medium">
               {airlineInfo.name || "Unknown Airline"}
+              <div className="small text-muted">{ticket.flight_number || outboundTrip.flight_number || ''}</div>
             </div>
           </div>
           <div className="col-md-2 text-center text-md-start">
@@ -143,7 +203,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
               {formatDate(outboundTrip.departure_date_time)}
             </div>
             <div className="text-muted small">
-              {cityMap[outboundTrip.departure_city] || "Unknown City"}
+              {getCityName(outboundTrip?.departure_city)}
             </div>
           </div>
 
@@ -181,8 +241,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {cityMap[outboundStopover.stopover_city] ||
-                          "Unknown City"}
+                        {getCityName(outboundStopover?.stopover_city)}
                       </div>
                     </div>
                     <hr className="w-50 m-0" />
@@ -194,7 +253,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
             </div>
 
             <div className="text-muted mt-4 small mt-1">
-              {outboundStopover ? "1 Stop" : "Non-stop"}
+              {stopoverSummary(outboundStopover)}
             </div>
           </div>
           <div className="col-md-2 text-center text-md-start">
@@ -205,7 +264,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
               {formatDate(outboundTrip.arrival_date_time)}
             </div>
             <div className="text-muted small">
-              {cityMap[outboundTrip.arrival_city] || "Unknown City"}
+              {getCityName(outboundTrip?.arrival_city)}
             </div>
           </div>
           <div className="col-md-2 text-center">
@@ -219,7 +278,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
               className="text-uppercase fw-semibold small mt-1"
               style={{ color: "#699FC9" }}
             >
-              {outboundStopover ? "1 Stop" : "Non-stop"}
+              {stopoverSummary(outboundStopover)}
             </div>
             <div
               className="small mt-1 px-2 py-1 rounded"
@@ -246,6 +305,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
                 />
                 <div className="text-muted mt-2 small fw-medium">
                   {airlineInfo.name || "Unknown Airline"}
+                  <div className="small text-muted">{ticket.flight_number || outboundTrip.flight_number || ''}</div>
                 </div>
               </div>
               <div className="col-md-2 text-center text-md-start">
@@ -256,7 +316,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
                   {formatDate(returnTrip.departure_date_time)}
                 </div>
                 <div className="text-muted small">
-                  {cityMap[returnTrip.departure_city] || "Unknown City"}
+                  {getCityName(returnTrip?.departure_city)}
                 </div>
               </div>
 
@@ -294,8 +354,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {cityMap[outboundStopover.stopover_city] ||
-                              "Unknown City"}
+                                          {getCityName(outboundStopover?.stopover_city)}
                           </div>
                         </div>
                         <hr className="w-50 m-0" />
@@ -307,7 +366,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
                 </div>
 
                 <div className="text-muted mt-4 small mt-1">
-                  {outboundStopover ? "1 Stop" : "Non-stop"}
+                  {stopoverSummary(outboundStopover)}
                 </div>
               </div>
               <div className="col-md-2 text-center text-md-start">
@@ -318,7 +377,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
                   {formatDate(returnTrip.arrival_date_time)}
                 </div>
                 <div className="text-muted small">
-                  {cityMap[returnTrip.arrival_city] || "Unknown City"}
+                  {getCityName(returnTrip?.arrival_city)}
                 </div>
               </div>
               <div className="col-md-2 text-center">
@@ -332,7 +391,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
                   className="text-uppercase fw-semibold small mt-1"
                   style={{ color: "#699FC9" }}
                 >
-                  {returnStopover ? "1 Stop" : "Non-stop"}
+                  {stopoverSummary(returnStopover)}
                 </div>
                 {/* <div
                   className="small mt-1 px-2 py-1 rounded"
@@ -574,6 +633,24 @@ const TicketBooking = () => {
 
   const [filteredTickets, setFilteredTickets] = useState([]);
 
+  // Resolve airline display name for a ticket using available maps or embedded objects
+  const resolveAirlineNameFromTicket = (ticket, airlineMapLocal = airlineMap) => {
+    if (!ticket) return 'Unknown Airline';
+    // candidate fields
+    let candidate = ticket.airline ?? ticket.airline_id ?? ticket.airline_code ?? ticket.operating_airline ?? ticket.operator ?? ticket.airline_info ?? null;
+    if (!candidate && Array.isArray(ticket.trip_details) && ticket.trip_details.length) {
+      const td = ticket.trip_details[0];
+      candidate = td?.airline ?? td?.operating_airline ?? null;
+    }
+    if (!candidate) return 'Unknown Airline';
+    if (typeof candidate === 'object') {
+      return candidate.name || candidate.full_name || candidate.display_name || String(candidate.id || 'Unknown Airline');
+    }
+    // primitive id/string
+    if (airlineMapLocal && airlineMapLocal[candidate] && airlineMapLocal[candidate].name) return airlineMapLocal[candidate].name;
+    return String(candidate);
+  };
+
   // Create axios instance with timeout
   const api = axios.create({
     timeout: 10000, // 10 seconds timeout
@@ -591,8 +668,24 @@ const TicketBooking = () => {
 
       if (!outboundTrip) return "UNK-UNK";
 
-      const depCode = cityCodeMap[outboundTrip.departure_city] || "UNK";
-      const arrCode = cityCodeMap[outboundTrip.arrival_city] || "UNK";
+      // helper to derive a code from a city id/object/string
+      const cityToCode = (city) => {
+        if (!city) return 'UNK';
+        // object with id/name/code
+        if (typeof city === 'object') {
+          if (city.code) return city.code;
+          if (city.id && cityCodeMap && cityCodeMap[city.id]) return cityCodeMap[city.id];
+          if (city.name) return String(city.name).split(' ')[0].substring(0,3).toUpperCase();
+        }
+        // string or number -> try direct map or use first 3 chars
+        const key = city;
+        if (cityCodeMap && cityCodeMap[key]) return cityCodeMap[key];
+        if (cityMap && cityMap[key]) return String(cityMap[key]).split(' ')[0].substring(0,3).toUpperCase();
+        return String(city).substring(0,3).toUpperCase();
+      };
+
+      const depCode = cityToCode(outboundTrip.departure_city) || "UNK";
+      const arrCode = cityToCode(outboundTrip.arrival_city) || "UNK";
 
       if (!returnTrip) {
         return `${depCode}-${arrCode}`;
@@ -684,7 +777,7 @@ const TicketBooking = () => {
                 if (!airlinesById[airline.id]) airlinesById[airline.id] = airline;
               });
               const airlineMapData = Object.values(airlinesById).reduce((map, airline) => {
-                map[airline.id] = { name: airline.name, logo: airline.logo };
+                map[airline.id] = { name: airline.name, logo: airline.logo, code: airline.code || airline.iata || airline.iata_code || '' };
                 return map;
               }, {});
 
@@ -703,13 +796,10 @@ const TicketBooking = () => {
 
               // Initialize airline filters only for airlines that appear in the tickets
               try {
-                const airlineIdsInTickets = new Set((ticketsData || []).map((t) => t.airline).filter(Boolean));
+                // derive airline names present in tickets (tickets may embed airline in trip_details)
+                const airlineNamesInTickets = new Set((ticketsData || []).map((t) => resolveAirlineNameFromTicket(t, airlineMapData)).filter(Boolean));
                 const initialAirlineFiltersCached = {};
-                Object.values(airlinesById).forEach((airline) => {
-                  if (airlineIdsInTickets.has(airline.id)) {
-                    initialAirlineFiltersCached[airline.name] = false;
-                  }
-                });
+                airlineNamesInTickets.forEach((name) => { initialAirlineFiltersCached[name] = false; });
                 setAirlineFilters(initialAirlineFiltersCached);
               } catch (e) {
                 // Ignore filter init errors from cache
@@ -731,9 +821,9 @@ const TicketBooking = () => {
         setError(null);
         setIsLoading(true);
 
-        const ticketUrls = uniqueOrgIds.map((id) => `https://api.saer.pk/api/tickets/?organization=${id}`);
-        const airlineUrls = uniqueOrgIds.map((id) => `https://api.saer.pk/api/airlines/?organization=${id}`);
-        const cityUrls = uniqueOrgIds.map((id) => `https://api.saer.pk/api/cities/?organization=${id}`);
+        const ticketUrls = uniqueOrgIds.map((id) => `http://127.0.0.1:8000/api/tickets/?organization=${id}`);
+        const airlineUrls = uniqueOrgIds.map((id) => `http://127.0.0.1:8000/api/airlines/?organization=${id}`);
+        const cityUrls = uniqueOrgIds.map((id) => `http://127.0.0.1:8000/api/cities/?organization=${id}`);
 
         const [ticketsResponses, airlinesResponses, citiesResponses] = await Promise.all([
           ticketUrls.length ? fetchUrlsInBatches(ticketUrls, 3) : [],
@@ -748,7 +838,7 @@ const TicketBooking = () => {
         // Build airline and city maps
         const airlinesById = {};
         airlinesData.forEach((airline) => { if (!airlinesById[airline.id]) airlinesById[airline.id] = airline; });
-        const airlineMapData = Object.values(airlinesById).reduce((map, airline) => { map[airline.id] = { name: airline.name, logo: airline.logo }; return map; }, {});
+        const airlineMapData = Object.values(airlinesById).reduce((map, airline) => { map[airline.id] = { name: airline.name, logo: airline.logo, code: airline.code || airline.iata || airline.iata_code || '' }; return map; }, {});
 
         const citiesById = {};
         citiesData.forEach((city) => { if (!citiesById[city.id]) citiesById[city.id] = city; });
@@ -756,13 +846,10 @@ const TicketBooking = () => {
         const cityCodeMapData = Object.values(citiesById).reduce((map, city) => { map[city.id] = city.code; return map; }, {});
 
         // Initialize airline filters only for airlines that appear in fetched tickets
-        const airlineIdsInTickets = new Set((ticketsData || []).map((t) => t.airline).filter(Boolean));
+        // derive airline names from fetched tickets using the airline map we built
+        const airlineNamesInTickets = new Set((ticketsData || []).map((t) => resolveAirlineNameFromTicket(t, airlineMapData)).filter(Boolean));
         const initialAirlineFilters = {};
-        Object.values(airlinesById).forEach((airline) => {
-          if (airlineIdsInTickets.has(airline.id)) {
-            initialAirlineFilters[airline.name] = false;
-          }
-        });
+        airlineNamesInTickets.forEach((name) => { initialAirlineFilters[name] = false; });
 
         // Debugging counts
         console.debug('Ticket fetch counts (refreshed):', { orgs: uniqueOrgIds.length, tickets: ticketsData.length, airlines: airlinesData.length, cities: citiesData.length });
@@ -839,7 +926,14 @@ const TicketBooking = () => {
         // FIX: Updated to match backend trip_type value
         const outbound = ticket.trip_details?.find((t) => t.trip_type === "Departure") || ticket.trip_details?.[0];
         if (!outbound) return false;
-        const arrivalCity = cityMap[outbound.arrival_city] || "";
+        let arrivalCity = "";
+        if (outbound.arrival_city) {
+          if (typeof outbound.arrival_city === 'object') {
+            arrivalCity = outbound.arrival_city.name || outbound.arrival_city.city_name || outbound.arrival_city.display_name || "";
+          } else {
+            arrivalCity = cityMap[outbound.arrival_city] || cityMap[String(outbound.arrival_city)] || "";
+          }
+        }
         return arrivalCity.toUpperCase().includes(destUpper);
       });
     }
@@ -879,7 +973,7 @@ const TicketBooking = () => {
 
     if (selectedAirlines.length > 0) {
       result = result.filter((ticket) => {
-        const airlineName = airlineMap[ticket.airline]?.name;
+        const airlineName = resolveAirlineNameFromTicket(ticket);
         return airlineName && selectedAirlines.includes(airlineName);
       });
     }
@@ -895,8 +989,8 @@ const TicketBooking = () => {
           let cmp = 0;
           switch (key) {
             case "airline": {
-              const airlineA = airlineMap[a.airline]?.name || "";
-              const airlineB = airlineMap[b.airline]?.name || "";
+              const airlineA = resolveAirlineNameFromTicket(a) || "";
+              const airlineB = resolveAirlineNameFromTicket(b) || "";
               cmp = airlineA.localeCompare(airlineB);
               break;
             }
@@ -943,7 +1037,7 @@ const TicketBooking = () => {
   ]);
 
   // Generate unique routes from tickets
-  useEffect(() => {
+  useEffect(() => { 
     if (tickets.length === 0 || Object.keys(cityCodeMap).length === 0) return;
 
     const uniqueRoutes = {};
@@ -956,7 +1050,7 @@ const TicketBooking = () => {
     // Initialize routeFilters with unique routes
     const newRouteFilters = {};
     Object.keys(uniqueRoutes).forEach((route) => {
-      newRouteFilters[route] = routeFilters[route] || false;
+      newRouteFilters[route] = routeFilters[route] || false; 
     });
 
     setRouteFilters(newRouteFilters);
@@ -970,11 +1064,8 @@ const TicketBooking = () => {
     setPnr("");
     setDestination("");
     setTravelDate("");
-    setRouteFilters({
-      "LHE-DXB": false,
-      "SKT-SHJ": false,
-      "ISB-LHR": false,
-    });
+    // Clear filters; route and airline lists will be populated from fetched data
+    setRouteFilters({});
 
     // Reset route filters
     setRouteFilters((prev) => {
@@ -1236,7 +1327,7 @@ const TicketBooking = () => {
                           Retry
                         </button>
                         <a
-                          href={`https://api.saer.pk/api/tickets/?organization=${uniqueOrgIds && uniqueOrgIds.length ? uniqueOrgIds[0] : ''}`}
+                          href={`http://127.0.0.1:8000/api/tickets/?organization=${uniqueOrgIds && uniqueOrgIds.length ? uniqueOrgIds[0] : ''}`}
                           className="btn btn-sm btn-outline-primary"
                           target="_blank"
                           rel="noreferrer"
