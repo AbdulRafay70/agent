@@ -777,7 +777,7 @@ const AgentPackagesDetail = () => {
   //     try {
   //       // Always fetch cities data
   //       const citiesResponse = await axios.get(
-  //         `http://127.0.0.1:8000/api/cities/?organization=${orgId}`,
+  //         `https://api.saer.pk/api/cities/?organization=${orgId}`,
   //         { headers: { Authorization: `Bearer ${token}` } }
   //       );
   //       setCities(citiesResponse.data);

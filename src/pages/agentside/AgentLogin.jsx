@@ -39,7 +39,7 @@ const AgentLogin = () => {
     }
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/token/", {
+      const response = await fetch("https://api.saer.pk/api/token/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -77,7 +77,7 @@ const AgentLogin = () => {
       // Fetch user profile using token
       console.log("📞 Fetching user profile from: /api/users/" + userId + "/");
       const userResponse = await fetch(
-        `http://127.0.0.1:8000/api/users/${userId}/`,
+        `https://api.saer.pk/api/users/${userId}/`,
         {
           headers: {
             Authorization: `Bearer ${data.access}`,

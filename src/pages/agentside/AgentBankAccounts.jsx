@@ -84,7 +84,7 @@ const AgentBankAccounts = () => {
       try {
         const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
         const params = orgId ? { organization: orgId } : {};
-        const res = await axios.get('http://127.0.0.1:8000/api/bank-accounts/', { params, headers });
+        const res = await axios.get('https://api.saer.pk/api/bank-accounts/', { params, headers });
         let items = [];
         if (Array.isArray(res.data)) items = res.data;
         else if (res.data && Array.isArray(res.data.results)) items = res.data.results;
@@ -169,7 +169,7 @@ const AgentBankAccounts = () => {
     const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 
     if (editingAccountId) {
-      axios.patch(`http://127.0.0.1:8000/api/bank-accounts/${editingAccountId}/`, payload, { headers })
+      axios.patch(`https://api.saer.pk/api/bank-accounts/${editingAccountId}/`, payload, { headers })
         .then((res) => {
           const updated = res.data;
           setAgentAccounts((prev) => prev.map((p) => (Number(p.id) === Number(editingAccountId) ? {
@@ -196,7 +196,7 @@ const AgentBankAccounts = () => {
       if (agencyId) payload.agency_id = agencyId;
       // ensure agency-created accounts are flagged as not company accounts
       payload.is_company_account = false;
-      axios.post('http://127.0.0.1:8000/api/bank-accounts/', payload, { headers })
+      axios.post('https://api.saer.pk/api/bank-accounts/', payload, { headers })
         .then((res) => {
           const created = res.data;
           // server may or may not echo back is_company_account; ensure UI treats this as agency account
@@ -247,7 +247,7 @@ const AgentBankAccounts = () => {
       return;
     }
     try {
-      await axios.delete(`http://127.0.0.1:8000/api/bank-accounts/${accountId}/`, {
+      await axios.delete(`https://api.saer.pk/api/bank-accounts/${accountId}/`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAgentAccounts((prev) => prev.filter((p) => Number(p.id) !== Number(accountId)));
