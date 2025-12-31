@@ -34,6 +34,16 @@ const AgentPackagesDetail = () => {
   const [familyHeads, setFamilyHeads] = useState([]);
   const [showInfantModal, setShowInfantModal] = useState(false);
   const [selectedFamilyHead, setSelectedFamilyHead] = useState("");
+  const [selectedRooms, setSelectedRooms] = useState({});
+
+  // Room type definitions (passengers per room)
+  const bedsPerRoomType = {
+    sharing: 1,
+    double: 2,
+    triple: 3,
+    quad: 4,
+    quint: 5,
+  };
 
   const countries = [
     "Afghanistan",
@@ -234,6 +244,21 @@ const AgentPackagesDetail = () => {
     "Zimbabwe"
   ];
 
+  // Format sector reference to readable route
+  const formatSectorReference = (reference) => {
+    if (!reference) return '';
+    const referenceMap = {
+      'full_package': 'R/T - Jed(A)-Mak(H)-Med(H)-Mak(H)-Jed(A)',
+      'jeddah_makkah': 'Jed(A)-Mak(H)',
+      'makkah_madinah': 'Mak(H)-Med(H)',
+      'madinah_makkah': 'Med(H)-Mak(H)',
+      'makkah_jeddah': 'Mak(H)-Jed(A)',
+      'jeddah_madinah': 'Jed(A)-Med(H)',
+      'madinah_jeddah': 'Med(H)-Jed(A)',
+    };
+    return referenceMap[reference] || reference.replace(/_/g, '-').toUpperCase();
+  };
+
   const calculateChildPrice = () => {
     if (!pkg) return 0;
     return (pkg.adault_visa_price || 0) - (pkg.child_visa_price || 0);
@@ -346,6 +371,16 @@ const AgentPackagesDetail = () => {
     }
   }, [pkg, navigate, roomTypes, isInitialized, passengers.length]);
 
+  // Recalculate total price whenever passengers change (to ensure accuracy)
+  useEffect(() => {
+    if (passengers.length > 0) {
+      const calculatedTotal = passengers.reduce((sum, passenger) => {
+        return sum + getPriceForPassenger(passenger);
+      }, 0);
+      setTotalPrice(calculatedTotal);
+    }
+  }, [passengers]);
+
   // Update family heads whenever passengers change
   useEffect(() => {
     const heads = passengers.filter(p => p.isFamilyHead);
@@ -448,26 +483,47 @@ const AgentPackagesDetail = () => {
   const getPriceForRoomType = (type) => {
     if (!pkg) return 0;
 
-    const basePrice =
-      (pkg.adault_visa_price || 0) +
-      (pkg.transport_price || 0) +
-      (pkg.ticket_details?.[0]?.ticket_info?.adult_price || 0) +
-      (pkg.food_price || 0) +
-      (pkg.makkah_ziyarat_price || 0) +
-      (pkg.madinah_ziyarat_price || 0);
+    const visaPrice = pkg.adault_visa_selling_price || 0;
+    const transportPrice = pkg.transport_selling_price || 0;
+
+    // Try multiple paths for flight price
+    const ticketInfo = pkg.ticket_details?.[0]?.ticket_info;
+    const flightPrice = ticketInfo?.adult_selling_price || ticketInfo?.adult_price || 0;
+
+    const foodPrice = pkg.food_selling_price || 0;
+    const makkahZiyaratPrice = pkg.makkah_ziyarat_selling_price || 0;
+    const madinahZiyaratPrice = pkg.madinah_ziyarat_selling_price || 0;
+
+    const basePrice = visaPrice + transportPrice + flightPrice + foodPrice + makkahZiyaratPrice + madinahZiyaratPrice;
+
+    console.log('💰 Price Calculation for', type);
+    console.log('  - Visa:', visaPrice);
+    console.log('  - Transport:', transportPrice);
+    console.log('  - Flight (adult_selling_price):', ticketInfo?.adult_selling_price);
+    console.log('  - Flight (adult_price):', ticketInfo?.adult_price);
+    console.log('  - Flight (final):', flightPrice);
+    console.log('  - Food:', foodPrice);
+    console.log('  - Makkah Ziyarat:', makkahZiyaratPrice);
+    console.log('  - Madinah Ziyarat:', madinahZiyaratPrice);
+    console.log('  - Base Price:', basePrice);
 
     const hotelPrice = pkg.hotel_details?.reduce((sum, hotel) => {
       let pricePerNight = 0;
       switch (type.toUpperCase()) {
-        case 'SHARING': pricePerNight = hotel.sharing_bed_price || 0; break;
-        case 'DOUBLE': pricePerNight = hotel.double_bed_price || 0; break;
-        case 'TRIPLE': pricePerNight = hotel.triple_bed_price || 0; break;
-        case 'QUAD': pricePerNight = hotel.quad_bed_price || 0; break;
-        case 'QUINT': pricePerNight = hotel.quaint_bed_price || 0; break;
+        case 'SHARING': pricePerNight = hotel.sharing_bed_selling_price || 0; break;
+        case 'DOUBLE': pricePerNight = hotel.double_bed_selling_price || 0; break;
+        case 'TRIPLE': pricePerNight = hotel.triple_bed_selling_price || 0; break;
+        case 'QUAD': pricePerNight = hotel.quad_bed_selling_price || 0; break;
+        case 'QUINT': pricePerNight = hotel.quaint_bed_selling_price || 0; break;
         default: pricePerNight = 0;
       }
-      return sum + (pricePerNight * (hotel.number_of_nights || 0));
+      const hotelTotal = pricePerNight * (hotel.number_of_nights || 0);
+      console.log(`  - Hotel ${hotel.hotel_name}: ${pricePerNight} × ${hotel.number_of_nights} nights = ${hotelTotal}`);
+      return sum + hotelTotal;
     }, 0) || 0;
+
+    console.log('  - Total Hotel Price:', hotelPrice);
+    console.log('  - FINAL TOTAL:', basePrice + hotelPrice);
 
     return basePrice + hotelPrice;
   };
@@ -489,17 +545,69 @@ const AgentPackagesDetail = () => {
 
     const ticket = pkg.ticket_details[0].ticket_info;
     const tripDetails = ticket.trip_details || [];
+
+    console.log('🔍 DEBUG Flight Data:');
+    console.log('  - Full ticket object:', ticket);
+    console.log('  - ticket.airline:', ticket.airline);
+    console.log('  - tripDetails:', tripDetails);
+    console.log('  - pkg.ticket_details[0]:', pkg.ticket_details[0]);
+
+    // Airline name to IATA code mapping
+    const airlineNameToCode = {
+      'Pakistan International Airlines': 'PIA',
+      'PIA': 'PIA',
+      'Saudi Arabian Airlines': 'SV',
+      'Saudia': 'SV',
+      'Emirates': 'EK',
+      'Etihad Airways': 'EY',
+      'Qatar Airways': 'QR',
+      'Air Arabia': 'G9',
+      'Fly Dubai': 'FZ',
+      'Serene Air': 'ER',
+      'AirBlue': 'PA',
+    };
+
+    // Try to get airline code from various sources
+    let airlineCode = 'XX'; // Default fallback
+
+    // 1. Try from ticket.airline object
+    if (ticket.airline?.code) {
+      airlineCode = ticket.airline.code;
+    }
+    // 2. Try from ticket.airline.name mapping
+    else if (ticket.airline?.name && airlineNameToCode[ticket.airline.name]) {
+      airlineCode = airlineNameToCode[ticket.airline.name];
+    }
+    // 3. Try to extract from main flight_number (e.g., "PIA-123" -> "PIA")
+    else if (ticket.flight_number) {
+      const flightNum = ticket.flight_number.toString().toUpperCase();
+      const match = flightNum.match(/^([A-Z]{2,3})/);
+      if (match) {
+        airlineCode = match[1];
+      }
+    }
+    // 4. Try to extract from trip details flight number
+    else if (tripDetails[0]?.flight_number) {
+      const flightNum = tripDetails[0].flight_number.toString().toUpperCase();
+      const match = flightNum.match(/^([A-Z]{2,3})/);
+      if (match) {
+        airlineCode = match[1];
+      }
+    }
+
+    console.log('  - Final airline code:', airlineCode);
+
     return {
       departure: tripDetails[0] || {},
       return: tripDetails[1] || {},
-      airline: ticket.airline || {}
+      airline: { code: airlineCode }
     };
   };
 
   const flightDetails = getFlightDetails();
 
-  const flightMinAdultAge = pkg?.filght_min_adault_age || 0;
-  const flightMaxAdultAge = pkg?.filght_max_adault_age || 0;
+  const flightMinAdultAge = pkg?.flight_min_adult_age || 0;
+  const flightMaxAdultAge = pkg?.flight_max_adult_age || 0;
   const maxInfantAllowed = pkg?.max_infant_allowed || 0;
 
   // const addRoomType = (type) => {
@@ -513,9 +621,9 @@ const AgentPackagesDetail = () => {
   //   const groupId = `${type}-${Math.random().toString(36).substr(2, 9)}`;
   //   const newPassengers = [...passengers];
 
-    // Orphaned loop removed: the `addRoomType` implementation was commented out
-    // and this loop referenced `count` which is undefined here. If you
-    // re-enable `addRoomType`, reintroduce the loop inside that function.
+  // Orphaned loop removed: the `addRoomType` implementation was commented out
+  // and this loop referenced `count` which is undefined here. If you
+  // re-enable `addRoomType`, reintroduce the loop inside that function.
 
   //   setPassengers(newPassengers);
   //   setRoomTypes([...roomTypes, type]);
@@ -552,10 +660,56 @@ const AgentPackagesDetail = () => {
 
   const handleAddInfant = () => {
     if (!canAddInfant()) {
-      alert(`You can only add ${maxInfantAllowed} infant(s) with at least ${flightMinAdultAge} adult(s)`);
+      alert(`You can only add ${maxInfantAllowed || 10} infant(s) with at least 1 adult`);
       return;
     }
-    setShowInfantModal(true);
+
+    // Get unique room groups
+    const roomGroups = {};
+    passengers.forEach(p => {
+      if (p.groupId && p.roomType) {
+        const key = `${p.roomType}_${p.groupId}`;
+        if (!roomGroups[key]) {
+          roomGroups[key] = { roomType: p.roomType, groupId: p.groupId };
+        }
+      }
+    });
+
+    const rooms = Object.values(roomGroups);
+
+    if (rooms.length === 0) {
+      alert("No rooms available. Please add a room first.");
+      return;
+    } else if (rooms.length === 1) {
+      // Auto-add infant to the only room
+      const room = rooms[0];
+      const familyHead = passengers.find(p => p.groupId === room.groupId && p.isFamilyHead);
+
+      if (familyHead) {
+        const newPassenger = {
+          id: `infant-${Math.random().toString(36).substr(2, 9)}`,
+          type: "Infant",
+          title: "",
+          name: "",
+          lName: "",
+          passportNumber: "",
+          passportIssue: "",
+          passportExpiry: "",
+          country: "",
+          passportFile: null,
+          roomType: familyHead.roomType,
+          groupId: familyHead.groupId,
+          isFamilyHead: false
+        };
+
+        setPassengers([...passengers, newPassenger]);
+        setTotalPrice(totalPrice + calculateInfantPrice());
+        setAvailableSeats(availableSeats - 1);
+      }
+    } else {
+      // Multiple rooms - show modal to select
+      setShowInfantModal(true);
+    }
   };
 
   const confirmAddInfant = () => {
@@ -596,12 +750,95 @@ const AgentPackagesDetail = () => {
     ).length;
     const totalInfants = passengers.filter(p => p.type === "Infant").length;
 
-    return (
-      totalInfants < maxInfantAllowed &&
-      totalAdultsChildren >= flightMinAdultAge &&
-      totalAdultsChildren <= flightMaxAdultAge
-    );
+    // Simplified validation: just check if we have adults and haven't exceeded infant limit
+    const hasAdults = totalAdultsChildren > 0;
+    const infantLimit = maxInfantAllowed > 0 ? maxInfantAllowed : 10; // Default to 10 if not set
+    const belowInfantLimit = totalInfants < infantLimit;
+
+    return hasAdults && belowInfantLimit;
   };
+
+  const removeInfant = (passengerId) => {
+    const infant = passengers.find(p => p.id === passengerId);
+    if (!infant || infant.type !== "Infant") return;
+
+    const updatedPassengers = passengers.filter(p => p.id !== passengerId);
+    setPassengers(updatedPassengers);
+    setTotalPrice(totalPrice - calculateInfantPrice());
+    setInfantPrices(infantPrices - calculateInfantPrice());
+    setAvailableSeats(availableSeats + 1);
+  };
+
+  // Handle room selection changes in modal
+  const handleRoomChange = (roomType, increment) => {
+    setSelectedRooms(prevRooms => {
+      const currentCount = prevRooms[roomType] || 0;
+      const newCount = currentCount + increment;
+      if (newCount < 0) return prevRooms;
+      if (newCount === 0) {
+        const { [roomType]: _, ...rest } = prevRooms;
+        return rest;
+      }
+      return { ...prevRooms, [roomType]: newCount };
+    });
+  };
+
+  // Handle adding selected rooms
+  const handleAddRooms = () => {
+    const totalNewPassengers = Object.entries(selectedRooms).reduce((sum, [type, count]) => {
+      return sum + (bedsPerRoomType[type] || 0) * count;
+    }, 0);
+
+    if (totalNewPassengers === 0) {
+      alert("Please select at least one room.");
+      return;
+    }
+
+    if (totalNewPassengers > availableSeats) {
+      alert(`Only ${availableSeats} seats available. You selected ${totalNewPassengers} passengers.`);
+      return;
+    }
+
+    // Add passengers for each selected room
+    const newPassengers = [...passengers];
+    let priceIncrease = 0;
+
+    Object.entries(selectedRooms).forEach(([roomType, count]) => {
+      const paxPerRoom = bedsPerRoomType[roomType] || 0;
+      const roomPrice = getPriceForRoomType(roomType);
+
+      for (let r = 0; r < count; r++) {
+        const groupId = `${roomType}-${Math.random().toString(36).substr(2, 9)}`;
+
+        for (let i = 0; i < paxPerRoom; i++) {
+          newPassengers.push({
+            id: `${groupId}-${i}`,
+            type: "Adult",
+            title: "",
+            name: "",
+            lName: "",
+            passportNumber: "",
+            passportIssue: "",
+            passportExpiry: "",
+            country: "",
+            passportFile: null,
+            roomType: roomType,
+            groupId: groupId,
+            isFamilyHead: i === 0
+          });
+        }
+
+        priceIncrease += roomPrice * paxPerRoom;
+      }
+    });
+
+    setPassengers(newPassengers);
+    setTotalPrice(totalPrice + priceIncrease);
+    setAvailableSeats(availableSeats - totalNewPassengers);
+    setSelectedRooms({});
+    setShowRoomModal(false);
+  };
+
 
   const validateForm = () => {
     const errors = {};
@@ -777,7 +1014,7 @@ const AgentPackagesDetail = () => {
   //     try {
   //       // Always fetch cities data
   //       const citiesResponse = await axios.get(
-  //         `https://api.saer.pk/api/cities/?organization=${orgId}`,
+  //         `http://127.0.0.1:8000/api/cities/?organization=${orgId}`,
   //         { headers: { Authorization: `Bearer ${token}` } }
   //       );
   //       setCities(citiesResponse.data);
@@ -959,21 +1196,33 @@ const AgentPackagesDetail = () => {
                           <div className="mb-2">
                             <strong>Transport:</strong>
                             <div className="small text-muted">
-                              {pkg?.transport_details
-                                ?.map(t => t.transport_sector_info?.name)
-                                .join(" - ") || "N/A"}
+                              {pkg?.transport_details?.[0]?.transport_sector_info?.reference
+                                ? formatSectorReference(pkg.transport_details[0].transport_sector_info.reference)
+                                : pkg?.transport_details?.[0]?.transport_sector_info?.name || "N/A"}
+                            </div>
+                          </div>
+                          <div className="mb-2">
+                            <strong>Food:</strong>
+                            <div className="small text-muted">
+                              {(pkg?.food_selling_price || 0) > 0 ? "INCLUDED" : "N/A"}
+                            </div>
+                          </div>
+                          <div className="mb-2">
+                            <strong>Ziyarat:</strong>
+                            <div className="small text-muted">
+                              {((pkg?.makkah_ziyarat_selling_price || 0) > 0 || (pkg?.madinah_ziyarat_selling_price || 0) > 0) ? "YES" : "N/A"}
                             </div>
                           </div>
                           <div className="mb-2">
                             <strong>Flight:</strong>
                             <div className="small text-muted">
                               Travel Date: {flightDetails.departure?.departure_date_time ?
-                                `${flightDetails.airline?.code} - ${formatDateTime(flightDetails.departure.departure_date_time)} to ${formatDateTime(flightDetails.departure.arrival_date_time)}` :
+                                `${flightDetails.airline?.code}${flightDetails.departure.flight_number ? `-${flightDetails.departure.flight_number}` : ''} - ${formatDateTime(flightDetails.departure.departure_date_time)} to ${formatDateTime(flightDetails.departure.arrival_date_time)}` :
                                 "N/A"}
                             </div>
                             <div className="small text-muted">
                               Return Date: {flightDetails.return?.departure_date_time ?
-                                `${flightDetails.airline?.code} - ${formatDateTime(flightDetails.return.departure_date_time)} to ${formatDateTime(flightDetails.return.arrival_date_time)}` :
+                                `${flightDetails.airline?.code}${flightDetails.return.flight_number ? `-${flightDetails.return.flight_number}` : ''} - ${formatDateTime(flightDetails.return.departure_date_time)} to ${formatDateTime(flightDetails.return.arrival_date_time)}` :
                                 "N/A"}
                             </div>
                           </div>
@@ -1070,31 +1319,25 @@ const AgentPackagesDetail = () => {
                           <div key={groupIndex} className="mb-4">
                             <div className="d-flex justify-content-between align-items-center mb-3">
                               <h5 className="fw-bold text-primary">
-                                {group.roomType} Room 
+                                {group.roomType} Room
                                 {/* {groupIndex + 1} */}
                               </h5>
                               <div className="d-flex gap-3">
                                 <div className="mb-2">
                                   <label className="control-label">Family Head</label>
-                                  <select
-                                    className="form-select bg-light shadow-none"
-                                    value={group.passengers.find(p => p.isFamilyHead)?.id || ""}
-                                    onChange={(e) => {
-                                      const newPassengers = passengers.map(p => ({
-                                        ...p,
-                                        isFamilyHead: p.id === e.target.value
-                                      }));
-                                      setPassengers(newPassengers);
-                                    }}
-                                    required
-                                  >
-                                    <option value="">Select Family Head</option>
-                                    {groupAdults.map(adult => (
-                                      <option key={adult.id} value={adult.id}>
-                                        {adult.name} {adult.lName} ({adult.type})
-                                      </option>
-                                    ))}
-                                  </select>
+                                  <input
+                                    type="text"
+                                    className="form-control bg-light shadow-none"
+                                    value={(() => {
+                                      const familyHead = group.passengers.find(p => p.isFamilyHead);
+                                      if (familyHead && familyHead.name && familyHead.lName) {
+                                        return `${familyHead.name} ${familyHead.lName}`;
+                                      }
+                                      return 'First Adult (Auto-assigned)';
+                                    })()}
+                                    disabled
+                                    readOnly
+                                  />
                                 </div>
                                 <div className="d-flex align-items-center">
                                   <button
@@ -1113,13 +1356,16 @@ const AgentPackagesDetail = () => {
                                   {/* Passenger Type */}
                                   <div className="col-lg-2 mb-2">
                                     <label className="control-label">Type</label>
-                                    <input
-                                      type="text"
-                                      className={`form-control bg-light shadow-none ${formErrors[`passenger-${passenger.id}-type`] ? "is-invalid" : ""}`}
+                                    <select
+                                      className={`form-select bg-light shadow-none ${formErrors[`passenger-${passenger.id}-type`] ? "is-invalid" : ""}`}
                                       value={passenger.type || 'Adult'}
                                       onChange={(e) => updatePassenger(passenger.id, "type", e.target.value)}
                                       required
-                                    />
+                                    >
+                                      <option value="Adult">Adult</option>
+                                      <option value="Child">Child</option>
+                                      <option value="Infant">Infant</option>
+                                    </select>
                                     {formErrors[`passenger-${passenger.id}-type`] && (
                                       <div className="invalid-feedback">{formErrors[`passenger-${passenger.id}-type`]}</div>
                                     )}
@@ -1198,7 +1444,7 @@ const AgentPackagesDetail = () => {
                                       value={passenger.passportIssue}
                                       onChange={(e) => updatePassenger(passenger.id, "passportIssue", e.target.value)}
                                       required
-                                      min={new Date().toISOString().split('T')[0]} // Today's date
+                                      max={new Date().toISOString().split('T')[0]} // Can't issue passport in future
                                     />
                                     {formErrors[`passenger-${passenger.id}-passportIssue`] && (
                                       <div className="invalid-feedback">{formErrors[`passenger-${passenger.id}-passportIssue`]}</div>
@@ -1272,6 +1518,19 @@ const AgentPackagesDetail = () => {
                                       <div className="invalid-feedback d-block">{formErrors[`passenger-passportFile-${passenger.id}`]}</div>
                                     )}
                                   </div>
+
+                                  {/* Remove Infant Button */}
+                                  {passenger.type === "Infant" && (
+                                    <div className="col-lg-2 mb-2 mt-2 d-flex align-items-center">
+                                      <button
+                                        type="button"
+                                        className="btn btn-danger"
+                                        onClick={() => removeInfant(passenger.id)}
+                                      >
+                                        Remove Infant
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -1338,101 +1597,65 @@ const AgentPackagesDetail = () => {
                             <button type="button" className="btn-close" onClick={() => setShowRoomModal(false)}></button>
                           </div>
                           <div className="modal-body">
-                            <div className="row">
-                              {pkg?.is_sharing_active && (
-                                <div className="col-md-6 mb-3 hover">
-                                  <div
-                                    className="card cursor-pointer"
-                                    onClick={() => addRoomType('SHARING')}
-                                    style={{ minHeight: '120px' }}
-                                  >
-                                    <div className="card-body text-center">
-                                      <h5>SHARING</h5>
-                                      <h4 className="text-primary">
-                                        Rs. {getPriceForRoomType('SHARING').toLocaleString()} × 1
-                                      </h4>
-                                      <small className="text-muted">(1 passenger)</small>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
+                            {Object.keys(bedsPerRoomType).map(roomType => {
+                              const count = selectedRooms[roomType] || 0;
+                              const pricePerPerson = getPriceForRoomType(roomType.toUpperCase());
+                              const bedsInRoom = bedsPerRoomType[roomType];
 
-                              {pkg?.is_double_active && (
-                                <div className="col-md-6 mb-3">
-                                  <div
-                                    className="card cursor-pointer"
-                                    onClick={() => addRoomType('DOUBLE')}
-                                    style={{ minHeight: '120px' }}
-                                  >
-                                    <div className="card-body text-center">
-                                      <h5>DOUBLE BED</h5>
-                                      <h4 className="text-primary">
-                                        Rs. {getPriceForRoomType('DOUBLE').toLocaleString()} × 2
-                                      </h4>
-                                      <small className="text-muted">(2 passengers)</small>
-                                    </div>
+                              return (
+                                <div key={roomType} className="d-flex align-items-center justify-content-between p-3 mb-2 border rounded">
+                                  <div>
+                                    <strong className="text-capitalize">{roomType} ({bedsInRoom} {bedsInRoom === 1 ? 'Bed' : 'Beds'})</strong>
+                                    <div className="small text-muted">{bedsInRoom} {bedsInRoom === 1 ? 'person' : 'persons'} per room</div>
+                                    <div className="small text-primary fw-bold">Rs. {pricePerPerson.toLocaleString()} per adult</div>
+                                  </div>
+                                  <div className="d-flex align-items-center gap-2">
+                                    <button
+                                      className="btn btn-outline-secondary btn-sm"
+                                      onClick={() => handleRoomChange(roomType, -1)}
+                                      disabled={count === 0}
+                                    >
+                                      -
+                                    </button>
+                                    <span className="px-3 fw-bold">{count}</span>
+                                    <button
+                                      className="btn btn-outline-primary btn-sm"
+                                      onClick={() => handleRoomChange(roomType, 1)}
+                                    >
+                                      +
+                                    </button>
                                   </div>
                                 </div>
-                              )}
+                              );
+                            })}
 
-                              {pkg?.is_triple_active && (
-                                <div className={`col-md-6 mb-3 ${pkg?.is_triple_active ? 'border-primary border-3' : 'border-secondary'}`}>
-                                  <div
-                                    className="card cursor-pointer"
-                                    onClick={() => addRoomType('TRIPLE')}
-                                    style={{ minHeight: '120px' }}
-                                  >
-                                    <div className="card-body text-center">
-                                      <h5>TRIPLE BED</h5>
-                                      <h4 className="text-primary">
-                                        Rs. {getPriceForRoomType('TRIPLE').toLocaleString()} × 3
-                                      </h4>
-                                      <small className="text-muted">(3 passengers)</small>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {pkg?.is_quad_active && (
-                                <div className="col-md-6 mb-3">
-                                  <div
-                                    className="card cursor-pointer"
-                                    onClick={() => addRoomType('QUAD')}
-                                    style={{ minHeight: '120px' }}
-                                  >
-                                    <div className="card-body text-center">
-                                      <h5>QUAD BED</h5>
-                                      <h4 className="text-primary">
-                                        Rs. {getPriceForRoomType('QUAD').toLocaleString()} × 4
-                                      </h4>
-                                      <small className="text-muted">(4 passengers)</small>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {pkg?.is_quaint_active && (
-                                <div className="col-md-6 mb-3">
-                                  <div
-                                    className="card cursor-pointer"
-                                    onClick={() => addRoomType('QUINT')}
-                                    style={{ minHeight: '120px' }}
-                                  >
-                                    <div className="card-body text-center">
-                                      <h5>QUINT</h5>
-                                      <h4 className="text-primary">
-                                        Rs. {getPriceForRoomType('QUINT').toLocaleString()} × 5
-                                      </h4>
-                                      <small className="text-muted">(5 passengers)</small>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
+                            <div className="mt-4 p-3 bg-light rounded">
+                              <div className="d-flex justify-content-between mb-2">
+                                <span>Total Adults:</span>
+                                <strong>
+                                  {Object.entries(selectedRooms).reduce((sum, [type, count]) => {
+                                    return sum + (bedsPerRoomType[type] || 0) * count;
+                                  }, 0)}
+                                </strong>
+                              </div>
+                              <div className="d-flex justify-content-between">
+                                <span>Estimated Total:</span>
+                                <strong className="text-primary">
+                                  Rs. {Object.entries(selectedRooms).reduce((sum, [type, count]) => {
+                                    const pricePerPerson = getPriceForRoomType(type.toUpperCase());
+                                    const bedsInRoom = bedsPerRoomType[type] || 0;
+                                    return sum + (pricePerPerson * bedsInRoom * count);
+                                  }, 0).toLocaleString()}
+                                </strong>
+                              </div>
                             </div>
                           </div>
                           <div className="modal-footer">
                             <button type="button" className="btn btn-secondary" onClick={() => setShowRoomModal(false)}>
-                              Close
+                              Cancel
+                            </button>
+                            <button type="button" className="btn btn-primary" onClick={handleAddRooms}>
+                              Add Rooms
                             </button>
                           </div>
                         </div>

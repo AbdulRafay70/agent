@@ -12,7 +12,7 @@ export const AuthProvider = ({ children }) => {
 
   const [agentAccessToken, setAgentAccessToken] = useState(localStorage.getItem("agentAccessToken"));
   const [refreshToken, setRefreshToken] = useState(localStorage.getItem("agentRefreshToken"));
-  
+
   const [userRole, setUserRole] = useState(() => {
     return localStorage.getItem("agentAccessToken") ? "agent" : null;
   });
@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }) => {
       const decoded = jwtDecode(access);
       const userId = decoded.user_id;
 
-      const response = await fetch(`https://api.saer.pk/api/users/${userId}/`, {
+      const response = await fetch(`http://127.0.0.1:8000/api/users/${userId}/`, {
         headers: { Authorization: `Bearer ${access}` },
       });
 

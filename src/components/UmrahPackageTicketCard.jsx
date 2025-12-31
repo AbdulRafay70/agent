@@ -24,28 +24,28 @@ const UmrahPackageCards = () => {
       try {
         const [packageRes, hotelsRes, ticketsRes, airlinesRes] =
           await Promise.all([
-            axios.get("https://api.saer.pk/api/umrah-packages/", {
+            axios.get("http://127.0.0.1:8000/api/umrah-packages/", {
               params: { organization: organizationId },
               headers: {
                 Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",
               },
             }),
-            axios.get("https://api.saer.pk/api/hotels/", {
+            axios.get("http://127.0.0.1:8000/api/hotels/", {
               params: { organization: organizationId },
               headers: {
                 Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",
               },
             }),
-            axios.get("https://api.saer.pk/api/tickets/", {
+            axios.get("http://127.0.0.1:8000/api/tickets/", {
               params: { organization: organizationId },
               headers: {
                 Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",
               },
             }),
-            axios.get("https://api.saer.pk/api/airlines/", {
+            axios.get("http://127.0.0.1:8000/api/airlines/", {
               params: { organization: organizationId },
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -91,7 +91,7 @@ const UmrahPackageCards = () => {
 
     try {
       await axios.delete(
-        `https://api.saer.pk/api/umrah-packages/${packageId}/`,
+        `http://127.0.0.1:8000/api/umrah-packages/${packageId}/`,
         {
           params: { organization: organizationId },
           headers: {
@@ -222,7 +222,7 @@ const UmrahPackageCards = () => {
 
         const totalinfant = infantPrices + infantHotels;
 
-         const childPrices =
+        const childPrices =
           (pkg?.adault_visa_price || 0) -
           (pkg?.child_visa_price || 0);
 
@@ -279,7 +279,7 @@ const UmrahPackageCards = () => {
                             <p className="fw-bold mb-1 small">ZAYARAT:</p>
                             <div>
                               {pkg?.makkah_ziyarat_price ||
-                              pkg?.madinah_ziyarat_price
+                                pkg?.madinah_ziyarat_price
                                 ? "YES"
                                 : "N/A"}
                             </div>
@@ -439,7 +439,7 @@ const UmrahPackageCards = () => {
                         <div>
                           <strong>Travel Date:</strong> <br />
                           {flightFrom?.departure_date_time &&
-                          flightFrom?.arrival_date_time ? (
+                            flightFrom?.arrival_date_time ? (
                             <>
                               {airline?.code || "XX"} {ticketInfo?.pnr} -{" "}
                               {formatDateTime(flightFrom?.departure_date_time)}{" "}
@@ -452,7 +452,7 @@ const UmrahPackageCards = () => {
                         <div>
                           <strong>Return Date:</strong> <br />
                           {flightTo?.departure_date_time &&
-                          flightTo?.arrival_date_time ? (
+                            flightTo?.arrival_date_time ? (
                             <>
                               {airline?.code || "XX"} {ticketInfo?.pnr} -{" "}
                               {formatDateTime(flightTo?.departure_date_time)} -{" "}

@@ -38,8 +38,14 @@ const AgentLogin = () => {
       return;
     }
 
+    // FORCE CLEAR OLD DATA BEFORE LOGIN
+    console.log("🧹 Clearing old localStorage data...");
+    localStorage.removeItem("agentOrganization");
+    localStorage.removeItem("selectedOrganization");
+    localStorage.removeItem("organization");
+
     try {
-      const response = await fetch("https://api.saer.pk/api/token/", {
+      const response = await fetch("http://127.0.0.1:8000/api/token/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -71,13 +77,13 @@ const AgentLogin = () => {
       // Decode token to get user_id
       const decoded = JSON.parse(atob(data.access.split(".")[1]));
       const userId = decoded.user_id;
-      
+
       console.log("👤 User ID from token:", userId);
 
       // Fetch user profile using token
       console.log("📞 Fetching user profile from: /api/users/" + userId + "/");
       const userResponse = await fetch(
-        `https://api.saer.pk/api/users/${userId}/`,
+        `http://127.0.0.1:8000/api/users/${userId}/`,
         {
           headers: {
             Authorization: `Bearer ${data.access}`,
@@ -100,7 +106,7 @@ const AgentLogin = () => {
       console.log("🔍 Agency Details:", userData?.agency_details);
       console.log("🔍 Organizations (raw):", userData?.organizations);
       console.log("🔍 All Available Keys:", Object.keys(userData));
-      
+
       const userType = userData?.profile?.type;
 
       if (!["agent", "subagent"].includes(userType)) {
@@ -111,7 +117,7 @@ const AgentLogin = () => {
 
       // Extract organization IDs from organization_details
       let organizationIds = [];
-      
+
       if (userData?.organization_details && Array.isArray(userData.organization_details)) {
         organizationIds = userData.organization_details.map(org => org.id);
         console.log("✅ Found organizations:", userData.organization_details);
@@ -133,7 +139,7 @@ const AgentLogin = () => {
       }
 
       if (organizationIds.length > 0) {
-        const agentOrgData = { 
+        const agentOrgData = {
           ids: organizationIds,
           user_id: userId,
           agency_id: agencyId,
@@ -181,7 +187,7 @@ const AgentLogin = () => {
       }}
     >
       <div >
-        <img src={logo} alt="" style={{height:"40px", width:"150px"}} />
+        <img src={logo} alt="" style={{ height: "40px", width: "150px" }} />
       </div>
       <div className="d-flex justify-content-center align-items-center mt-5">
         <div
@@ -208,37 +214,37 @@ const AgentLogin = () => {
             <form onSubmit={handleSubmit}>
               <div className="mb-3">
                 <label htmlFor="" className="form-label">
-                    Email address
-                  </label>
-                  <input
-                    type="email"
-                    className="form-control rounded shadow-none px-1 py-2"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    placeholder="bhullar@gmail.com"
-                  />
+                  Email address
+                </label>
+                <input
+                  type="email"
+                  className="form-control rounded shadow-none px-1 py-2"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="bhullar@gmail.com"
+                />
               </div>
 
               <div className="mb-3 position-relative">
                 <label htmlFor="" className="form-label">
-                    Password
-                  </label>
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    className="form-control rounded shadow-none px-2 py-2"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    placeholder="********"
-                  />
-                  <span
-                    className="position-absolute top-50 pt-4 end-0 translate-middle-y pe-3"
-                    style={{ cursor: "pointer" }}
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
-                  </span>
+                  Password
+                </label>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="form-control rounded shadow-none px-2 py-2"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  placeholder="********"
+                />
+                <span
+                  className="position-absolute top-50 pt-4 end-0 translate-middle-y pe-3"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
+                </span>
               </div>
 
               <div className="d-flex justify-content-between align-items-center mb-3">

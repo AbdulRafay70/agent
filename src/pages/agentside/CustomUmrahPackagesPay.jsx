@@ -1,12 +1,33 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import AgentSidebar from "../../components/AgentSidebar";
 import AgentHeader from "../../components/AgentHeader";
 import logo from "../../assets/flightlogo.png";
 import { Bag } from "react-bootstrap-icons";
 import { Search, Utensils } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import axios from "axios";
+import { toast } from "react-toastify";
+
 
 const CustomUmrahPackagesPay = () => {
+  const navigate = useNavigate();
+  const { id } = useParams(); // Get booking ID from URL
   const [selectedPayment, setSelectedPayment] = useState("bank-transfer");
+  const [bookingId, setBookingId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Load booking ID from sessionStorage or URL params
+  useEffect(() => {
+    if (id) {
+      setBookingId(id);
+    } else {
+      // Try to get from sessionStorage if not in URL
+      const bookingData = sessionStorage.getItem('last_booking_id');
+      if (bookingData) {
+        setBookingId(bookingData);
+      }
+    }
+  }, [id]);
 
   const handlePaymentSelect = (method) => {
     setSelectedPayment(method);
@@ -33,8 +54,45 @@ const CustomUmrahPackagesPay = () => {
     // Add your slip select logic here
   };
 
+  const handleConfirmOrder = async () => {
+    if (!bookingId) {
+      toast.error('No booking ID found. Please create a booking first.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const token = localStorage.getItem('agentAccessToken');
+      if (!token) {
+        toast.error('Authentication required. Please login again.');
+        return;
+      }
+
+      // Update booking status to Confirmed
+      const response = await axios.patch(
+        `http://127.0.0.1:8000/api/bookings/${bookingId}/`,
+        { status: 'Confirmed' },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      toast.success('Booking confirmed successfully!');
+      // Navigate to bookings list or details page
+      navigate('/packages/booking');
+    } catch (error) {
+      console.error('Error confirming booking:', error);
+      toast.error(error.response?.data?.message || 'Failed to confirm booking. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-   <div className="min-vh-100" style={{ fontFamily: "Poppins, sans-serif" }}>
+    <div className="min-vh-100" style={{ fontFamily: "Poppins, sans-serif" }}>
       <div className="row g-0">
         {/* Sidebar */}
         <div className="col-12 col-lg-2">
@@ -382,8 +440,13 @@ const CustomUmrahPackagesPay = () => {
                   <button className="btn" id="btn">
                     Hold Booking
                   </button>
-                  <button className="btn" id="btn">
-                    Confirm Order
+                  <button
+                    className="btn"
+                    id="btn"
+                    onClick={handleConfirmOrder}
+                    disabled={isSubmitting || !bookingId}
+                  >
+                    {isSubmitting ? 'Confirming...' : 'Confirm Order'}
                   </button>
                 </div>
               </div>

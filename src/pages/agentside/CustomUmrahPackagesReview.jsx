@@ -6,6 +6,8 @@ import { Modal, Button } from "react-bootstrap";
 import { CloudUpload, Search, Utensils } from "lucide-react";
 import { Bag } from "react-bootstrap-icons";
 import { Link, useNavigate } from "react-router-dom";
+import axios from "axios";
+import { toast } from "react-toastify";
 
 const BookingReview = () => {
   const [currentStep] = useState(2);
@@ -14,6 +16,9 @@ const BookingReview = () => {
   const [packageData, setPackageData] = useState(null);
   const [passengers, setPassengers] = useState([]);
   const [manualFamilies, setManualFamilies] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [riyalRate, setRiyalRate] = useState(null);
+  const [isLoadingRate, setIsLoadingRate] = useState(true);
   const navigate = useNavigate();
 
   // Load data from sessionStorage on mount
@@ -40,6 +45,51 @@ const BookingReview = () => {
         console.error('Error parsing passenger data:', e);
       }
     }
+
+    // Fetch riyal rate
+    const fetchRiyalRate = async () => {
+      try {
+        const agentOrg = localStorage.getItem("agentOrganization");
+        if (!agentOrg) {
+          console.error('No agentOrganization in localStorage');
+          setIsLoadingRate(false);
+          return;
+        }
+        const orgData = JSON.parse(agentOrg);
+        const orgId = orgData.ids[0];
+
+        // Get auth token
+        const token = localStorage.getItem("agentAccessToken");
+        if (!token) {
+          console.error('No auth token found');
+          setIsLoadingRate(false);
+          return;
+        }
+
+        console.log('Fetching riyal rate for org:', orgId);
+        const response = await axios.get(
+          `http://127.0.0.1:8000/api/riyal-rates/?organization=${orgId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
+        console.log('Riyal rate response:', response.data);
+        if (response.data && response.data.length > 0) {
+          setRiyalRate(response.data[0]);
+          console.log('Riyal rate set:', response.data[0]);
+        } else {
+          console.error('No riyal rate data found');
+        }
+      } catch (error) {
+        console.error('Error fetching riyal rate:', error);
+      } finally {
+        setIsLoadingRate(false);
+      }
+    };
+
+    fetchRiyalRate();
   }, []);
 
   const handleBackToEdit = () => {
@@ -49,8 +99,8 @@ const BookingReview = () => {
 
   // Calculate total price
   const totalPrice = React.useMemo(() => {
-    if (!packageData) return 0;
-    
+    if (!packageData || !riyalRate) return 0;
+
     let total = 0;
     const adults = packageData.total_adaults || 0;
     const children = packageData.total_children || 0;
@@ -58,7 +108,9 @@ const BookingReview = () => {
 
     // Hotel prices
     packageData.hotel_details?.forEach(hotel => {
-      total += hotel.price || 0;
+      const hotelPrice = hotel.price || 0;
+      const convertedPrice = riyalRate.is_hotel_pkr ? hotelPrice : hotelPrice * riyalRate.rate;
+      total += convertedPrice;
     });
 
     // Transport prices
@@ -66,42 +118,50 @@ const BookingReview = () => {
       const adultPrice = transport.transport_sector_info?.adault_price || 0;
       const childPrice = transport.transport_sector_info?.child_price || 0;
       const infantPrice = transport.transport_sector_info?.infant_price || 0;
-      total += (adultPrice * adults) + (childPrice * children) + (infantPrice * infants);
+      const transportTotal = (adultPrice * adults) + (childPrice * children) + (infantPrice * infants);
+      const convertedTransport = riyalRate.is_transport_pkr ? transportTotal : transportTotal * riyalRate.rate;
+      total += convertedTransport;
     });
 
-    // Flight prices
+    // Flight prices (always in PKR)
     packageData.ticket_details?.forEach(ticket => {
-      const adultPrice = ticket.ticket_info?.adult_price || 0;
-      const childPrice = ticket.ticket_info?.child_price || 0;
-      const infantPrice = ticket.ticket_info?.infant_price || 0;
+      // Use child_price/infant_price if available, otherwise fall back to child_fare/infant_fare
+      const adultPrice = ticket.ticket_info?.adult_price || ticket.ticket_info?.adult_fare || 0;
+      const childPrice = ticket.ticket_info?.child_price || ticket.ticket_info?.child_fare || 0;
+      const infantPrice = ticket.ticket_info?.infant_price || ticket.ticket_info?.infant_fare || 0;
       total += (adultPrice * adults) + (childPrice * children) + (infantPrice * infants);
     });
 
-    // Food prices (per pax)
+    // Food prices (per pax by type)
     packageData.food_details?.forEach(food => {
-      const price = food.food_info?.price || food.food_info?.selling_price || food.price || 0;
-      const pax = (adults + children + infants) || 0;
-      total += price * pax;
+      const adultPrice = food.food_info?.adult_selling_price || 0;
+      const childPrice = food.food_info?.child_selling_price || 0;
+      const infantPrice = food.food_info?.infant_selling_price || 0;
+      const foodTotal = (adultPrice * adults) + (childPrice * children) + (infantPrice * infants);
+      const convertedFood = riyalRate.is_food_pkr ? foodTotal : foodTotal * riyalRate.rate;
+      total += convertedFood;
     });
 
     // Ziarat prices (per pax by type)
     packageData.ziarat_details?.forEach(ziarat => {
-      const adultPrice = ziarat.ziarat_info?.adult_price || 0;
-      const childPrice = ziarat.ziarat_info?.child_price || 0;
-      const infantPrice = ziarat.ziarat_info?.infant_price || 0;
-      total += (adultPrice * adults) + (childPrice * children) + (infantPrice * infants);
+      const adultPrice = ziarat.ziarat_info?.adult_selling_price || 0;
+      const childPrice = ziarat.ziarat_info?.child_selling_price || 0;
+      const infantPrice = ziarat.ziarat_info?.infant_selling_price || 0;
+      const ziaratTotal = (adultPrice * adults) + (childPrice * children) + (infantPrice * infants);
+      const convertedZiarat = riyalRate.is_ziarat_pkr ? ziaratTotal : ziaratTotal * riyalRate.rate;
+      total += convertedZiarat;
     });
 
-    // Visa prices (if present)
-    packageData.visa_details?.forEach(visa => {
-      const adultPrice = visa?.adult_price || visa?.visa_info?.adult_price || 0;
-      const childPrice = visa?.child_price || visa?.visa_info?.child_price || 0;
-      const infantPrice = visa?.infant_price || visa?.visa_info?.infant_price || 0;
-      total += (adultPrice * adults) + (childPrice * children) + (infantPrice * infants);
-    });
+    // Visa prices (already in PKR based on invoice)
+    const adultVisa = packageData.adault_visa_price || 0;
+    const childVisa = packageData.child_visa_price || 0;
+    const infantVisa = packageData.infant_visa_price || 0;
+    const visaTotal = (adultVisa * adults) + (childVisa * children) + (infantVisa * infants);
+    const convertedVisa = riyalRate.is_visa_pkr ? visaTotal : visaTotal * riyalRate.rate;
+    total += convertedVisa;
 
     return total;
-  }, [packageData]);
+  }, [packageData, riyalRate]);
 
   if (!packageData) {
     return (
@@ -141,6 +201,627 @@ const BookingReview = () => {
     setShowModal(false);
     setCurrentPassport(null);
   };
+
+  // Helper function to get organization ID
+  const getOrgId = () => {
+    const agentOrg = localStorage.getItem("agentOrganization");
+    if (!agentOrg) return null;
+    try {
+      const orgData = JSON.parse(agentOrg);
+      return orgData.ids && orgData.ids[0] ? orgData.ids[0] : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Helper function to get user ID from agentOrganization
+  const getUserId = () => {
+    const agentOrg = localStorage.getItem("agentOrganization");
+    if (!agentOrg) return null;
+    try {
+      const orgData = JSON.parse(agentOrg);
+      return orgData.user_id || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Helper function to get agency ID from agentOrganization
+  const getAgencyId = () => {
+    const agentOrg = localStorage.getItem("agentOrganization");
+    if (!agentOrg) return null;
+    try {
+      const orgData = JSON.parse(agentOrg);
+      return orgData.agency_id || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Helper function to get branch ID from agentOrganization
+  const getBranchId = () => {
+    const agentOrg = localStorage.getItem("agentOrganization");
+    if (!agentOrg) return null;
+    try {
+      const orgData = JSON.parse(agentOrg);
+      return orgData.branch_id || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Helper function to generate booking number
+  const generateBookingNumber = () => {
+    const timestamp = Date.now().toString(36);
+    const randomStr = Math.random().toString(36).substring(2, 8);
+    return `BK${timestamp}${randomStr}`.toUpperCase();
+  };
+
+  // Helper function to get expiry time (24 hours from now by default)
+  const getExpiryTime = () => {
+    const expiryHours = 24; // Can be fetched from API if needed
+    return new Date(Date.now() + expiryHours * 60 * 60 * 1000).toISOString();
+  };
+
+  // Prepare booking data from session storage
+  const prepareBookingData = () => {
+    if (!packageData || !passengers || passengers.length === 0) {
+      toast.error("Missing package or passenger data. Please go back and complete the booking.");
+      return null;
+    }
+
+    const token = localStorage.getItem("agentAccessToken");
+    const userId = getUserId();
+    const agencyId = getAgencyId();
+    const branchId = getBranchId();
+    const orgId = getOrgId();
+
+    // Validate required context IDs
+    if (!orgId || !userId || !agencyId || !branchId) {
+      console.error('Missing required IDs', { orgId, userId, agencyId, branchId });
+      toast.error('Cannot make booking: missing agent/organization context. Please ensure you are logged in.');
+      return null;
+    }
+
+    // Count passengers by type
+    const adultCount = passengers.filter(p => p.type === "Adult").length;
+    const childCount = passengers.filter(p => p.type === "Child").length;
+    const infantCount = passengers.filter(p => p.type === "Infant").length;
+
+    // Calculate component totals
+    let totalHotelAmount = 0;
+    let totalTransportAmount = 0;
+    let totalTicketAmount = 0;
+    let totalVisaAmount = 0;
+    let totalFoodAmount = 0;
+    let totalZiaratAmount = 0;
+
+    // Hotel details transformation
+    const hotelDetails = (packageData.hotel_details || []).map(hotel => {
+      const hotelTotalPrice = parseFloat(hotel.price || 0);
+      const numberOfNights = parseInt(hotel.number_of_nights || hotel.noOfNights || 1);
+
+      // Calculate per-night rate (price field should be per-night, not total)
+      const perNightRate = numberOfNights > 0 ? hotelTotalPrice / numberOfNights : hotelTotalPrice;
+
+      // Add per-night rate to total hotel amount
+      totalHotelAmount += perNightRate;
+
+      // Determine if hotel price is in PKR or SAR
+      // Assuming hotels are in SAR by default (can be updated based on hotel data)
+      const isHotelPKR = false; // Hotels are typically in SAR
+
+      // Calculate SAR and PKR prices (using total price for calculations)
+      const total_in_riyal_rate = isHotelPKR ? 0 : hotelTotalPrice; // SAR total
+      const total_in_pkr = isHotelPKR ? hotelTotalPrice : hotelTotalPrice * (riyalRate?.rate || 1); // PKR total
+
+      return {
+        hotel: hotel.hotel || hotel.hotel_info?.id || null,
+        check_in_date: hotel.check_in_time || hotel.checkIn || null,
+        check_out_date: hotel.check_out_time || hotel.checkOut || null,
+        number_of_nights: numberOfNights,
+        room_type: hotel.room_type || hotel.roomType || "",
+        price: perNightRate,  // Per-night rate
+        quantity: 1,
+        total_price: hotelTotalPrice,  // Total price
+        is_price_pkr: isHotelPKR,
+        riyal_rate: riyalRate?.rate || 0,
+        total_in_riyal_rate: total_in_riyal_rate,
+        total_in_pkr: total_in_pkr,
+        special_request: hotel.special_request || hotel.specialRequest || "",
+        sharing_type: hotel.sharing_type || hotel.sharingType || "",
+        self_hotel_name: hotel.self_hotel_name || hotel.selfHotelName || ""
+      };
+    });
+
+    // Transport details transformation
+    const transportDetails = (packageData.transport_details || []).map(transport => {
+      const adultPrice = parseFloat(transport.transport_sector_info?.adault_price || transport.adault_price || 0);
+      const childPrice = parseFloat(transport.transport_sector_info?.child_price || transport.child_price || 0);
+      const infantPrice = parseFloat(transport.transport_sector_info?.infant_price || transport.infant_price || 0);
+
+      const transportTotal = (adultPrice * adultCount) + (childPrice * childCount) + (infantPrice * infantCount);
+      totalTransportAmount += transportTotal;
+
+      // Extract sector details from big_sector.small_sectors
+      let sectorDetails = [];
+      if (transport.transport_sector_info?.big_sector?.small_sectors) {
+        sectorDetails = transport.transport_sector_info.big_sector.small_sectors.map((sector, index) => ({
+          sector_no: index + 1,
+          small_sector_id: sector.id,
+          sector_type: sector.sector_type || '',
+          is_airport_pickup: sector.is_airport_pickup || sector.sector_type === 'AIRPORT PICKUP',
+          is_airport_drop: sector.is_airport_drop || sector.sector_type === 'AIRPORT DROP',
+          is_hotel_to_hotel: sector.is_hotel_to_hotel || sector.sector_type === 'HOTEL TO HOTEL',
+          departure_city: sector.departure_city || sector.departure_city_code || '',
+          arrival_city: sector.arrival_city || sector.arrival_city_code || '',
+          contact_number: sector.contact_number || '',
+          contact_person_name: sector.contact_name || '',
+          date: new Date().toISOString().split('T')[0], // Default to today, should be updated based on booking dates
+          voucher_no: '',
+          brn_no: ''
+        }));
+      } else if (transport.transport_sector_info?.small_sector) {
+        // Single small sector
+        const sector = transport.transport_sector_info.small_sector;
+        sectorDetails = [{
+          sector_no: 1,
+          small_sector_id: sector.id,
+          sector_type: sector.sector_type || '',
+          is_airport_pickup: sector.is_airport_pickup || sector.sector_type === 'AIRPORT PICKUP',
+          is_airport_drop: sector.is_airport_drop || sector.sector_type === 'AIRPORT DROP',
+          is_hotel_to_hotel: sector.is_hotel_to_hotel || sector.sector_type === 'HOTEL TO HOTEL',
+          departure_city: sector.departure_city || sector.departure_city_code || '',
+          arrival_city: sector.arrival_city || sector.arrival_city_code || '',
+          contact_number: sector.contact_number || '',
+          contact_person_name: sector.contact_name || '',
+          date: new Date().toISOString().split('T')[0],
+          voucher_no: '',
+          brn_no: ''
+        }];
+      }
+
+      // Determine if transport is in PKR or SAR
+      const isTransportPKR = true; // Assuming transport is in PKR by default
+      const price_in_sar = isTransportPKR ? 0 : adultPrice;
+      const price_in_pkr = isTransportPKR ? transportTotal : transportTotal * (riyalRate?.rate || 1);
+
+      return {
+        vehicle_type: null,  // ForeignKey - send null since we don't have vehicle_type ID
+        price: adultPrice,
+        total_price: transportTotal,
+        is_price_pkr: isTransportPKR,
+        riyal_rate: riyalRate?.rate || 0,
+        price_in_pkr: price_in_pkr,
+        price_in_sar: price_in_sar,
+        sector_details: sectorDetails
+      };
+    });
+
+    // Ticket/Flight details transformation
+    const ticketDetails = (packageData.ticket_details || []).map((ticket, idx) => {
+      const ticketInfo = ticket.ticket_info || ticket;
+
+      console.log(`🎫 Processing ticket ${idx}:`, {
+        ticketInfo,
+        hasId: !!ticketInfo.id,
+        hasTicket: !!ticketInfo.ticket,
+        ticketType: typeof ticketInfo.ticket
+      });
+
+      // Get prices - try price fields first, then fall back to fare fields
+      const adultPrice = parseFloat(ticketInfo.adult_price || ticketInfo.adult_fare || 0);
+      const childPrice = parseFloat(ticketInfo.child_price || ticketInfo.child_fare || 0);
+      const infantPrice = parseFloat(ticketInfo.infant_price || ticketInfo.infant_fare || 0);
+
+      const ticketTotal = (adultPrice * adultCount) + (childPrice * childCount) + (infantPrice * infantCount);
+      totalTicketAmount += ticketTotal;
+
+      // Extract ticket ID - the actual ticket FK should be in ticketInfo.ticket or ticketInfo.id
+      // If ticketInfo has a 'ticket' field, that's likely the FK to the Ticket model
+      let ticketId = null;
+
+      if (ticketInfo.ticket) {
+        // If ticket field exists, use it (might be ID or object)
+        if (typeof ticketInfo.ticket === 'object' && ticketInfo.ticket !== null) {
+          ticketId = parseInt(ticketInfo.ticket.id || ticketInfo.ticket.ticket_id || 0) || null;
+        } else {
+          ticketId = parseInt(ticketInfo.ticket) || null;
+        }
+      } else if (ticketInfo.id) {
+        // Fallback to id field if no ticket field
+        ticketId = parseInt(ticketInfo.id);
+      }
+
+      console.log(`🎫 Extracted ticketId for ticket_details[${idx}]:`, ticketId);
+
+      return {
+        ticket: ticketId,
+        pnr: ticketInfo.pnr || "N/A",
+        trip_type: ticketInfo.trip_type || "Round-trip",
+        departure_stay_type: ticketInfo.departure_stay_type || "standard",
+        return_stay_type: ticketInfo.return_stay_type || "standard",
+        seats: adultCount + childCount,
+        adult_price: adultPrice,
+        child_price: childPrice,
+        infant_price: infantPrice,
+        is_meal_included: ticketInfo.is_meal_included || false,
+        is_refundable: ticketInfo.is_refundable || false,
+        weight: ticketInfo.weight || 0,
+        pieces: ticketInfo.pieces || 0,
+        is_umrah_seat: ticketInfo.is_umrah_seat || true
+      };
+    });
+
+    // Food details transformation - BOOKING LEVEL with per-passenger-type pricing
+    const foodDetails = (packageData.food_details || []).map(food => {
+      const foodInfo = food.food_info || food;
+      const adultPrice = parseFloat(foodInfo.adult_selling_price || 0);
+      const childPrice = parseFloat(foodInfo.child_selling_price || 0);
+      const infantPrice = parseFloat(foodInfo.infant_selling_price || 0);
+
+      const totalFoodPrice = (adultPrice * adultCount) + (childPrice * childCount) + (infantPrice * infantCount);
+      totalFoodAmount += totalFoodPrice;
+
+      return {
+        food: foodInfo.name || foodInfo.title || "",
+        adult_price: adultPrice,
+        child_price: childPrice,
+        infant_price: infantPrice,
+        total_adults: adultCount,
+        total_children: childCount,
+        total_infants: infantCount,
+        is_price_pkr: false,
+        riyal_rate: riyalRate?.rate || 0,
+        total_price_pkr: totalFoodPrice * (riyalRate?.rate || 1),
+        total_price_sar: totalFoodPrice,
+      };
+    });
+
+    // Ziarat details transformation - BOOKING LEVEL with per-passenger-type pricing
+    const ziaratDetails = (packageData.ziarat_details || []).map(ziarat => {
+      const ziaratInfo = ziarat.ziarat_info || ziarat;
+      const adultPrice = parseFloat(ziaratInfo.adult_selling_price || 0);
+      const childPrice = parseFloat(ziaratInfo.child_selling_price || 0);
+      const infantPrice = parseFloat(ziaratInfo.infant_selling_price || 0);
+
+      const totalZiaratPrice = (adultPrice * adultCount) + (childPrice * childCount) + (infantPrice * infantCount);
+      totalZiaratAmount += totalZiaratPrice;
+
+      return {
+        ziarat: ziaratInfo.name || ziaratInfo.title || "",
+        city: ziaratInfo.city?.id || ziaratInfo.city || "",
+        adult_price: adultPrice,
+        child_price: childPrice,
+        infant_price: infantPrice,
+        total_adults: adultCount,
+        total_children: childCount,
+        total_infants: infantCount,
+        is_price_pkr: false,
+        riyal_rate: riyalRate?.rate || 0,
+        total_price_pkr: totalZiaratPrice * (riyalRate?.rate || 1),
+        total_price_sar: totalZiaratPrice,
+      };
+    });
+
+    // Visa amount calculation
+    const adultVisaPrice = parseFloat(packageData.adault_visa_price || 0);
+    const childVisaPrice = parseFloat(packageData.child_visa_price || 0);
+    const infantVisaPrice = parseFloat(packageData.infant_visa_price || 0);
+    totalVisaAmount = (adultVisaPrice * adultCount) + (childVisaPrice * childCount) + (infantVisaPrice * infantCount);
+
+    // Get ticket ID and prices from ticket_details
+    // The ticketDetails array was already transformed above, so ticketDetails[0].ticket should be an ID
+    let ticketId = null;
+    if (ticketDetails.length > 0) {
+      const ticketValue = ticketDetails[0].ticket;
+      console.log('🎫 Ticket value from ticketDetails:', ticketValue, 'Type:', typeof ticketValue);
+
+      // Ensure it's a number, not an object
+      if (typeof ticketValue === 'object' && ticketValue !== null) {
+        ticketId = parseInt(ticketValue.id || ticketValue.ticket_id || 0) || null;
+      } else {
+        ticketId = ticketValue ? parseInt(ticketValue) : null;
+      }
+    }
+
+    console.log('🎫 Final ticketId for person_details:', ticketId, 'Type:', typeof ticketId);
+
+    const adultTicketPrice = ticketDetails.length > 0 ? ticketDetails[0].adult_price : 0;
+    const childTicketPrice = ticketDetails.length > 0 ? ticketDetails[0].child_price : 0;
+    const infantTicketPrice = ticketDetails.length > 0 ? ticketDetails[0].infant_price : 0;
+
+    // Calculate total passengers for food/ziyarat calculations
+    const totalPax = adultCount + childCount + infantCount;
+
+    // Person details transformation (passengers)
+    const personDetails = passengers.map((passenger, index) => {
+      // Get passenger-specific prices
+      const passengerVisaPrice = passenger.type === "Adult" ? adultVisaPrice :
+        passenger.type === "Child" ? childVisaPrice : infantVisaPrice;
+      const passengerTicketPrice = passenger.type === "Adult" ? adultTicketPrice :
+        passenger.type === "Child" ? childTicketPrice : infantTicketPrice;
+
+      return {
+        age_group: passenger.type || "",
+        person_title: passenger.title || "",
+        first_name: passenger.name || "",
+        last_name: passenger.lName || "",
+        passport_number: passenger.passportNumber || "",
+        date_of_birth: passenger.DOB || "",
+        passport_expiry_date: passenger.passportExpiry || "",
+        // passport_picture will be uploaded separately via update endpoint
+        country: passenger.country || "",
+
+
+        // Visa details
+        is_visa_included: true,
+        visa_price: passengerVisaPrice,
+        is_visa_price_pkr: riyalRate?.is_visa_pkr || false, // Use riyal rate setting
+        visa_rate_in_sar: riyalRate?.is_visa_pkr ? 0 : passengerVisaPrice, // If visa is in SAR, store SAR amount
+        visa_rate_in_pkr: riyalRate?.is_visa_pkr ? passengerVisaPrice : 0, // If visa is in PKR, store PKR amount
+        visa_riyal_rate: riyalRate?.rate || 0, // Riyal exchange rate at booking time
+        visa_status: passengerVisaPrice > 0 ? "Pending" : "N/A",
+
+
+
+
+        // Family details
+        is_family_head: passenger.isHead || false,
+        family_number: (passenger.familyIndex !== undefined && passenger.familyIndex !== null)
+          ? passenger.familyIndex + 1
+          : 0,
+
+        // Ticket details
+        ticket: ticketId,
+        ticket_status: ticketDetails.length > 0 ? "NOT APPROVED" : "NOT INCLUDED",
+        ticket_price: passengerTicketPrice,
+        ticket_discount: 0, // TODO: Add discount logic if available in ticket_details
+        ticket_included: ticketDetails.length > 0,
+
+        // Nested details - map from package-level to person-level
+        contact_details: [],
+        ziyarat_details: (packageData.ziarat_details || []).map(z => {
+          const ziaratPrice = parseFloat(z.price || 0);
+          const isZiaratPKR = false; // Ziarat is in SAR
+          const price_in_sar = isZiaratPKR ? 0 : ziaratPrice;
+          const total_price_in_pkr = isZiaratPKR ? ziaratPrice * totalPax : ziaratPrice * totalPax * (riyalRate?.rate || 1);
+
+          return {
+            city: z.ziarat_info?.city?.id || z.city || "",
+            total_pax: totalPax,
+            per_pax_price: ziaratPrice,
+            total_price: ziaratPrice * totalPax,
+            total_price_in_pkr: total_price_in_pkr,
+            price_in_sar: price_in_sar,
+            date: new Date().toISOString().split('T')[0],
+            price: ziaratPrice,
+            is_price_pkr: isZiaratPKR,
+            riyal_rate: riyalRate?.rate || 0,
+            contact_person_name: z.contact_person || "",
+            contact_number: z.contact_number || ""
+          };
+        }),
+        food_details: (packageData.food_details || []).map(f => {
+          const foodPrice = parseFloat(f.price || 0);
+          const isFoodPKR = false; // Food is in SAR
+          const price_in_sar = isFoodPKR ? 0 : foodPrice;
+          const total_price_in_pkr = isFoodPKR ? foodPrice * totalPax : foodPrice * totalPax * (riyalRate?.rate || 1);
+
+          return {
+            food: f.food_info?.title || f.food || "",
+            total_pax: totalPax,
+            per_pax_price: foodPrice,
+            total_price: foodPrice * totalPax,
+            total_price_in_pkr: total_price_in_pkr,
+            price_in_sar: price_in_sar,
+            price: foodPrice,
+            is_price_pkr: isFoodPKR,
+            riyal_rate: riyalRate?.rate || 0
+          };
+        })
+      };
+    });
+
+    // Calculate total amount
+    const totalAmount = totalHotelAmount + totalTransportAmount + totalTicketAmount +
+      totalVisaAmount + totalFoodAmount + totalZiaratAmount;
+
+    // Prepare final booking payload
+    const bookingData = {
+      hotel_details: hotelDetails,
+      transport_details: transportDetails,
+      ticket_details: ticketDetails,
+      food_details: foodDetails,
+      ziyarat_details: ziaratDetails,
+      person_details: personDetails,
+
+      booking_number: generateBookingNumber(),
+      expiry_time: getExpiryTime(),
+
+      total_pax: adultCount + childCount + infantCount,
+      total_adult: adultCount,
+      total_child: childCount,
+      total_infant: infantCount,
+
+      total_hotel_amount: totalHotelAmount,
+      total_transport_amount: totalTransportAmount,
+      total_ticket_amount: totalTicketAmount,
+      total_visa_amount: totalVisaAmount,
+      total_amount: totalAmount,
+
+      // PKR/SAR specific amounts
+      total_hotel_amount_pkr: totalHotelAmount * (riyalRate?.rate || 1),
+      total_transport_amount_pkr: totalTransportAmount * (riyalRate?.rate || 1),
+      total_ticket_amount_pkr: totalTicketAmount,
+      total_visa_amount_pkr: totalVisaAmount,
+      total_food_amount_pkr: totalFoodAmount * (riyalRate?.rate || 1),
+      total_ziyarat_amount_pkr: totalZiaratAmount * (riyalRate?.rate || 1),
+
+      is_paid: false,
+      status: "Under-process",  // Using "Under-process" as requested
+      payment_status: "Pending",
+      is_partial_payment_allowed: false,
+      category: "Package",
+      booking_type: "UMRAH",
+      is_full_package: true,
+
+      user_id: parseInt(userId),
+      organization_id: parseInt(orgId),
+      branch_id: parseInt(branchId),
+      agency_id: parseInt(agencyId)
+    };
+
+    console.log("📦 Prepared Booking Data:", bookingData);
+    console.log("📦 Booking Data (JSON):", JSON.stringify(bookingData, null, 2));
+    console.log("📦 ticket_details:", bookingData.ticket_details);
+    console.log("📦 person_details:", bookingData.person_details);
+    return bookingData;
+  };
+
+  // Handle Make Booking button click
+  const handleMakeBooking = async () => {
+    setIsSubmitting(true);
+    try {
+      const bookingData = prepareBookingData();
+      if (!bookingData) {
+        setIsSubmitting(false);
+        return;
+      }
+
+      const token = localStorage.getItem("agentAccessToken");
+
+      console.log("🚀 Sending booking data to API...");
+
+      // Make API call to create booking (JSON only - passport images not included)
+      const response = await axios.post(
+        "http://127.0.0.1:8000/api/bookings/",
+        bookingData,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.status === 201) {
+        const result = response.data;
+        console.log("✅ Booking created successfully:", result);
+        toast.success(`Booking created successfully! Booking Number: ${result.booking_number}`);
+
+        // TODO: Passport upload needs a custom backend endpoint
+        // The standard bookings PATCH endpoint doesn't support nested file uploads
+        // For now, passports will need to be uploaded manually via admin panel
+
+        /* TEMPORARILY DISABLED - NEEDS BACKEND ENDPOINT
+        // Upload passport images for passengers who have them
+        console.log("📸 Starting passport image uploads...");
+        const passportUploadPromises = [];
+        
+        for (let i = 0; i < passengers.length; i++) {
+          const passenger = passengers[i];
+          const personDetail = result.person_details?.[i];
+          
+          if (passenger.passportFile && personDetail?.id) {
+            console.log(`📸 Uploading passport for passenger ${i + 1}: ${passenger.name}`);
+
+            // Create FormData for file upload
+            const formData = new FormData();
+
+            // Build updated person_details array - update only the current passenger with passport
+            const updatedPersonDetails = result.person_details.map((person, idx) => {
+              if (idx === i) {
+                // This is the passenger we're updating - include all fields except passport_picture
+                const { passport_picture, ...personWithoutPassport } = person;
+                return personWithoutPassport;
+              }
+              // For other passengers, remove passport_picture field
+              const { passport_picture, ...personWithoutPassport } = person;
+              return personWithoutPassport;
+            });
+
+            // Append the updated person_details as JSON
+            formData.append('person_details', JSON.stringify(updatedPersonDetails));
+            
+            // Append the passport file for the specific passenger index
+            // Django REST Framework expects: person_details[index].field_name
+            formData.append(`person_details[${i}].passport_picture`, passenger.passportFile);
+
+            // Upload passport image via PATCH to update the booking
+            const uploadPromise = axios.patch(
+              `http://127.0.0.1:8000/api/bookings/${result.id}/`,
+              formData,
+              {
+                headers: {
+                  'Content-Type': 'multipart/form-data',
+                  'Authorization': `Bearer ${token}`
+                }
+              }
+            ).then(() => {
+              console.log(`✅ Passport uploaded for ${passenger.name}`);
+            }).catch((err) => {
+              console.error(`❌ Failed to upload passport for ${passenger.name}:`, err);
+              console.error('Error response:', err.response?.data);
+              // Don't fail the entire booking if passport upload fails
+            });
+
+            passportUploadPromises.push(uploadPromise);
+          }
+        }
+        
+        // Wait for all passport uploads to complete
+        if (passportUploadPromises.length > 0) {
+          await Promise.all(passportUploadPromises);
+          console.log("✅ All passport images uploaded successfully");
+          toast.success(`Uploaded ${passportUploadPromises.length} passport image(s)`);
+        }
+        */
+
+        // Clear session storage after successful booking
+        sessionStorage.removeItem('umrah_booknow_v1');
+        sessionStorage.removeItem('umrah_passengers_v1');
+
+        // Save booking ID for payment page
+        sessionStorage.setItem('last_booking_id', result.id);
+
+        // Navigate to payment page with booking ID
+        navigate('/packages/custom-umrah/pay', {
+          state: {
+            bookingId: result.id,
+            bookingNumber: result.booking_number,
+            packageData,
+            passengers
+          }
+        });
+      } else {
+        throw new Error('Booking submission failed');
+      }
+    } catch (error) {
+      console.error('❌ Error submitting booking:', error);
+
+      // Detailed error logging
+      if (error.response) {
+        console.error('Error response data:', error.response.data);
+        try {
+          const pretty = JSON.stringify(error.response.data, null, 2);
+          console.error('Error response (formatted):', pretty);
+          toast.error(`Booking failed: ${error.response.data.detail || error.response.statusText}`);
+        } catch (e) {
+          toast.error('Failed to submit booking. Please try again.');
+        }
+      } else if (error.request) {
+        console.error('Error request:', error.request);
+        toast.error('No response from server. Please check your connection.');
+      } else {
+        console.error('Error message:', error.message);
+        toast.error('Failed to submit booking. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
 
   return (
     <div className="min-vh-100" style={{ fontFamily: "Poppins, sans-serif" }}>
@@ -254,14 +935,22 @@ const BookingReview = () => {
                       {/* Transport Details */}
                       <div className="mb-2">
                         <strong>Transport:</strong>
-                        {packageData.transport_details.map((transport, index) => (
-                          <div key={index} className="small text-muted">
-                            {transport.vehicle_type} -
-                            Adult: SAR {transport.transport_sector_info?.adault_price} |
-                            Child: SAR {transport.transport_sector_info?.child_price} |
-                            Infant: SAR {transport.transport_sector_info?.infant_price}
-                          </div>
-                        ))}
+                        {packageData.transport_details.map((transport, index) => {
+                          const adultPrice = transport.transport_sector_info?.adault_price || 0;
+                          const childPrice = transport.transport_sector_info?.child_price || 0;
+                          const infantPrice = transport.transport_sector_info?.infant_price || 0;
+                          const displayAdult = riyalRate?.is_transport_pkr ? adultPrice : adultPrice * (riyalRate?.rate || 1);
+                          const displayChild = riyalRate?.is_transport_pkr ? childPrice : childPrice * (riyalRate?.rate || 1);
+                          const displayInfant = riyalRate?.is_transport_pkr ? infantPrice : infantPrice * (riyalRate?.rate || 1);
+                          return (
+                            <div key={index} className="small text-muted">
+                              {transport.vehicle_type} -
+                              Adult: PKR {displayAdult.toLocaleString()} |
+                              Child: PKR {displayChild.toLocaleString()} |
+                              Infant: PKR {displayInfant.toLocaleString()}
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {/* Flight Details */}
@@ -310,20 +999,30 @@ const BookingReview = () => {
                       {/* Hotel Prices */}
                       <div className="mb-2">
                         <div className="small text-muted">Hotel Prices:</div>
-                        {packageData.hotel_details.map((hotel, index) => (
-                          <div key={index} className="small">
-                            {hotel.hotel_info?.name} ({hotel.room_type}): SAR {hotel.price} for {hotel.number_of_nights} nights
-                          </div>
-                        ))}
+                        {packageData.hotel_details.map((hotel, index) => {
+                          const hotelPrice = hotel.price || 0;
+                          const displayPrice = riyalRate?.is_hotel_pkr ? hotelPrice : hotelPrice * (riyalRate?.rate || 1);
+                          return (
+                            <div key={index} className="small">
+                              {hotel.hotel_info?.name} ({hotel.room_type}): PKR {displayPrice.toLocaleString()} for {hotel.number_of_nights} nights
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {/* Transport Prices */}
                       <div className="mb-2">
                         <div className="small text-muted">Transport:</div>
                         <div className="small">
-                          SAR {packageData.transport_details[0]?.transport_sector_info?.adault_price}/Adult |
-                          SAR {packageData.transport_details[0]?.transport_sector_info?.child_price}/Child |
-                          SAR {packageData.transport_details[0]?.transport_sector_info?.infant_price}/Infant
+                          {(() => {
+                            const adultPrice = packageData.transport_details[0]?.transport_sector_info?.adault_price || 0;
+                            const childPrice = packageData.transport_details[0]?.transport_sector_info?.child_price || 0;
+                            const infantPrice = packageData.transport_details[0]?.transport_sector_info?.infant_price || 0;
+                            const displayAdult = riyalRate?.is_transport_pkr ? adultPrice : adultPrice * (riyalRate?.rate || 1);
+                            const displayChild = riyalRate?.is_transport_pkr ? childPrice : childPrice * (riyalRate?.rate || 1);
+                            const displayInfant = riyalRate?.is_transport_pkr ? infantPrice : infantPrice * (riyalRate?.rate || 1);
+                            return `PKR ${displayAdult.toLocaleString()}/Adult | PKR ${displayChild.toLocaleString()}/Child | PKR ${displayInfant.toLocaleString()}/Infant`;
+                          })()}
                         </div>
                       </div>
 
@@ -331,9 +1030,9 @@ const BookingReview = () => {
                       <div className="mb-2">
                         <div className="small text-muted">Flight:</div>
                         <div className="small">
-                          SAR {packageData.ticket_details[0]?.ticket_info?.adult_price}/Adult |
-                          SAR {packageData.ticket_details[0]?.ticket_info?.child_price}/Child |
-                          SAR {packageData.ticket_details[0]?.ticket_info?.infant_price}/Infant
+                          PKR {packageData.ticket_details[0]?.ticket_info?.adult_price || 0}/Adult |
+                          PKR {packageData.ticket_details[0]?.ticket_info?.child_price || 0}/Child |
+                          PKR {packageData.ticket_details[0]?.ticket_info?.infant_price || 0}/Infant
                         </div>
                       </div>
 
@@ -343,9 +1042,13 @@ const BookingReview = () => {
                           <div className="small text-muted">Food:</div>
                           <div className="small">
                             {packageData.food_details.map((food, idx) => {
-                              const price = food.food_info?.price || food.food_info?.selling_price || food.price || 0;
+                              const adultPrice = food.food_info?.adult_selling_price || 0;
+                              const childPrice = food.food_info?.child_selling_price || 0;
+                              const infantPrice = food.food_info?.infant_selling_price || 0;
+                              const totalFood = (adultPrice * packageData.total_adaults) + (childPrice * packageData.total_children) + (infantPrice * packageData.total_infants);
+                              const displayFood = riyalRate?.is_food_pkr ? totalFood : totalFood * (riyalRate?.rate || 1);
                               return (
-                                <div key={idx}>SAR {price} per pax</div>
+                                <div key={idx}>PKR {displayFood.toLocaleString()} total</div>
                               );
                             })}
                           </div>
@@ -357,20 +1060,23 @@ const BookingReview = () => {
                         <div className="mb-2">
                           <div className="small text-muted">Ziarat:</div>
                           <div className="small">
-                            {packageData.ziarat_details.map((z, idx) => (
-                              <div key={idx}>
-                                SAR {z.ziarat_info?.adult_price || 0}/Adult |
-                                SAR {z.ziarat_info?.child_price || 0}/Child |
-                                SAR {z.ziarat_info?.infant_price || 0}/Infant
-                              </div>
-                            ))}
+                            {packageData.ziarat_details.map((z, idx) => {
+                              const adultPrice = z.ziarat_info?.adult_selling_price || 0;
+                              const childPrice = z.ziarat_info?.child_selling_price || 0;
+                              const infantPrice = z.ziarat_info?.infant_selling_price || 0;
+                              const totalZiarat = (adultPrice * packageData.total_adaults) + (childPrice * packageData.total_children) + (infantPrice * packageData.total_infants);
+                              const displayZiarat = riyalRate?.is_ziarat_pkr ? totalZiarat : totalZiarat * (riyalRate?.rate || 1);
+                              return (
+                                <div key={idx}>PKR {displayZiarat.toLocaleString()} total</div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
 
                       {/* Total Price */}
                       <div className="mt-3 pt-2 border-top">
-                        <h5 className="fw-bold">Total Price: SAR {totalPrice.toFixed(2)}</h5>
+                        <h5 className="fw-bold">Total Price: PKR {totalPrice.toLocaleString()}</h5>
                       </div>
                     </div>
                   </div>
@@ -476,16 +1182,18 @@ const BookingReview = () => {
                 <button
                   onClick={handleBackToEdit}
                   className="btn btn-secondary px-4"
+                  disabled={isSubmitting}
                 >
                   Back To Edit
                 </button>
-                <Link
-                  to="/packages/custom-umrah/pay"
+                <button
+                  onClick={handleMakeBooking}
+                  disabled={isSubmitting}
                   className="btn px-4"
                   id="btn"
                 >
-                  Make Booking
-                </Link>
+                  {isSubmitting ? 'Processing...' : 'Make Booking'}
+                </button>
               </div>
             </div>
           </div>

@@ -252,24 +252,24 @@ const CustomUmrahPackagesDetail = () => {
   // Initialize passengers based on package data and manualFamilies
   const initializePassengers = (packageData, families = []) => {
     const initialPassengers = [];
-    
+
     if (families && families.length > 0) {
       // Create passengers grouped by family
       families.forEach((family, familyIndex) => {
         const adults = parseInt(family.adults || 0);
         const children = parseInt(family.children || 0);
         const infants = parseInt(family.infants || 0);
-        
+
         // Add adults (first adult is head of family)
         for (let i = 0; i < adults; i++) {
           initialPassengers.push(createPassenger("Adult", familyIndex, i === 0));
         }
-        
+
         // Add children
         for (let i = 0; i < children; i++) {
           initialPassengers.push(createPassenger("Child", familyIndex, false));
         }
-        
+
         // Add infants
         for (let i = 0; i < infants; i++) {
           initialPassengers.push(createPassenger("Infant", familyIndex, false));
@@ -278,7 +278,7 @@ const CustomUmrahPackagesDetail = () => {
     } else {
       // Fallback to ungrouped passengers
       const { total_adaults, total_children, total_infants } = packageData;
-      
+
       for (let i = 0; i < total_adaults; i++) {
         initialPassengers.push(createPassenger("Adult", 0, i === 0));
       }
@@ -316,7 +316,7 @@ const CustomUmrahPackagesDetail = () => {
 
         // Always fetch cities data
         const citiesResponse = await axios.get(
-          `https://api.saer.pk/api/cities/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/cities/?organization=${orgId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         setCities(citiesResponse.data);
@@ -331,16 +331,16 @@ const CustomUmrahPackagesDetail = () => {
           }
         } else if (draftData) {
           // Use draft data from Book Now
-          
+
           // Extract manualFamilies if available
           const families = draftData.manualFamilies && Array.isArray(draftData.manualFamilies) ? draftData.manualFamilies : [];
           if (families.length > 0) {
             setManualFamilies(families);
           }
-          
+
           // Check if it's already in API format (from table Book Now) or needs transformation (from invoice Book Now)
           let transformedData;
-          
+
           if (draftData.total_adaults !== undefined) {
             // Already in API format (from table Book Now)
             transformedData = {
@@ -366,14 +366,14 @@ const CustomUmrahPackagesDetail = () => {
               total_cost: parseFloat(draftData.costs?.grandTotal) || 0,
             };
           }
-          
+
           setPackageData(transformedData);
           setTotalPrice(transformedData.total_cost);
           setPassengers(initializePassengers(transformedData, families));
         } else if (id && !id.startsWith('draft-')) {
           // Only fetch from API if ID is not a draft ID
           const packageResponse = await axios.get(
-            `https://api.saer.pk/api/custom-umrah-packages/${id}/?organization=${orgId}`,
+            `http://127.0.0.1:8000/api/custom-umrah-packages/${id}/?organization=${orgId}`,
             { headers: { Authorization: `Bearer ${token}` } }
           );
 
@@ -411,7 +411,7 @@ const CustomUmrahPackagesDetail = () => {
 
       try {
         // Check if any hotel needs enrichment
-        const needsEnrichment = packageData.hotel_details.some(hotel => 
+        const needsEnrichment = packageData.hotel_details.some(hotel =>
           hotel.hotel && !hotel.hotel_info?.name
         );
 
@@ -421,7 +421,7 @@ const CustomUmrahPackagesDetail = () => {
 
         // Fetch all hotels to get names
         const hotelsResponse = await axios.get(
-          `https://api.saer.pk/api/hotels/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/hotels/?organization=${orgId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         const hotels = hotelsResponse.data;
@@ -504,37 +504,37 @@ const CustomUmrahPackagesDetail = () => {
     const airlineCode = airlineName.split(' ').map(word => word[0]).join('').toUpperCase() || 'FL';
     const flightNum = trip.flight_number || 'N/A';
     const flightCode = `${airlineCode}.${flightNum}`;
-    
+
     const depCity = getCityCode(trip.departure_city);
     const arrCity = getCityCode(trip.arrival_city);
-    
+
     // Format date as "19-DEC-2024"
     const depDate = new Date(trip.departure_date_time);
-    const dateStr = depDate.toLocaleDateString('en-GB', { 
-      day: '2-digit', 
-      month: 'short', 
-      year: 'numeric' 
+    const dateStr = depDate.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
     }).replace(/ /g, '-').toUpperCase();
-    
+
     // Format times as "23:20"
-    const depTime = depDate.toLocaleTimeString('en-GB', { 
-      hour: '2-digit', 
+    const depTime = depDate.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: false 
+      hour12: false
     });
-    
+
     // If we have arrival time, format it too
     let arrTime = '';
     if (trip.arrival_date_time) {
       const arrDate = new Date(trip.arrival_date_time);
-      arrTime = arrDate.toLocaleTimeString('en-GB', { 
-        hour: '2-digit', 
+      arrTime = arrDate.toLocaleTimeString('en-GB', {
+        hour: '2-digit',
         minute: '2-digit',
-        hour12: false 
+        hour12: false
       });
     }
-    
-    return arrTime 
+
+    return arrTime
       ? `${flightCode}-${depCity}-${arrCity} ${dateStr}-${depTime}-${arrTime}`
       : `${flightCode}-${depCity}-${arrCity} ${dateStr}-${depTime}`;
   };
@@ -546,7 +546,7 @@ const CustomUmrahPackagesDetail = () => {
     const fetchRiyalRates = async () => {
       try {
         const response = await axios.get(
-          `https://api.saer.pk/api/riyal-rates/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/riyal-rates/?organization=${orgId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (response.data.length > 0) {
@@ -574,7 +574,9 @@ const CustomUmrahPackagesDetail = () => {
 
   // Updated calculateTotalPrice function
   const calculateTotalPrice = (data) => {
-    if (!data || !riyalRate) return 0;
+    if (!data || !riyalRate) {
+      return 0;
+    }
 
     let total = 0;
 
@@ -614,10 +616,45 @@ const CustomUmrahPackagesDetail = () => {
 
     // Calculate flight costs (always in PKR)
     data.ticket_details.forEach(ticket => {
-      total += (ticket.ticket_info?.adult_price || 0) * data.total_adaults;
-      total += (ticket.ticket_info?.child_price || 0) * data.total_children;
-      total += (ticket.ticket_info?.infant_price || 0) * data.total_infants;
+      // Use child_price/infant_price if available, otherwise fall back to child_fare/infant_fare
+      const adultPrice = ticket.ticket_info?.adult_price || ticket.ticket_info?.adult_fare || 0;
+      const childPrice = ticket.ticket_info?.child_price || ticket.ticket_info?.child_fare || 0;
+      const infantPrice = ticket.ticket_info?.infant_price || ticket.ticket_info?.infant_fare || 0;
+
+      const adultTotal = adultPrice * data.total_adaults;
+      const childTotal = childPrice * data.total_children;
+      const infantTotal = infantPrice * data.total_infants;
+
+      total += adultTotal;
+      total += childTotal;
+      total += infantTotal;
     });
+
+    // Calculate food costs
+    if (data.food_details && data.food_details.length > 0) {
+      data.food_details.forEach(food => {
+        const adultPrice = food.food_info?.adult_selling_price || 0;
+        const childPrice = food.food_info?.child_selling_price || 0;
+        const infantPrice = food.food_info?.infant_selling_price || 0;
+        const totalFood = (adultPrice * data.total_adaults) + (childPrice * data.total_children) + (infantPrice * data.total_infants);
+        const convertedFood = riyalRate.is_food_pkr ? totalFood : totalFood * riyalRate.rate;
+        total += convertedFood;
+      });
+    }
+
+    // Calculate ziarat costs - use per-passenger-type prices
+    if (data.ziarat_details && data.ziarat_details.length > 0) {
+      data.ziarat_details.forEach(ziarat => {
+        // Use per-passenger-type prices from ziarat_info (similar to food calculation)
+        const adultPrice = ziarat.ziarat_info?.adult_selling_price || ziarat.adult_selling_price || 0;
+        const childPrice = ziarat.ziarat_info?.child_selling_price || ziarat.child_selling_price || 0;
+        const infantPrice = ziarat.ziarat_info?.infant_selling_price || ziarat.infant_selling_price || 0;
+
+        const totalZiarat = (adultPrice * data.total_adaults) + (childPrice * data.total_children) + (infantPrice * data.total_infants);
+        const convertedZiarat = riyalRate.is_ziarat_pkr ? totalZiarat : totalZiarat * riyalRate.rate;
+        total += convertedZiarat;
+      });
+    }
 
     setTotalPrice(total);
   };
@@ -816,7 +853,7 @@ const CustomUmrahPackagesDetail = () => {
 
       sessionStorage.setItem('umrah_passengers_v1', JSON.stringify(payload));
       toast.success('Passenger data saved successfully');
-      
+
       // Navigate to review page
       navigate('/packages/custom-umrah/review');
     } catch (error) {
@@ -943,7 +980,7 @@ const CustomUmrahPackagesDetail = () => {
   };
 
   return (
-   <div className="min-vh-100" style={{ fontFamily: "Poppins, sans-serif" }}>
+    <div className="min-vh-100" style={{ fontFamily: "Poppins, sans-serif" }}>
       <div className="row g-0">
         {/* Sidebar */}
         <div className="col-12 col-lg-2">
@@ -1057,16 +1094,54 @@ const CustomUmrahPackagesDetail = () => {
                             <strong>Transport:</strong>
                             {packageData.transport_details && packageData.transport_details.length > 0 ? (
                               packageData.transport_details.map((transport, index) => {
-                                const sector = transport.transport_sector_info?.small_sector || transport.transport_sector_info?.big_sector;
-                                let sectorDisplay = transport.transport_sector_info?.name || 'Transport Service';
-                                
-                                if (sector) {
-                                  const depCity = sector.departure_city_code || sector.departure_city || '';
-                                  const arrCity = sector.arrival_city_code || sector.arrival_city || '';
-                                  const vehicleName = transport.transport_sector_info?.name || transport.vehicle_type;
-                                  sectorDisplay = `${depCity} → ${arrCity} (${vehicleName})`;
+                                let sectorDisplay = 'Transport Service';
+
+                                // FIRST: Check if this transport has a big sector with small sectors
+                                if (transport.transport_sector_info?.big_sector?.small_sectors &&
+                                  transport.transport_sector_info.big_sector.small_sectors.length > 0) {
+                                  // Build full route from small sectors
+                                  const smallSectors = transport.transport_sector_info.big_sector.small_sectors;
+                                  const cityCodes = [];
+
+                                  // Add first departure city
+                                  if (smallSectors[0]) {
+                                    cityCodes.push(smallSectors[0].departure_city || smallSectors[0].departure_city_code || '');
+                                  }
+
+                                  // Add all arrival cities
+                                  smallSectors.forEach(s => {
+                                    cityCodes.push(s.arrival_city || s.arrival_city_code || '');
+                                  });
+
+                                  // Remove consecutive duplicates
+                                  const uniqueCodes = cityCodes.filter((code, idx, array) =>
+                                    idx === 0 || code !== array[idx - 1]
+                                  );
+
+                                  const vehicleName = transport.vehicle_type || transport.transport_sector_info?.name || 'Transport';
+                                  sectorDisplay = `${uniqueCodes.join('-')} (${smallSectors.length} sectors) - ${vehicleName}`;
+
+                                } else if (transport.departure_city && transport.arrival_city) {
+                                  // Individual sector from expanded data
+                                  const depCity = transport.departure_city;
+                                  const arrCity = transport.arrival_city;
+                                  const vehicleName = transport.vehicle_type || 'Transport';
+                                  const sectorType = transport.sector_type ? ` - ${transport.sector_type}` : '';
+                                  sectorDisplay = `${depCity} → ${arrCity} (${vehicleName})${sectorType}`;
+
+                                } else if (transport.transport_sector_info) {
+                                  // Fallback for small sectors
+                                  const sector = transport.transport_sector_info?.small_sector || transport.transport_sector_info;
+                                  if (sector && (sector.departure_city || sector.departure_city_code)) {
+                                    const depCity = sector.departure_city_code || sector.departure_city || '';
+                                    const arrCity = sector.arrival_city_code || sector.arrival_city || '';
+                                    const vehicleName = transport.transport_sector_info?.name || transport.vehicle_type || 'Transport';
+                                    sectorDisplay = `${depCity} → ${arrCity} (${vehicleName})`;
+                                  } else {
+                                    sectorDisplay = transport.transport_sector_info?.name || transport.vehicle_type || 'Transport Service';
+                                  }
                                 }
-                                
+
                                 return (
                                   <div key={index} className="small text-muted">
                                     {sectorDisplay}
@@ -1149,7 +1224,7 @@ const CustomUmrahPackagesDetail = () => {
                                 const displayPrice = riyalRate?.is_hotel_pkr ? hotelPrice : hotelPrice * (riyalRate?.rate || 1);
                                 return (
                                   <div key={index} className="small">
-                                    {riyalRate?.is_hotel_pkr ? 'SAR' : 'PKR'} {displayPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                    {riyalRate?.is_hotel_pkr ? 'SAR' : 'PKR'} {displayPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </div>
                                 );
                               })
@@ -1168,7 +1243,7 @@ const CustomUmrahPackagesDetail = () => {
                                   const displayPrice = riyalRate?.is_transport_pkr ? transportPrice : transportPrice * (riyalRate?.rate || 1);
                                   return (
                                     <div key={index}>
-                                      {riyalRate?.is_transport_pkr ? 'SAR' : 'PKR'} {displayPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                      {riyalRate?.is_transport_pkr ? 'SAR' : 'PKR'} {displayPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </div>
                                   );
                                 })}
@@ -1188,7 +1263,7 @@ const CustomUmrahPackagesDetail = () => {
                                   const childPrice = packageData.ticket_details[0]?.ticket_info?.child_fare || packageData.ticket_details[0]?.ticket_info?.child_price || 0;
                                   const infantPrice = packageData.ticket_details[0]?.ticket_info?.infant_fare || packageData.ticket_details[0]?.ticket_info?.infant_price || 0;
                                   const totalFlight = (adultPrice * packageData.total_adaults) + (childPrice * packageData.total_children) + (infantPrice * packageData.total_infants);
-                                  return `PKR ${totalFlight.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                                  return `PKR ${totalFlight.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                                 })()}
                               </div>
                             ) : (
@@ -1201,12 +1276,15 @@ const CustomUmrahPackagesDetail = () => {
                             <div className="small text-muted fw-bold">Food:</div>
                             {packageData.food_details && packageData.food_details.length > 0 ? (
                               packageData.food_details.map((food, index) => {
-                                const totalPax = (packageData.total_adaults || 0) + (packageData.total_children || 0) + (packageData.total_infants || 0);
-                                const foodPrice = food.food_info?.per_pex || food.price || 0;
-                                const totalFood = foodPrice * totalPax;
+                                // Use per-passenger-type rates like the invoice
+                                const adultPrice = food.food_info?.adult_selling_price || 0;
+                                const childPrice = food.food_info?.child_selling_price || 0;
+                                const infantPrice = food.food_info?.infant_selling_price || 0;
+                                const totalFood = (adultPrice * packageData.total_adaults) + (childPrice * packageData.total_children) + (infantPrice * packageData.total_infants);
+                                const displayFood = riyalRate?.is_food_pkr ? totalFood : totalFood * (riyalRate?.rate || 1);
                                 return (
                                   <div key={index} className="small">
-                                    SAR {totalFood.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                    {riyalRate?.is_food_pkr ? 'PKR' : 'PKR'} {displayFood.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </div>
                                 );
                               })
@@ -1225,9 +1303,10 @@ const CustomUmrahPackagesDetail = () => {
                                 const childPrice = ziarat.ziarat_info?.child_selling_price || 0;
                                 const infantPrice = ziarat.ziarat_info?.infant_selling_price || 0;
                                 const totalZiarat = (adultPrice * packageData.total_adaults) + (childPrice * packageData.total_children) + (infantPrice * packageData.total_infants);
+                                const displayZiarat = riyalRate?.is_ziarat_pkr ? totalZiarat : totalZiarat * (riyalRate?.rate || 1);
                                 return (
                                   <div key={index} className="small">
-                                    SAR {totalZiarat.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                    {riyalRate?.is_ziarat_pkr ? 'PKR' : 'PKR'} {displayZiarat.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </div>
                                 );
                               })
@@ -1246,14 +1325,14 @@ const CustomUmrahPackagesDetail = () => {
                                 const infantVisa = packageData.infant_visa_price || 0;
                                 const totalVisa = (adultVisa * packageData.total_adaults) + (childVisa * packageData.total_children) + (infantVisa * packageData.total_infants);
                                 const displayVisa = riyalRate?.is_visa_pkr ? totalVisa : totalVisa * (riyalRate?.rate || 1);
-                                return `${riyalRate?.is_visa_pkr ? 'SAR' : 'PKR'} ${displayVisa.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                                return `${riyalRate?.is_visa_pkr ? 'PKR' : 'PKR'} ${displayVisa.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                               })()}
                             </div>
                           </div>
 
                           {/* Total Price */}
                           <div className="mt-3 pt-2 border-top">
-                            <h5 className="fw-bold">Total Price: PKR {(totalPrice || packageData.total_cost || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h5>
+                            <h5 className="fw-bold">Total Price: PKR {(totalPrice || packageData.total_cost || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h5>
                           </div>
                         </div>
                       </div>
@@ -1446,157 +1525,157 @@ const CustomUmrahPackagesDetail = () => {
                       ) : (
                         // Fallback: display all passengers ungrouped
                         passengers.map((passenger) => (
-                        <div key={passenger.id} className="row mb-3">
-                          {/* Passenger Type */}
-                          <div className="col-lg-2 mb-2">
-                            <label className="control-label">Type</label>
-                            <input
-                              type="text"
-                              className="form-control bg-light shadow-none"
-                              value={passenger.type}
-                              readOnly
-                              disabled
-                            />
-                          </div>
+                          <div key={passenger.id} className="row mb-3">
+                            {/* Passenger Type */}
+                            <div className="col-lg-2 mb-2">
+                              <label className="control-label">Type</label>
+                              <input
+                                type="text"
+                                className="form-control bg-light shadow-none"
+                                value={passenger.type}
+                                readOnly
+                                disabled
+                              />
+                            </div>
 
-                          {/* Title */}
-                          <div className="col-lg-2 mb-2">
-                            <label className="control-label">Title</label>
-                            <select
-                              className={`form-select bg-light shadow-none ${formErrors[`passenger-title-${passenger.id}`] ? "is-invalid" : ""}`}
-                              value={passenger.title}
-                              onChange={(e) => handleFieldChange(passenger.id, "title", e.target.value)}
-                              required
-                            >
-                              {getTitleOptions(passenger.type)}
-                            </select>
-                            {formErrors[`passenger-title-${passenger.id}`] && (
-                              <div className="invalid-feedback">{formErrors[`passenger-title-${passenger.id}`]}</div>
-                            )}
-                          </div>
+                            {/* Title */}
+                            <div className="col-lg-2 mb-2">
+                              <label className="control-label">Title</label>
+                              <select
+                                className={`form-select bg-light shadow-none ${formErrors[`passenger-title-${passenger.id}`] ? "is-invalid" : ""}`}
+                                value={passenger.title}
+                                onChange={(e) => handleFieldChange(passenger.id, "title", e.target.value)}
+                                required
+                              >
+                                {getTitleOptions(passenger.type)}
+                              </select>
+                              {formErrors[`passenger-title-${passenger.id}`] && (
+                                <div className="invalid-feedback">{formErrors[`passenger-title-${passenger.id}`]}</div>
+                              )}
+                            </div>
 
-                          {/* First Name */}
-                          <div className="col-lg-2 mb-2">
-                            <label className="control-label">First Name</label>
-                            <input
-                              type="text"
-                              className={`form-control bg-light shadow-none ${formErrors[`passenger-name-${passenger.id}`] ? "is-invalid" : ""}`}
-                              value={passenger.name}
-                              onChange={(e) => handleFieldChange(passenger.id, "name", e.target.value)}
-                              placeholder="First name"
-                              required
-                            />
-                            {formErrors[`passenger-name-${passenger.id}`] && (
-                              <div className="invalid-feedback">{formErrors[`passenger-name-${passenger.id}`]}</div>
-                            )}
-                          </div>
+                            {/* First Name */}
+                            <div className="col-lg-2 mb-2">
+                              <label className="control-label">First Name</label>
+                              <input
+                                type="text"
+                                className={`form-control bg-light shadow-none ${formErrors[`passenger-name-${passenger.id}`] ? "is-invalid" : ""}`}
+                                value={passenger.name}
+                                onChange={(e) => handleFieldChange(passenger.id, "name", e.target.value)}
+                                placeholder="First name"
+                                required
+                              />
+                              {formErrors[`passenger-name-${passenger.id}`] && (
+                                <div className="invalid-feedback">{formErrors[`passenger-name-${passenger.id}`]}</div>
+                              )}
+                            </div>
 
-                          {/* Last Name */}
-                          <div className="col-lg-2 mb-2">
-                            <label className="control-label">Last Name</label>
-                            <input
-                              type="text"
-                              className={`form-control bg-light shadow-none ${formErrors[`passenger-lName-${passenger.id}`] ? "is-invalid" : ""}`}
-                              value={passenger.lName}
-                              onChange={(e) => handleFieldChange(passenger.id, "lName", e.target.value)}
-                              placeholder="Last name"
-                              required
-                            />
-                            {formErrors[`passenger-lName-${passenger.id}`] && (
-                              <div className="invalid-feedback">{formErrors[`passenger-lName-${passenger.id}`]}</div>
-                            )}
-                          </div>
+                            {/* Last Name */}
+                            <div className="col-lg-2 mb-2">
+                              <label className="control-label">Last Name</label>
+                              <input
+                                type="text"
+                                className={`form-control bg-light shadow-none ${formErrors[`passenger-lName-${passenger.id}`] ? "is-invalid" : ""}`}
+                                value={passenger.lName}
+                                onChange={(e) => handleFieldChange(passenger.id, "lName", e.target.value)}
+                                placeholder="Last name"
+                                required
+                              />
+                              {formErrors[`passenger-lName-${passenger.id}`] && (
+                                <div className="invalid-feedback">{formErrors[`passenger-lName-${passenger.id}`]}</div>
+                              )}
+                            </div>
 
-                          {/* Last Name */}
-                          <div className="col-lg-2 mb-2">
-                            <label className="control-label">DOB</label>
-                            <input
-                              type="date"
-                              className={`form-control bg-light shadow-none ${formErrors[`passenger-DOB-${passenger.id}`] ? "is-invalid" : ""}`}
-                              value={passenger.DOB}
-                              onChange={(e) => handleFieldChange(passenger.id, "DOB", e.target.value)}
-                              placeholder="Last name"
-                              required
-                            />
-                            {formErrors[`passenger-lName-${passenger.id}`] && (
-                              <div className="invalid-feedback">{formErrors[`passenger-DOB-${passenger.id}`]}</div>
-                            )}
-                          </div>
+                            {/* Last Name */}
+                            <div className="col-lg-2 mb-2">
+                              <label className="control-label">DOB</label>
+                              <input
+                                type="date"
+                                className={`form-control bg-light shadow-none ${formErrors[`passenger-DOB-${passenger.id}`] ? "is-invalid" : ""}`}
+                                value={passenger.DOB}
+                                onChange={(e) => handleFieldChange(passenger.id, "DOB", e.target.value)}
+                                placeholder="Last name"
+                                required
+                              />
+                              {formErrors[`passenger-lName-${passenger.id}`] && (
+                                <div className="invalid-feedback">{formErrors[`passenger-DOB-${passenger.id}`]}</div>
+                              )}
+                            </div>
 
-                          {/* Passport Number */}
-                          <div className="col-lg-2 mb-2">
-                            <label className="control-label">Passport</label>
-                            <input
-                              type="text"
-                              className={`form-control bg-light shadow-none ${formErrors[`passenger-passportNumber-${passenger.id}`] ? "is-invalid" : ""}`}
-                              value={passenger.passportNumber}
-                              onChange={(e) => handleFieldChange(passenger.id, "passportNumber", e.target.value)}
-                              placeholder="AB1234567"
-                              required
-                            />
-                            {formErrors[`passenger-passportNumber-${passenger.id}`] && (
-                              <div className="invalid-feedback">{formErrors[`passenger-passportNumber-${passenger.id}`]}</div>
-                            )}
-                          </div>
+                            {/* Passport Number */}
+                            <div className="col-lg-2 mb-2">
+                              <label className="control-label">Passport</label>
+                              <input
+                                type="text"
+                                className={`form-control bg-light shadow-none ${formErrors[`passenger-passportNumber-${passenger.id}`] ? "is-invalid" : ""}`}
+                                value={passenger.passportNumber}
+                                onChange={(e) => handleFieldChange(passenger.id, "passportNumber", e.target.value)}
+                                placeholder="AB1234567"
+                                required
+                              />
+                              {formErrors[`passenger-passportNumber-${passenger.id}`] && (
+                                <div className="invalid-feedback">{formErrors[`passenger-passportNumber-${passenger.id}`]}</div>
+                              )}
+                            </div>
 
-                          {/* Passport Expiry */}
-                          <div className="col-lg-2 mb-2">
-                            <label className="control-label">Passport Expiry</label>
-                            <input
-                              type="date"
-                              className={`form-control bg-light shadow-none ${formErrors[`passenger-passportExpiry-${passenger.id}`] ? "is-invalid" : ""}`}
-                              value={passenger.passportExpiry}
-                              onChange={(e) => handleFieldChange(passenger.id, "passportExpiry", e.target.value)}
-                              required
-                              min={new Date().toISOString().split('T')[0]}
-                            />
-                            {formErrors[`passenger-passportExpiry-${passenger.id}`] && (
-                              <div className="invalid-feedback">{formErrors[`passenger-passportExpiry-${passenger.id}`]}</div>
-                            )}
-                          </div>
+                            {/* Passport Expiry */}
+                            <div className="col-lg-2 mb-2">
+                              <label className="control-label">Passport Expiry</label>
+                              <input
+                                type="date"
+                                className={`form-control bg-light shadow-none ${formErrors[`passenger-passportExpiry-${passenger.id}`] ? "is-invalid" : ""}`}
+                                value={passenger.passportExpiry}
+                                onChange={(e) => handleFieldChange(passenger.id, "passportExpiry", e.target.value)}
+                                required
+                                min={new Date().toISOString().split('T')[0]}
+                              />
+                              {formErrors[`passenger-passportExpiry-${passenger.id}`] && (
+                                <div className="invalid-feedback">{formErrors[`passenger-passportExpiry-${passenger.id}`]}</div>
+                              )}
+                            </div>
 
-                          {/* Country */}
-                          <div className="col-lg-2 mb-2">
-                            <label className="control-label">Country</label>
-                            <select
-                              className={`form-select bg-light shadow-none ${formErrors[`passenger-country-${passenger.id}`] ? "is-invalid" : ""}`}
-                              value={passenger.country}
-                              onChange={(e) => handleFieldChange(passenger.id, "country", e.target.value)}
-                              required
-                            >
-                              <option value="">Select Country</option>
-                              {countries.map(country => (
-                                <option key={country} value={country}>{country}</option>
-                              ))}
-                            </select>
-                            {formErrors[`passenger-country-${passenger.id}`] && (
-                              <div className="invalid-feedback">{formErrors[`passenger-country-${passenger.id}`]}</div>
-                            )}
-                          </div>
+                            {/* Country */}
+                            <div className="col-lg-2 mb-2">
+                              <label className="control-label">Country</label>
+                              <select
+                                className={`form-select bg-light shadow-none ${formErrors[`passenger-country-${passenger.id}`] ? "is-invalid" : ""}`}
+                                value={passenger.country}
+                                onChange={(e) => handleFieldChange(passenger.id, "country", e.target.value)}
+                                required
+                              >
+                                <option value="">Select Country</option>
+                                {countries.map(country => (
+                                  <option key={country} value={country}>{country}</option>
+                                ))}
+                              </select>
+                              {formErrors[`passenger-country-${passenger.id}`] && (
+                                <div className="invalid-feedback">{formErrors[`passenger-country-${passenger.id}`]}</div>
+                              )}
+                            </div>
 
-                          {/* Passport Upload */}
-                          <div className="col-lg-2 mb-2 mt-2 d-flex align-items-center">
-                            <input
-                              type="file"
-                              id={`passport-upload-${passenger.id}`}
-                              style={{ display: 'none' }}
-                              onChange={(e) => handlePassportUpload(passenger.id, e)}
-                              accept="image/*,.pdf"
-                              required={!passenger.passportFile}
-                            />
-                            <label
-                              htmlFor={`passport-upload-${passenger.id}`}
-                              className={`btn ${passenger.passportFile ? 'btn-success' : 'btn-primary'}`}
-                            >
-                              <CloudUpload />
-                              {passenger.passportFile ? "Uploaded" : 'Passport'}
-                            </label>
-                            {formErrors[`passenger-passportFile-${passenger.id}`] && (
-                              <div className="invalid-feedback d-block">{formErrors[`passenger-passportFile-${passenger.id}`]}</div>
-                            )}
+                            {/* Passport Upload */}
+                            <div className="col-lg-2 mb-2 mt-2 d-flex align-items-center">
+                              <input
+                                type="file"
+                                id={`passport-upload-${passenger.id}`}
+                                style={{ display: 'none' }}
+                                onChange={(e) => handlePassportUpload(passenger.id, e)}
+                                accept="image/*,.pdf"
+                                required={!passenger.passportFile}
+                              />
+                              <label
+                                htmlFor={`passport-upload-${passenger.id}`}
+                                className={`btn ${passenger.passportFile ? 'btn-success' : 'btn-primary'}`}
+                              >
+                                <CloudUpload />
+                                {passenger.passportFile ? "Uploaded" : 'Passport'}
+                              </label>
+                              {formErrors[`passenger-passportFile-${passenger.id}`] && (
+                                <div className="invalid-feedback d-block">{formErrors[`passenger-passportFile-${passenger.id}`]}</div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))
+                        ))
                       )}
 
                       {/* <div className="row mt-4">

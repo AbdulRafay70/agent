@@ -30,7 +30,7 @@ const BookingReview = () => {
       try {
         const token = localStorage.getItem("agentAccessToken");
         const orgId = getOrgId();
-        const response = await axios.get(`https://api.saer.pk/api/booking-expiry/?organization=${orgId}`, {
+        const response = await axios.get(`http://127.0.0.1:8000/api/booking-expiry/?organization=${orgId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -209,13 +209,50 @@ const BookingReview = () => {
   const getOrgId = () => {
     const agentOrg = localStorage.getItem("agentOrganization");
     if (!agentOrg) return null;
-    const orgData = JSON.parse(agentOrg);
-    return orgData.ids[0];
+    try {
+      const orgData = JSON.parse(agentOrg);
+      return orgData.ids && orgData.ids[0] ? orgData.ids[0] : null;
+    } catch (e) {
+      return null;
+    }
   };
 
-  const userId = localStorage.getItem("userId");
-  const agencyId = Number(localStorage.getItem("agencyId"));
-  const branchId = Number(localStorage.getItem("branchId"));
+  const getUserId = () => {
+    const agentOrg = localStorage.getItem("agentOrganization");
+    if (!agentOrg) return null;
+    try {
+      const orgData = JSON.parse(agentOrg);
+      return orgData.user_id || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const getAgencyId = () => {
+    const agentOrg = localStorage.getItem("agentOrganization");
+    if (!agentOrg) return null;
+    try {
+      const orgData = JSON.parse(agentOrg);
+      return orgData.agency_id || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const getBranchId = () => {
+    const agentOrg = localStorage.getItem("agentOrganization");
+    if (!agentOrg) return null;
+    try {
+      const orgData = JSON.parse(agentOrg);
+      return orgData.branch_id || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const userId = getUserId();
+  const agencyId = getAgencyId();
+  const branchId = getBranchId();
 
   // Helper function to generate booking number
   const generateBookingNumber = () => {
@@ -263,7 +300,7 @@ const BookingReview = () => {
         last_name: passenger.lastName || "",
         passport_number: passenger.passportNumber || passenger.passportNo || "",
         date_of_birth: passenger.dob || "",
-          passport_issue_date: passenger.passportIssue || passenger.ppIssueDate || "",
+        passpoet_issue_date: passenger.passportIssue || passenger.ppIssueDate || "",
         passport_expiry_date: passenger.passportExpiry || passenger.ppExpiryDate || "",
         // passport_picture: "",
         country: passenger.country || "",
@@ -354,7 +391,7 @@ const BookingReview = () => {
 
       // Make API call with proper axios syntax
       const response = await axios.post(
-        `https://api.saer.pk/api/bookings/`,
+        `http://127.0.0.1:8000/api/bookings/`,
         bookingData,
         {
           headers: {
@@ -600,12 +637,12 @@ const BookingReview = () => {
                         </div>
                       </div>
 
-                        <div className="text-muted mt-4 small mt-1">
+                      <div className="text-muted mt-4 small mt-1">
                         {stopoverSummary(outboundStopover)}
                       </div>
                     </div>
                     <div className="col-md-2 text-center text-md-start">
-                        <h6 className="mb-0">
+                      <h6 className="mb-0">
                         {formatTime(outboundTrip?.arrival_date_time)}
                       </h6>
                       <div className="text-muted small">

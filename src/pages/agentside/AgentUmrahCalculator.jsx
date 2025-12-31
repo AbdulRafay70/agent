@@ -106,7 +106,7 @@ const FlightModal = ({
   // Filter only Umrah flights
   const filteredFlights = (flights || []).filter((flight) => {
     const isUmrah = flight.is_umrah_seat === true || flight.is_umrah_seat === 1;
-    
+
     // Show all Umrah flights (one-way or round-trip)
     return isUmrah;
   });
@@ -189,16 +189,16 @@ const FlightModal = ({
                             Departure:{" "}
                             {departureTrip?.departure_date_time
                               ? new Date(
-                                  departureTrip.departure_date_time
-                                ).toLocaleString()
+                                departureTrip.departure_date_time
+                              ).toLocaleString()
                               : "N/A"}
                           </div>
                           <div>
                             Return:{" "}
                             {returnTrip?.arrival_date_time
                               ? new Date(
-                                  returnTrip.arrival_date_time
-                                ).toLocaleString()
+                                returnTrip.arrival_date_time
+                              ).toLocaleString()
                               : "N/A"}
                           </div>
                         </div>
@@ -369,7 +369,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
       }
 
       const response = await axios.post(
-        "https://api.saer.pk/api/tickets/",
+        "http://127.0.0.1:8000/api/tickets/",
         payload,
         {
           headers: {
@@ -454,7 +454,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
       }
 
       const response = await axios.post(
-        "https://api.saer.pk/api/tickets/",
+        "http://127.0.0.1:8000/api/tickets/",
         payload,
         {
           headers: {
@@ -884,7 +884,7 @@ const AgentUmrahCalculator = () => {
   const [airlines, setAirlines] = useState([]);
   const [selectedAirline, setSelectedAirline] = useState('');
   const [selectedReturnAirline, setSelectedReturnAirline] = useState('');
-  
+
   // Inline component: fetches city codes and renders a portalized Select
   // Usage: <CitySelect value={code} onChange={setCode} placeholder="FROM" />
   const CitySelect = ({ value, onChange, placeholder, isDisabled }) => {
@@ -897,7 +897,7 @@ const AgentUmrahCalculator = () => {
         setLoadingCities(true);
         try {
           const token = localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzk1NTU4Nzk0LCJpYXQiOjE3NjQwMjI3OTQsImp0aSI6ImViNTQ0ZTk5ZTA5YTQyYjY4ODAyMDIwN2JlZTAyOWM3IiwidXNlcl9pZCI6MzV9.hTZqqJSK-EF6-pMEBr8lR7VTE81Z7E5RUvp_ShxHjmY';
-          const res = await fetch('https://api.saer.pk/api/cities/', {
+          const res = await fetch('http://127.0.0.1:8000/api/cities/', {
             headers: {
               accept: 'application/json',
               Authorization: `Bearer ${token}`,
@@ -960,15 +960,100 @@ const AgentUmrahCalculator = () => {
   const [activeTab, setActiveTab] = useState(getActiveTab());
 
   const token = localStorage.getItem("agentAccessToken");
-  // Force agent to use organization 11 for agent panel/testing purposes.
-  // This ensures the agent sees packages for org 11 even if their stored
-  // `agentOrganization` points to a different org (e.g., 39).
+
+  // Get the agent's actual organization from localStorage
   const getOrgId = () => {
     try {
-      // Prefer explicit override to org 11
-      return 11;
+      // Try to get organization from various localStorage keys
+      const agentOrg = localStorage.getItem("agentOrganization");
+      const selectedOrg = localStorage.getItem("selectedOrganization");
+      const organization = localStorage.getItem("organization");
+
+      console.log("🔍 Checking organization sources:", {
+        agentOrg,
+        selectedOrg,
+        organization
+      });
+
+      // Parse agentOrganization (might be JSON with 'ids' array, single 'id', or plain number)
+      if (agentOrg) {
+        try {
+          const parsed = JSON.parse(agentOrg);
+
+          // Check for 'ids' array (e.g., {"ids":[40,13],"user_id":52,"agency_id":41,"branch_id":46})
+          if (parsed && Array.isArray(parsed.ids) && parsed.ids.length > 0) {
+            const orgId = parseInt(parsed.ids[0], 10);
+            console.log("✅ Using agentOrganization.ids[0]:", orgId);
+            return orgId;
+          }
+
+          // Check for single 'id' field
+          if (parsed && parsed.id) {
+            console.log("✅ Using agentOrganization.id:", parsed.id);
+            return parseInt(parsed.id, 10);
+          }
+
+          // Check if it's a plain number
+          if (typeof parsed === 'number') {
+            console.log("✅ Using agentOrganization (number):", parsed);
+            return parsed;
+          }
+        } catch (e) {
+          // If not JSON, try parsing as number
+          const num = parseInt(agentOrg, 10);
+          if (!isNaN(num)) {
+            console.log("✅ Using agentOrganization (parsed):", num);
+            return num;
+          }
+        }
+      }
+
+      // Parse selectedOrganization
+      if (selectedOrg) {
+        try {
+          const parsed = JSON.parse(selectedOrg);
+          if (parsed && parsed.id) {
+            console.log("✅ Using selectedOrganization.id:", parsed.id);
+            return parseInt(parsed.id, 10);
+          }
+        } catch (e) {
+          const num = parseInt(selectedOrg, 10);
+          if (!isNaN(num)) {
+            console.log("✅ Using selectedOrganization (parsed):", num);
+            return num;
+          }
+        }
+      }
+
+      // Parse organization
+      if (organization) {
+        try {
+          const parsed = JSON.parse(organization);
+          if (parsed && parsed.id) {
+            console.log("✅ Using organization.id:", parsed.id);
+            return parseInt(parsed.id, 10);
+          }
+        } catch (e) {
+          const num = parseInt(organization, 10);
+          if (!isNaN(num)) {
+            console.log("✅ Using organization (parsed):", num);
+            return num;
+          }
+        }
+      }
+
+      // Fallback to env variable or default
+      const defaultOrgFromEnv = import.meta.env.VITE_DEFAULT_ORG_ID ? Number(import.meta.env.VITE_DEFAULT_ORG_ID) : null;
+      if (defaultOrgFromEnv) {
+        console.log("⚠️ Using VITE_DEFAULT_ORG_ID:", defaultOrgFromEnv);
+        return defaultOrgFromEnv;
+      }
+
+      console.warn("⚠️ No organization found, falling back to 11");
+      return 11; // Fallback to 11 if nothing else works
     } catch (err) {
-      return 11;
+      console.error("❌ Error getting organization ID:", err);
+      return 11; // Fallback
     }
   };
 
@@ -1119,7 +1204,7 @@ const AgentUmrahCalculator = () => {
 
     // Convert dimensions: canvas pixels per  
     const pxPerMm = canvas.width / pageWidth;
-    
+
     // Use much smaller effective page height to add large margins and avoid cutting content
     const marginMm = 10; // 10mm margin top/bottom
     const bufferMm = 20; // Additional 20mm buffer to prevent element splitting
@@ -1139,7 +1224,7 @@ const AgentUmrahCalculator = () => {
       sliceCanvas.width = canvas.width;
       sliceCanvas.height = sliceHeightPx;
       const ctx = sliceCanvas.getContext('2d');
-      
+
       // Fill with white background
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
@@ -1162,7 +1247,7 @@ const AgentUmrahCalculator = () => {
 
       // Calculate image dimensions in mm (preserve aspect ratio)
       const imgHeightMm = sliceHeightPx / pxPerMm;
-      
+
       // Add image with margin
       pdf.addImage(imgData, 'JPEG', 0, marginMm, pageWidth, imgHeightMm);
 
@@ -1172,7 +1257,7 @@ const AgentUmrahCalculator = () => {
 
     // Build filename with package id and timestamp
     const idPart = (costs && costs.queryNumber) ? `_${costs.queryNumber}` : (currentPackageId ? `_${currentPackageId}` : '');
-    const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
     const filename = `Package_Details${idPart}_${ts}.pdf`;
 
     pdf.save(filename);
@@ -1524,7 +1609,7 @@ const AgentUmrahCalculator = () => {
 
     try {
       const response = await axios.get(
-        `https://api.saer.pk/api/all-prices/?organization_id=${orgId}`,
+        `http://127.0.0.1:8000/api/all-prices/?organization_id=${orgId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -1687,10 +1772,10 @@ const AgentUmrahCalculator = () => {
   };
 
   // const fetchRiyalRate = () =>
-  //   fetchData("https://api.saer.pk/api/riyal-rates/", setRiyalRate, "riyalRate");
+  //   fetchData("http://127.0.0.1:8000/api/riyal-rates/", setRiyalRate, "riyalRate");
 
   const fetchTickets = () =>
-    fetchData("https://api.saer.pk/api/tickets/", setTicketsList, "flights");
+    fetchData("http://127.0.0.1:8000/api/tickets/", setTicketsList, "flights");
 
   const fetchTransportSectors = async () => {
     const endpoints = [
@@ -1808,22 +1893,22 @@ const AgentUmrahCalculator = () => {
   };
 
   const fetchHotels = () =>
-    fetchData("https://api.saer.pk/api/hotels/", setHotels, "hotels");
+    fetchData("http://127.0.0.1:8000/api/hotels/", setHotels, "hotels");
 
   const fetchVisaTypes = async () => {
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const url = "https://api.saer.pk/api/set-visa-type/";
+      const url = "http://127.0.0.1:8000/api/set-visa-type/";
       const safeOrg = getSafeOrgId();
       if (!safeOrg) {
         return;
       }
-      
+
       const response = await axios.get(url, {
         params: { organization: safeOrg },
         headers: headers,
       });
-      
+
       setVisaTypes(response.data);
     } catch (error) {
       console.error("❌ Error fetching visa types:", error);
@@ -1834,7 +1919,7 @@ const AgentUmrahCalculator = () => {
 
   const fetchVisaPricesOne = () =>
     fetchData(
-      "https://api.saer.pk/api/umrah-visa-prices/",
+      "http://127.0.0.1:8000/api/umrah-visa-prices/",
       setVisaPricesOne,
       "visaTypes"
     );
@@ -1847,7 +1932,7 @@ const AgentUmrahCalculator = () => {
         console.warn("⚠️ fetchVisaPricesTwo: invalid organization id, skipping");
         return;
       }
-      const response = await axios.get("https://api.saer.pk/api/umrah-visa-type-two/", {
+      const response = await axios.get("http://127.0.0.1:8000/api/umrah-visa-type-two/", {
         params: { organization: safeOrg },
         headers: headers,
       });
@@ -1858,10 +1943,10 @@ const AgentUmrahCalculator = () => {
   };
 
   const fetchFoodPrices = () =>
-    fetchData("https://api.saer.pk/api/food-prices/", setFoodPrices, "food");
+    fetchData("http://127.0.0.1:8000/api/food-prices/", setFoodPrices, "food");
 
   const fetchZiaratPrices = () =>
-    fetchData("https://api.saer.pk/api/ziarat-prices/", setZiaratPrices, "ziarat");
+    fetchData("http://127.0.0.1:8000/api/ziarat-prices/", setZiaratPrices, "ziarat");
 
   const fetchAirlines = async () => {
     try {
@@ -1870,7 +1955,7 @@ const AgentUmrahCalculator = () => {
         console.warn("⚠️ fetchAirlines: invalid organization id, skipping");
         return;
       }
-      const response = await axios.get("https://api.saer.pk/api/airlines/", {
+      const response = await axios.get("http://127.0.0.1:8000/api/airlines/", {
         params: { organization: safeOrg },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1892,7 +1977,7 @@ const AgentUmrahCalculator = () => {
         console.warn("⚠️ fetchCities: invalid organization id, skipping");
         return;
       }
-      const response = await axios.get("https://api.saer.pk/api/cities/", {
+      const response = await axios.get("http://127.0.0.1:8000/api/cities/", {
         params: { organization: safeOrg },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1909,7 +1994,7 @@ const AgentUmrahCalculator = () => {
   const fetchOnlyVisaPrices = async () => {
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const url = "https://api.saer.pk/api/only-visa-prices/";
+      const url = "http://127.0.0.1:8000/api/only-visa-prices/";
       const safeOrg = getSafeOrgId();
       if (!safeOrg) {
         console.warn("⚠️ fetchOnlyVisaPrices: invalid organization id, skipping request");
@@ -1997,13 +2082,13 @@ const AgentUmrahCalculator = () => {
     const returnTrip = flight.trip_details?.find(
       (t) => (t.trip_type || "").toString().toLowerCase() === "return"
     ) || flight.trip_details?.[1];
-    
+
     if (departureTrip) {
       // Get airline ID from trip details
       const airlineObj = departureTrip.airline;
       // Try to find matching airline in airlines array by name or ID
-      const matchingAirline = airlines.find(a => 
-        a.id === airlineObj?.id || 
+      const matchingAirline = airlines.find(a =>
+        a.id === airlineObj?.id ||
         a.name?.toLowerCase() === airlineObj?.name?.toLowerCase()
       );
       const airlineId = matchingAirline?.id ? String(matchingAirline.id) : "";
@@ -2011,7 +2096,7 @@ const AgentUmrahCalculator = () => {
       // Set airline name from airlinesMap using flight.airline ID
       setAirlineName(airlinesMap[flight.airline]?.name || matchingAirline?.name || "");
       setFlightNumber(departureTrip.flight_number || flight.flight_number || "");
-      
+
       // Handle city data (can be ID or object)
       const depCityCode = departureTrip.departure_city?.code || citiesMap[departureTrip.departure_city?.id || departureTrip.departure_city]?.code || "";
       const arrCityCode = departureTrip.arrival_city?.code || citiesMap[departureTrip.arrival_city?.id || departureTrip.arrival_city]?.code || "";
@@ -2035,14 +2120,14 @@ const AgentUmrahCalculator = () => {
     if (returnTrip) {
       const returnAirlineObj = returnTrip.airline;
       // Try to find matching airline in airlines array by name or ID
-      const matchingReturnAirline = airlines.find(a => 
-        a.id === returnAirlineObj?.id || 
+      const matchingReturnAirline = airlines.find(a =>
+        a.id === returnAirlineObj?.id ||
         a.name?.toLowerCase() === returnAirlineObj?.name?.toLowerCase()
       );
       const returnAirlineId = matchingReturnAirline?.id ? String(matchingReturnAirline.id) : "";
       setSelectedReturnAirline(returnAirlineId);
       setReturnFlightNumber(returnTrip.flight_number || "");
-      
+
       const depCityCode = returnTrip.departure_city?.code || citiesMap[returnTrip.departure_city?.id || returnTrip.departure_city]?.code || "";
       const arrCityCode = returnTrip.arrival_city?.code || citiesMap[returnTrip.arrival_city?.id || returnTrip.arrival_city]?.code || "";
       setReturnFromSector(depCityCode);
@@ -2181,10 +2266,10 @@ const AgentUmrahCalculator = () => {
             // Check both 'sectors' and 'vehicle_types' arrays (vehicle_types contains selected sector IDs from "Select Sectors" button)
             const pSectors = Array.isArray(p.sectors) ? p.sectors : [];
             const pVehicleTypes = Array.isArray(p.vehicle_types) ? p.vehicle_types : [];
-            
+
             // Combine both arrays to get all sector references
             const allSectorRefs = [...pSectors, ...pVehicleTypes];
-            
+
             allSectorRefs.forEach((s) => {
               if (!s) return;
               if (typeof s === 'object') {
@@ -2210,7 +2295,7 @@ const AgentUmrahCalculator = () => {
                 }
               }
             });
-        });
+          });
 
         if (sectors.length > 0) return sectors;
       }
@@ -2227,29 +2312,29 @@ const AgentUmrahCalculator = () => {
     try {
       if (matchedVisaForFullPackage) {
         let filtered = baseSectors;
-        
+
         // Filter by transport_sectors if specified
         if (matchedVisaForFullPackage.transport_sectors && matchedVisaForFullPackage.transport_sectors.length > 0) {
           const sectorIds = (matchedVisaForFullPackage.transport_sectors || [])
             .map(s => (typeof s === 'object' ? s.id : s))
             .filter(Boolean)
             .map(Number);
-          
+
           console.log('🚐 Filtering by transport_sectors:', sectorIds);
           filtered = filtered.filter(s => sectorIds.includes(Number(s.id)));
         }
-        
+
         // Filter by vehicle_types (these are actually transport sector IDs selected via "Select Sectors")
         if (matchedVisaForFullPackage.vehicle_types && matchedVisaForFullPackage.vehicle_types.length > 0) {
           const selectedSectorIds = (matchedVisaForFullPackage.vehicle_types || [])
             .map(v => (typeof v === 'object' ? v.id : v))
             .filter(Boolean)
             .map(Number);
-          
+
           console.log('🚗 Filtering by selected vehicle_types (transport sector IDs):', selectedSectorIds);
           filtered = filtered.filter(s => selectedSectorIds.includes(Number(s.id)));
         }
-        
+
         if (filtered.length > 0) {
           console.log('✅ Filtered transport sectors:', filtered.length, 'sectors');
           return filtered;
@@ -2262,7 +2347,7 @@ const AgentUmrahCalculator = () => {
 
     return baseSectors;
   }, [transportSectors, filteredTransportSectors, selectedBookingOptions, formData.addVisaPrice, formData.onlyVisa, formData.totalAdults, formData.totalChilds, formData.totalInfants, visaPricesTwo, matchedVisaForFullPackage]);
-  
+
 
   // ✅ HELPER: Check if service is in PKR (true) or SAR (false)
   const isServiceInPKR = (serviceType) => {
@@ -2333,8 +2418,8 @@ const AgentUmrahCalculator = () => {
         const childs = parseInt(formData.totalChilds || 0) || 0;
         const infants = parseInt(formData.totalInfants || 0) || 0;
         const cost = (adults * (item.adult_selling_price || 0)) +
-                     (childs * (item.child_selling_price || 0)) +
-                     (infants * (item.infant_selling_price || 0));
+          (childs * (item.child_selling_price || 0)) +
+          (infants * (item.infant_selling_price || 0));
         return sum + cost;
       }, 0);
     const foodPKR = convertToPKR(foodTotal, 'food');
@@ -2348,8 +2433,8 @@ const AgentUmrahCalculator = () => {
         const childs = parseInt(formData.totalChilds || 0) || 0;
         const infants = parseInt(formData.totalInfants || 0) || 0;
         const cost = (adults * (item.adult_selling_price || 0)) +
-                     (childs * (item.child_selling_price || 0)) +
-                     (infants * (item.infant_selling_price || 0));
+          (childs * (item.child_selling_price || 0)) +
+          (infants * (item.infant_selling_price || 0));
         return sum + cost;
       }, 0);
     const ziaratPKR = convertToPKR(ziaratTotal, 'ziarat');
@@ -2367,18 +2452,18 @@ const AgentUmrahCalculator = () => {
 
   const calculateVisaPrices = useCallback(() => {
     // Check if VTTH/VTH/VT package
-    const isPackageWithVisaTransport = selectedBookingOptions.includes("vtth") || 
-                                       selectedBookingOptions.includes("vth") || 
-                                       selectedBookingOptions.includes("vt");
-    
+    const isPackageWithVisaTransport = selectedBookingOptions.includes("vtth") ||
+      selectedBookingOptions.includes("vth") ||
+      selectedBookingOptions.includes("vt");
+
     // Get selected visa type
     const selectedVisaType = visaTypes.find(vt => vt.id === formData.visaTypeId);
-    
+
     // For VTTH/VTH/VT packages, we don't require visa type to be selected (we use matchedVisaForFullPackage)
     // For Only Visa, we also don't require visa type (we'll use category matching)
     const isLongTermVisaOption = formData.longTermVisa || selectedBookingOptions.includes("longtermvisa");
     const isOnlyVisaOption = formData.onlyVisa || selectedBookingOptions.includes("onlyvisa");
-    
+
     if (!selectedVisaType && !isPackageWithVisaTransport && !isOnlyVisaOption && !isLongTermVisaOption) {
       return {
         adultPrice: 0,
@@ -2410,7 +2495,7 @@ const AgentUmrahCalculator = () => {
     // 1. Only Visa case - highest priority when checked (includes long term visa which is only visa with long stay category)
     if (formData.onlyVisa || formData.longTermVisa || isLongTermVisa) {
       console.log("🔍 Only Visa/Long Term Visa Selected - isType2:", isType2, "longTermVisa:", formData.longTermVisa, "onlyVisaPrices:", onlyVisaPrices);
-      
+
       // PRIORITY: If onlyVisaPrices exist, use them (regardless of Type1/Type2)
       if (onlyVisaPrices.length > 0) {
         console.log("✅ Using onlyVisaPrices - total records:", onlyVisaPrices.length);
@@ -2418,7 +2503,7 @@ const AgentUmrahCalculator = () => {
         // Filter by visa_option: 'only' for Only Visa, 'long_term' for Long Term Visa
         const visaOptionFilter = formData.longTermVisa ? 'long_term' : 'only';
         const matchingPrice = onlyVisaPrices.find(p => p.visa_option === visaOptionFilter);
-        
+
         // Use matching price, or fall back to first price if no match
         const selectedPrice = matchingPrice || onlyVisaPrices[0] || {};
         console.log("✅ Using only visa price (filtered by visa_option):", selectedPrice, "visa_option filter:", visaOptionFilter);
@@ -2448,11 +2533,11 @@ const AgentUmrahCalculator = () => {
             if (tripDuration < selectedPrice.start_days || tripDuration > selectedPrice.end_days) {
               const visaLabel = selectedPrice.visa_option === 'long_term' ? 'Long Term Visa' : 'Only Visa';
               const errorMessage = `Your trip is ${tripDuration} days but the ${visaLabel} only allows trips between ${selectedPrice.start_days} and ${selectedPrice.end_days} days.`;
-              
+
               alert(errorMessage);
-              
+
               console.error("❌ Trip duration out of range:", errorMessage);
-              
+
               return {
                 adultPrice: 0,
                 childPrice: 0,
@@ -2478,7 +2563,7 @@ const AgentUmrahCalculator = () => {
           visaType: `${visaLabel} Visa`
         };
       }
-      
+
       // For Type2 visas with flight-based calculation (original complex logic)
       if (isType2 && selectedFlight) {
         // Get flight details for Type2 visa calculation
@@ -2630,7 +2715,7 @@ const AgentUmrahCalculator = () => {
       // If no visa type selected, use FIRST price matching the category
       console.log("🔍 No visa type - looking for first price with category:", category);
       const categoryPrice = visaPricesOne.find(price => price.category === category);
-      
+
       if (categoryPrice) {
         console.log("✅ Found price by category only:", categoryPrice);
         return {
@@ -3390,7 +3475,7 @@ const AgentUmrahCalculator = () => {
 
     try {
       const response = await axios.post(
-        `https://api.saer.pk/api/umrah-packages/?organization=${orgId}`,
+        `http://127.0.0.1:8000/api/umrah-packages/?organization=${orgId}`,
         payload,
         {
           headers: {
@@ -3453,15 +3538,15 @@ const AgentUmrahCalculator = () => {
 
   // Auto-select first visa type when visa-inclusive packages are selected
   useEffect(() => {
-    const needsVisa = selectedBookingOptions.includes("vtth") || 
-                      selectedBookingOptions.includes("vth") || 
-                      selectedBookingOptions.includes("vt") ||
-                      selectedBookingOptions.includes("onlyvisa") ||
-                      selectedBookingOptions.includes("longtermvisa") ||
-                      formData.addVisaPrice ||
-                      formData.onlyVisa ||
-                      formData.longTermVisa;
-    
+    const needsVisa = selectedBookingOptions.includes("vtth") ||
+      selectedBookingOptions.includes("vth") ||
+      selectedBookingOptions.includes("vt") ||
+      selectedBookingOptions.includes("onlyvisa") ||
+      selectedBookingOptions.includes("longtermvisa") ||
+      formData.addVisaPrice ||
+      formData.onlyVisa ||
+      formData.longTermVisa;
+
     if (needsVisa && !formData.visaTypeId && visaTypes.length > 0) {
       console.log("🔄 Auto-selecting first visa type:", visaTypes[0]);
       setFormData(prev => ({
@@ -3474,10 +3559,10 @@ const AgentUmrahCalculator = () => {
   // When VTTH, VTH, or VT is selected, attempt to find a matching
   // `UmrahVisaPriceTwo` bracket based on adults+children (infants excluded)
   useEffect(() => {
-    const isPackageWithVisaTransport = selectedBookingOptions.includes("vtth") || 
-                                       selectedBookingOptions.includes("vth") || 
-                                       selectedBookingOptions.includes("vt");
-    
+    const isPackageWithVisaTransport = selectedBookingOptions.includes("vtth") ||
+      selectedBookingOptions.includes("vth") ||
+      selectedBookingOptions.includes("vt");
+
     if (!isPackageWithVisaTransport) {
       setMatchedVisaForFullPackage(null);
       return;
@@ -3524,14 +3609,14 @@ const AgentUmrahCalculator = () => {
   // Validate flight dates against visa validity period for Only Visa and Long Term Visa
   useEffect(() => {
     const isOnlyVisaOrLongTerm = formData.onlyVisa || formData.longTermVisa;
-    
+
     if (!isOnlyVisaOrLongTerm || !selectedFlight || onlyVisaPrices.length === 0) {
       return;
     }
 
     // Get the active visa price based on visa_option
     const visaOption = formData.onlyVisa ? 'only' : 'long_term';
-    const activeVisaPrice = onlyVisaPrices.find(vp => 
+    const activeVisaPrice = onlyVisaPrices.find(vp =>
       (vp.visa_option || '').toLowerCase() === visaOption
     );
 
@@ -3551,7 +3636,7 @@ const AgentUmrahCalculator = () => {
 
       const arrivalDate = new Date(departureTrip.arrival_date);
       const departureDate = new Date(returnTrip.departure_date);
-      
+
       const visaStartDate = new Date(activeVisaPrice.start_date);
       const visaEndDate = new Date(activeVisaPrice.end_date);
 
@@ -3980,10 +4065,10 @@ const AgentUmrahCalculator = () => {
     quinty: "",
     checkInLocked: false,
     checkOutLocked: false
-    ,assignedFamilies: []
+    , assignedFamilies: []
   }]);
 
-    // VT auto-add flags declared earlier near booking selection state
+  // VT auto-add flags declared earlier near booking selection state
 
   // Options for self hotel names (reuse any previously entered self-hotel names)
   const selfHotelOptions = useMemo(() => {
@@ -4048,6 +4133,82 @@ const AgentUmrahCalculator = () => {
           updated[index].adault_price = 0;
           updated[index].child_price = 0;
           updated[index].infant_price = 0;
+        }
+
+        // Auto-add hotels based on big sector route
+        if (selectedSector && selectedSector.big_sector && selectedSector.big_sector.small_sectors) {
+          const bigSector = selectedSector.big_sector;
+          const smallSectors = bigSector.small_sectors;
+
+          if (smallSectors && smallSectors.length > 0) {
+            // Calculate which hotels to add based on sector types
+            const hotelsToAdd = [];
+
+            smallSectors.forEach((sector) => {
+              const sectorType = sector.sector_type;
+
+              // Add hotel for AIRPORT PICKUP or HOTEL TO HOTEL at arrival city
+              if (sectorType === 'AIRPORT PICKUP' || sectorType === 'HOTEL TO HOTEL') {
+                const city = sector.arrival_city || sector.arrival_city_code || '';
+                if (city) {
+                  hotelsToAdd.push({
+                    city: city,
+                    cityName: city
+                  });
+                }
+              }
+              // AIRPORT DROP: no hotel added
+            });
+
+            // Only proceed if we have hotels to add
+            if (hotelsToAdd.length > 0) {
+              // Use a ref or flag to prevent duplicate execution
+              // We'll use a simple approach: check current state and update immediately
+
+              // Helper function to check if a hotel has data filled in
+              const hasHotelData = (hotel) => {
+                return hotel.hotelId || hotel.roomType || hotel.checkIn || hotel.checkOut ||
+                  hotel.selfHotelName || hotel.noOfNights > 0;
+              };
+
+              // Get current hotel forms to check
+              setHotelForms(currentHotels => {
+                // Check if any existing hotel has data
+                const hasFilledHotels = currentHotels.some(hasHotelData);
+
+                // Only ask for confirmation if hotels exist AND have data
+                if (currentHotels.length > 0 && hasFilledHotels) {
+                  const confirmed = window.confirm(
+                    `You already have ${currentHotels.length} hotel(s) with data. Do you want to replace them with ${hotelsToAdd.length} hotels based on the selected transport route?`
+                  );
+
+                  if (!confirmed) return currentHotels;
+                }
+
+                // Create new hotel forms
+                const newHotelForms = hotelsToAdd.map((hotel, idx) => ({
+                  id: Date.now() + idx,
+                  hotelId: '',
+                  roomType: '',
+                  sharingType: 'Gender or Family',
+                  checkIn: '',
+                  checkOut: '',
+                  noOfNights: 0,
+                  specialRequest: 'Haraam View',
+                  isSelfHotel: false,
+                  selfHotelName: '',
+                  quinty: '',
+                  checkInLocked: false,
+                  checkOutLocked: false,
+                  assignedFamilies: [],
+                  city: hotel.city // Store city for reference
+                }));
+
+                toast.success(`Added ${hotelsToAdd.length} hotels based on transport route!`);
+                return newHotelForms;
+              });
+            }
+          }
         }
       }
       return updated;
@@ -4353,7 +4514,7 @@ const AgentUmrahCalculator = () => {
       // Prepare hotel details
       const hotelDetails = hotelForms
         .filter(form => form.hotelId || form.isSelfHotel)
-          .map(form => {
+        .map(form => {
           const selectedHotel = hotels.find(h => h.id.toString() === form.hotelId);
           const hotelCost = form.hotelId ? calculateHotelCost(form) : { total: 0 };
 
@@ -4513,7 +4674,7 @@ const AgentUmrahCalculator = () => {
 
       // Clear old sessionStorage keys first
       sessionStorage.removeItem('umrah_booknow_v1');
-      
+
       // Save to sessionStorage first (only ONE package allowed)
       // Include manualFamilies for family grouping on detail page
       const sessionPackage = {
@@ -4521,7 +4682,7 @@ const AgentUmrahCalculator = () => {
         ...payload,
         manualFamilies: manualFamilies || []
       };
-      
+
       try {
         sessionStorage.setItem('umrah_calculation_package', JSON.stringify(sessionPackage));
         setCustomPackages([sessionPackage]); // Replace with single package
@@ -4533,25 +4694,25 @@ const AgentUmrahCalculator = () => {
       if (!suppressToasts) {
         toast.success("Package added to calculations successfully!");
       }
-      
+
       setShowViewModal(false);
     } catch (error) {
       console.error("Error submitting package:", error);
       console.error("Error response:", error.response);
       console.error("Error data:", error.response?.data);
       console.error("Status code:", error.response?.status);
-      
+
       if (!suppressToasts) {
         // If there's detailed field errors, show them
         if (error.response?.data) {
           const errorData = error.response.data;
-          
+
           // Check if it's field validation errors
           if (typeof errorData === 'object' && !errorData.detail && !errorData.message) {
             // Show first field error
             const firstField = Object.keys(errorData)[0];
-            const firstError = Array.isArray(errorData[firstField]) 
-              ? errorData[firstField][0] 
+            const firstError = Array.isArray(errorData[firstField])
+              ? errorData[firstField][0]
               : errorData[firstField];
             toast.error(`${firstField}: ${firstError}`);
             console.error("Field errors:", errorData);
@@ -4571,14 +4732,14 @@ const AgentUmrahCalculator = () => {
   // Handler: Book Now (validate then submit immediately)
   const handleBookNow = async () => {
     console.log('Book Now clicked');
-    
+
     // Basic validation: require at least some passenger data
-    const totalPassengers = (parseInt(formData.totalAdults) || 0) + 
-                           (parseInt(formData.totalChilds) || 0) + 
-                           (parseInt(formData.totalInfants) || 0);
-    
+    const totalPassengers = (parseInt(formData.totalAdults) || 0) +
+      (parseInt(formData.totalChilds) || 0) +
+      (parseInt(formData.totalInfants) || 0);
+
     console.log('Total passengers:', totalPassengers);
-    
+
     if (totalPassengers === 0) {
       toast.error("Please add at least one passenger before booking");
       return;
@@ -4616,14 +4777,14 @@ const AgentUmrahCalculator = () => {
       };
 
       sessionStorage.setItem('umrah_booknow_v1', JSON.stringify(payload));
-      
+
       // Navigate to custom umrah detail page
       const draftId = `draft-${Date.now()}`;
       const targetUrl = `/packages/custom-umrah/detail/${draftId}`;
-      
+
       console.log('Navigating to:', targetUrl);
       toast.success('Saved — continuing to booking');
-      
+
       // Use window.location for reliable navigation
       window.location.href = targetUrl;
     } catch (err) {
@@ -4638,7 +4799,7 @@ const AgentUmrahCalculator = () => {
   const handleEditCalculation = async (packageId) => {
     try {
       const response = await axios.get(
-        `https://api.saer.pk/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
+        `http://127.0.0.1:8000/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -4666,24 +4827,24 @@ const AgentUmrahCalculator = () => {
       // Set hotel forms
       if (packageData.hotel_details?.length > 0) {
         setHotelForms(packageData.hotel_details.map(hotel => ({
-            id: hotel.id || Date.now(),
-            hotelId: hotel.hotel?.toString() || "",
-            hotelName: hotels.find(h => h.id === hotel.hotel)?.name || "",
-            roomType: hotel.room_type || "",
-            sharingType: hotel.sharing_type || "Gender or Family",
-            checkIn: hotel.check_in_time?.split('T')[0] || "",
-            checkOut: hotel.check_out_time?.split('T')[0] || "",
-            noOfNights: hotel.number_of_nights || 0,
-            specialRequest: hotel.special_request || "Haraam View",
-            price: hotel.price || 0,
-            // New fields
-            isSelfHotel: hotel.is_self_hotel || false,
-            selfHotelName: hotel.self_hotel_name || "",
-            quinty: hotel.quinty || "",
-            checkInLocked: false,
-            checkOutLocked: false,
-            assignedFamilies: hotel.assigned_families || []
-          })));
+          id: hotel.id || Date.now(),
+          hotelId: hotel.hotel?.toString() || "",
+          hotelName: hotels.find(h => h.id === hotel.hotel)?.name || "",
+          roomType: hotel.room_type || "",
+          sharingType: hotel.sharing_type || "Gender or Family",
+          checkIn: hotel.check_in_time?.split('T')[0] || "",
+          checkOut: hotel.check_out_time?.split('T')[0] || "",
+          noOfNights: hotel.number_of_nights || 0,
+          specialRequest: hotel.special_request || "Haraam View",
+          price: hotel.price || 0,
+          // New fields
+          isSelfHotel: hotel.is_self_hotel || false,
+          selfHotelName: hotel.self_hotel_name || "",
+          quinty: hotel.quinty || "",
+          checkInLocked: false,
+          checkOutLocked: false,
+          assignedFamilies: hotel.assigned_families || []
+        })));
       }
 
       // Set transport forms
@@ -4701,7 +4862,7 @@ const AgentUmrahCalculator = () => {
       if (packageData.ticket_details?.length > 0) {
         try {
           const flightResponse = await axios.get(
-            `https://api.saer.pk/api/tickets/${packageData.ticket_details[0].ticket}/?organization=${orgId}`,
+            `http://127.0.0.1:8000/api/tickets/${packageData.ticket_details[0].ticket}/?organization=${orgId}`,
             {
               headers: { Authorization: `Bearer ${token}` },
             }
@@ -4872,7 +5033,7 @@ const AgentUmrahCalculator = () => {
 
       // Make the PUT request
       const response = await axios.put(
-        `https://api.saer.pk/api/custom-umrah-packages/${costs.queryNumber}/`,
+        `http://127.0.0.1:8000/api/custom-umrah-packages/${costs.queryNumber}/`,
         payload,
         {
           headers: {
@@ -4913,7 +5074,7 @@ const AgentUmrahCalculator = () => {
       params.append('organization', orgId);
       if (agencyId && agencyId !== 'null') params.append('agency', agencyId);
 
-      const url = `https://api.saer.pk/api/custom-umrah-packages/?${params.toString()}`;
+      const url = `http://127.0.0.1:8000/api/custom-umrah-packages/?${params.toString()}`;
 
       const response = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
@@ -4938,7 +5099,7 @@ const AgentUmrahCalculator = () => {
     if (window.confirm("Are you sure you want to delete this package?")) {
       try {
         await axios.delete(
-          `https://api.saer.pk/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -5009,7 +5170,7 @@ const AgentUmrahCalculator = () => {
       checkOut: "",
       noOfNights: 0,
       specialRequest: "Haraam View"
-    , assignedFamilies: []
+      , assignedFamilies: []
     }]);
 
     setTransportForms([{
@@ -5076,7 +5237,7 @@ const AgentUmrahCalculator = () => {
       const hasAirline = selectedAirline || airlineName;
       const hasDates = departureDate && (returnDate || returnDepartureDate);
       const hasPnr = pnr;
-      
+
       if (!hasAirline || !hasDates || !hasPnr) {
         toast.error('Complete flight details (PNR, airline, departure and return dates) are required when visa is part of the booking');
         return false;
@@ -5156,12 +5317,12 @@ const AgentUmrahCalculator = () => {
     if (!selectedHotel) return { perNight: 0, total: 0 };
 
     let activePrice = getActivePriceForDates(selectedHotel, form.checkIn, form.roomType);
-    
+
     // If no price found for the date range, use the first available price as fallback
     if (!activePrice && selectedHotel.prices && selectedHotel.prices.length > 0) {
       activePrice = selectedHotel.prices[0];
     }
-    
+
     if (!activePrice) return { perNight: 0, total: 0 };
 
     const nights = parseInt(form.noOfNights || 0) || 0;
@@ -5202,7 +5363,7 @@ const AgentUmrahCalculator = () => {
   // And update the fetchRiyalRate function:
   const fetchRiyalRate = async () => {
     try {
-      const response = await axios.get("https://api.saer.pk/api/riyal-rates/", {
+      const response = await axios.get("http://127.0.0.1:8000/api/riyal-rates/", {
         params: { organization: orgId },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -5346,7 +5507,7 @@ const AgentUmrahCalculator = () => {
             let remainder = totalNights % updated.length;
             for (let i = 0; i < updated.length; i++) {
               updated[i].noOfNights = base + (remainder > 0 ? 1 : 0);
-              if (remainder > 0) remainder--; 
+              if (remainder > 0) remainder--;
             }
           }
         }
@@ -5448,7 +5609,7 @@ const AgentUmrahCalculator = () => {
         quinty: "",
         checkInLocked: false,
         checkOutLocked: false
-        ,assignedFamilies: []
+        , assignedFamilies: []
       };
 
       return [...prev, newHotel];
@@ -5619,7 +5780,7 @@ const AgentUmrahCalculator = () => {
               onChange={(opt) => {
                 const roomType = opt ? opt.value : '';
                 updateHotelForm(index, 'roomType', roomType);
-                
+
                 // Auto-sync room type to all families for this hotel
                 if (roomType && familyGroups.length > 0) {
                   setFamilyRoomTypes(prev => {
@@ -5665,12 +5826,12 @@ const AgentUmrahCalculator = () => {
           {(() => {
             const hotelObj = hotels.find(h => h.id.toString() === form.hotelId);
             let activePrice = hotelObj ? getActivePriceForDates(hotelObj, form.checkIn, form.roomType) : null;
-            
+
             // If no active price found for the date, use first available price as fallback
             if (!activePrice && hotelObj?.prices && hotelObj.prices.length > 0) {
               activePrice = hotelObj.prices[0];
             }
-            
+
             // Determine pricing semantics and compute totals correctly.
             // Pricing can be either per-room-per-night or per-person-per-night (Sharing).
             const rawPrice = activePrice?.price ?? activePrice?.selling_price ?? 0;
@@ -5941,7 +6102,7 @@ const AgentUmrahCalculator = () => {
 
   // Utility: convert manualFamilies -> familyGroups (array of sizes)
   const manualFamiliesToGroups = (families) => {
-    return (families || []).map(f => (parseInt(f.adults||0) + parseInt(f.children||0) + parseInt(f.infants||0)));
+    return (families || []).map(f => (parseInt(f.adults || 0) + parseInt(f.children || 0) + parseInt(f.infants || 0)));
   };
 
   // Sync hotelForms.assignedFamilies when familyGroups changes
@@ -6106,10 +6267,10 @@ const AgentUmrahCalculator = () => {
                                 );
                               })}
                             </div>
-                              <div className="mt-3">
-                                <small className="text-muted">Selected: {selectedBookingOptions.length > 0 ? selectedBookingOptions.map(id => bookingOptionsList.find(o=>o.id===id)?.label).join(' • ') : 'None'}</small>
-                                {/* Next button removed per request */}
-                              </div>
+                            <div className="mt-3">
+                              <small className="text-muted">Selected: {selectedBookingOptions.length > 0 ? selectedBookingOptions.map(id => bookingOptionsList.find(o => o.id === id)?.label).join(' • ') : 'None'}</small>
+                              {/* Next button removed per request */}
+                            </div>
                           </div>
                         </div>
 
@@ -6212,7 +6373,7 @@ const AgentUmrahCalculator = () => {
                           </div>
 
                           <div className="col-12 mt-2">
-                            <div className="fw-semibold">Total PAX: <span className="text-primary">{(parseInt(formData.totalAdults||0) + parseInt(formData.totalChilds||0) + parseInt(formData.totalInfants||0))}</span></div>
+                            <div className="fw-semibold">Total PAX: <span className="text-primary">{(parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0))}</span></div>
                           </div>
                           {seatWarning && (
                             <div className="col-12 mt-2">
@@ -6380,183 +6541,239 @@ const AgentUmrahCalculator = () => {
                         ))}
                       </div> */}
 
-                      
+
 
                       {/* Transport Details */}
                       {(() => {
                         return null;
                       })()}
                       {selectedServices.has("transport") && (
-                      <div className="mb-4">
-                        <div className="card shadow-sm border p-3">
-                          <h5 className="mb-3 fw-bold">Transport Details</h5>
+                        <div className="mb-4">
+                          <div className="card shadow-sm border p-3">
+                            <h5 className="mb-3 fw-bold">Transport Details</h5>
 
-                          {transportForms.map((form, index) => (
-                            <div key={form.id} className="card mb-3 shadow-sm border p-3">
-                              <div className="d-flex justify-content-between align-items-start">
-                                <h6 className="mb-2 fw-semibold">Route {index + 1}</h6>
-                              </div>
+                            {transportForms.map((form, index) => (
+                              <div key={form.id} className="card mb-3 shadow-sm border p-3">
+                                <div className="d-flex justify-content-between align-items-start">
+                                  <h6 className="mb-2 fw-semibold">Route {index + 1}</h6>
+                                </div>
 
-                              {/* Transport Info */}
-                              <div className="mb-3 border rounded p-3">
-                                <small className="fw-semibold">Transport Info</small>
-                                <div className="row g-3 mt-2">
-                                  {(() => {
-                                    const totalPersons = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0);
-                                    const sectorObj = transportSectors.find(s => s.id.toString() === form.transportSectorId);
-                                    const perPersonPrice = sectorObj ? (sectorObj.adault_price || 0) : 0;
-                                    const totalPrice = perPersonPrice * totalPersons;
+                                {/* Transport Info */}
+                                <div className="mb-3 border rounded p-3">
+                                  <small className="fw-semibold">Transport Info</small>
+                                  <div className="row g-3 mt-2">
+                                    {(() => {
+                                      const totalPersons = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0);
+                                      const sectorObj = transportSectors.find(s => s.id.toString() === form.transportSectorId);
+                                      const perPersonPrice = sectorObj ? (sectorObj.adault_price || 0) : 0;
+                                      const totalPrice = perPersonPrice * totalPersons;
+
+                                      return (
+                                        <>
+                                          <div className="col-12 col-md-6">
+                                            <label className="form-label small mb-1">Transport Type</label>
+                                            <Select
+                                              options={[...new Set(availableTransportSectors.map(s => s.vehicle_type))].map(type => ({ value: String(type), label: String(type) }))}
+                                              value={(([...new Set(availableTransportSectors.map(s => s.vehicle_type))].map(type => ({ value: String(type), label: String(type) })).find(o => o.value === String(form.transportType))) || null)}
+                                              onChange={(opt) => {
+                                                const val = opt ? opt.value : '';
+                                                updateTransportForm(index, 'transportType', val);
+                                                updateTransportForm(index, 'transportSectorId', '');
+                                              }}
+                                              isDisabled={form.self || !selectedServices.has('transport')}
+                                              isClearable
+                                              placeholder="Select Transport Type"
+                                              classNamePrefix="react-select"
+                                            />
+                                          </div>
+
+                                          <div className="col-12 col-md-6">
+                                            <label className="form-label small mb-1">Transport Sector</label>
+                                            <Select
+                                              options={availableTransportSectors.filter(s => s.vehicle_type === form.transportType).map(sector => {
+                                                // Helper function to format sector display
+                                                const getSectorLabel = (sector) => {
+                                                  // If big_sector exists, show full route
+                                                  if (sector.big_sector && sector.big_sector.small_sectors && sector.big_sector.small_sectors.length > 0) {
+                                                    const cityCodes = [];
+                                                    const sortedSectors = sector.big_sector.small_sectors;
+
+                                                    // Add first departure city
+                                                    if (sortedSectors[0]) {
+                                                      cityCodes.push(sortedSectors[0].departure_city || sortedSectors[0].departure_city_code || '');
+                                                    }
+
+                                                    // Add all arrival cities
+                                                    sortedSectors.forEach(s => {
+                                                      cityCodes.push(s.arrival_city || s.arrival_city_code || '');
+                                                    });
+
+                                                    // Remove consecutive duplicates
+                                                    const uniqueCodes = cityCodes.filter((code, index, array) =>
+                                                      index === 0 || code !== array[index - 1]
+                                                    );
+
+                                                    return `${uniqueCodes.join('-')} (${sortedSectors.length} sectors)`;
+                                                  }
+
+                                                  // Otherwise show small sector route
+                                                  const departure = sector.small_sector?.departure_city_code || sector.small_sector?.departure_city || '';
+                                                  const arrival = sector.small_sector?.arrival_city_code || sector.small_sector?.arrival_city || '';
+                                                  const name = sector.name ? ` (${sector.name})` : '';
+                                                  return `${departure} → ${arrival}${name}`;
+                                                };
+
+                                                return {
+                                                  value: String(sector.id),
+                                                  label: getSectorLabel(sector)
+                                                };
+                                              })}
+                                              value={(availableTransportSectors.filter(s => s.vehicle_type === form.transportType).map(sector => {
+                                                const getSectorLabel = (sector) => {
+                                                  if (sector.big_sector && sector.big_sector.small_sectors && sector.big_sector.small_sectors.length > 0) {
+                                                    const cityCodes = [];
+                                                    const sortedSectors = sector.big_sector.small_sectors;
+                                                    if (sortedSectors[0]) {
+                                                      cityCodes.push(sortedSectors[0].departure_city || sortedSectors[0].departure_city_code || '');
+                                                    }
+                                                    sortedSectors.forEach(s => {
+                                                      cityCodes.push(s.arrival_city || s.arrival_city_code || '');
+                                                    });
+                                                    const uniqueCodes = cityCodes.filter((code, index, array) =>
+                                                      index === 0 || code !== array[index - 1]
+                                                    );
+                                                    return `${uniqueCodes.join('-')} (${sortedSectors.length} sectors)`;
+                                                  }
+                                                  const departure = sector.small_sector?.departure_city_code || sector.small_sector?.departure_city || '';
+                                                  const arrival = sector.small_sector?.arrival_city_code || sector.small_sector?.arrival_city || '';
+                                                  const name = sector.name ? ` (${sector.name})` : '';
+                                                  return `${departure} → ${arrival}${name}`;
+                                                };
+                                                return {
+                                                  value: String(sector.id),
+                                                  label: getSectorLabel(sector)
+                                                };
+                                              })).find(o => o.value === String(form.transportSectorId)) || null}
+                                              onChange={(opt) => updateTransportForm(index, 'transportSectorId', opt ? opt.value : '')}
+                                              isDisabled={form.self || !form.transportType || !selectedServices.has('transport')}
+                                              isClearable
+                                              placeholder="Select Sector"
+                                              classNamePrefix="react-select"
+                                            />
+                                          </div>
+
+                                          <div className="col-12 col-md-4 d-flex align-items-center">
+                                            <div className="form-check d-flex align-items-center gap-2">
+                                              <input
+                                                className="form-check-input border border-black"
+                                                type="checkbox"
+                                                checked={form.self}
+                                                onChange={(e) => updateTransportForm(index, 'self', e.target.checked)}
+                                                id={`transportSelf-${form.id}`}
+                                              />
+                                              <label htmlFor={`transportSelf-${form.id}`} className="form-label small mb-1">Self</label>
+                                            </div>
+                                          </div>
+
+
+                                        </>
+                                      );
+                                    })()}
+                                  </div>
+                                </div>
+
+                                {/* Pricing */}
+                                <div className="mb-3 border rounded p-3">
+                                  <small className="fw-semibold">Pricing</small>
+                                  {form.transportSectorId && !form.self && (() => {
+                                    const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
+                                    const adults = parseInt(formData.totalAdults || 0);
+                                    const childs = parseInt(formData.totalChilds || 0);
+                                    const infants = parseInt(formData.totalInfants || 0);
+                                    const adultPrice = sector?.adault_price || 0;
+                                    const childPrice = sector?.child_price || 0;
+                                    const infantPrice = sector?.infant_price || 0;
+                                    const totalTransportPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
 
                                     return (
                                       <>
-                                        <div className="col-12 col-md-6">
-                                          <label className="form-label small mb-1">Transport Type</label>
-                                          <Select
-                                            options={[...new Set(availableTransportSectors.map(s => s.vehicle_type))].map(type => ({ value: String(type), label: String(type) }))}
-                                            value={(([...new Set(availableTransportSectors.map(s => s.vehicle_type))].map(type => ({ value: String(type), label: String(type) })).find(o => o.value === String(form.transportType))) || null)}
-                                            onChange={(opt) => {
-                                              const val = opt ? opt.value : '';
-                                              updateTransportForm(index, 'transportType', val);
-                                              updateTransportForm(index, 'transportSectorId', '');
-                                            }}
-                                            isDisabled={form.self || !selectedServices.has('transport')}
-                                            isClearable
-                                            placeholder="Select Transport Type"
-                                            classNamePrefix="react-select"
-                                          />
-                                        </div>
-
-                                        <div className="col-12 col-md-6">
-                                          <label className="form-label small mb-1">Transport Sector</label>
-                                          <Select
-                                            options={availableTransportSectors.filter(s => s.vehicle_type === form.transportType).map(sector => ({
-                                              value: String(sector.id),
-                                              label: `${sector.small_sector?.departure_city_code || sector.small_sector?.departure_city || ''} → ${sector.small_sector?.arrival_city_code || sector.small_sector?.arrival_city || ''} ${sector.name ? `(${sector.name})` : ''}`
-                                            }))}
-                                            value={(availableTransportSectors.filter(s => s.vehicle_type === form.transportType).map(sector => ({
-                                              value: String(sector.id),
-                                              label: `${sector.small_sector?.departure_city_code || sector.small_sector?.departure_city || ''} → ${sector.small_sector?.arrival_city_code || sector.small_sector?.arrival_city || ''} ${sector.name ? `(${sector.name})` : ''}`
-                                            })).find(o => o.value === String(form.transportSectorId))) || null}
-                                            onChange={(opt) => updateTransportForm(index, 'transportSectorId', opt ? opt.value : '')}
-                                            isDisabled={form.self || !form.transportType || !selectedServices.has('transport')}
-                                            isClearable
-                                            placeholder="Select Sector"
-                                            classNamePrefix="react-select"
-                                          />
-                                        </div>
-
-                                        <div className="col-12 col-md-4 d-flex align-items-center">
-                                          <div className="form-check d-flex align-items-center gap-2">
-                                            <input
-                                              className="form-check-input border border-black"
-                                              type="checkbox"
-                                              checked={form.self}
-                                              onChange={(e) => updateTransportForm(index, 'self', e.target.checked)}
-                                              id={`transportSelf-${form.id}`}
-                                            />
-                                            <label htmlFor={`transportSelf-${form.id}`} className="form-label small mb-1">Self</label>
+                                        <div className="row mt-2">
+                                          <div className="col-12 col-md-4 mb-2">
+                                            <div className="alert alert-info p-2 mb-0">
+                                              <small>
+                                                Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'transport')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'transport')}
+                                              </small>
+                                            </div>
+                                          </div>
+                                          <div className="col-12 col-md-4 mb-2">
+                                            <div className="alert alert-info p-2 mb-0">
+                                              <small>
+                                                Child: {formatPriceWithCurrencyDisplay(childPrice, 'transport')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'transport')}
+                                              </small>
+                                            </div>
+                                          </div>
+                                          <div className="col-12 col-md-4 mb-2">
+                                            <div className="alert alert-info p-2 mb-0">
+                                              <small>
+                                                Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'transport')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'transport')}
+                                              </small>
+                                            </div>
                                           </div>
                                         </div>
-
-                                        
+                                        <div className="row">
+                                          <div className="col-12">
+                                            <div className="alert alert-success p-2 mb-0">
+                                              <small className="fw-bold">
+                                                Total Transport Price: {formatPriceWithCurrencyDisplay(totalTransportPrice, 'transport')}
+                                              </small>
+                                            </div>
+                                          </div>
+                                        </div>
                                       </>
                                     );
                                   })()}
+
+                                  {form.transportSectorId && !form.self && (() => {
+                                    const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
+                                    const note = sector?.note || sector?.description || sector?.transport_note || sector?.note_text || sector?.details;
+                                    if (!note) return null;
+                                    return (
+                                      <div className="row mt-2">
+                                        <div className="col-12">
+                                          <div className="alert alert-secondary p-2">
+                                            <small><strong>Note:</strong> {note}</small>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+
+                                <div className="d-flex justify-content-end mt-3">
+                                  <button
+                                    className="btn btn-danger btn-sm"
+                                    onClick={() => removeTransportForm(index)}
+                                    disabled={transportForms.length <= 1}
+                                  >
+                                    Remove
+                                  </button>
                                 </div>
                               </div>
+                            ))}
 
-                              {/* Pricing */}
-                              <div className="mb-3 border rounded p-3">
-                                <small className="fw-semibold">Pricing</small>
-                                {form.transportSectorId && !form.self && (() => {
-                                  const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
-                                  const adults = parseInt(formData.totalAdults || 0);
-                                  const childs = parseInt(formData.totalChilds || 0);
-                                  const infants = parseInt(formData.totalInfants || 0);
-                                  const adultPrice = sector?.adault_price || 0;
-                                  const childPrice = sector?.child_price || 0;
-                                  const infantPrice = sector?.infant_price || 0;
-                                  const totalTransportPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
-
-                                  return (
-                                    <>
-                                      <div className="row mt-2">
-                                        <div className="col-12 col-md-4 mb-2">
-                                          <div className="alert alert-info p-2 mb-0">
-                                            <small>
-                                              Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'transport')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'transport')}
-                                            </small>
-                                          </div>
-                                        </div>
-                                        <div className="col-12 col-md-4 mb-2">
-                                          <div className="alert alert-info p-2 mb-0">
-                                            <small>
-                                              Child: {formatPriceWithCurrencyDisplay(childPrice, 'transport')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'transport')}
-                                            </small>
-                                          </div>
-                                        </div>
-                                        <div className="col-12 col-md-4 mb-2">
-                                          <div className="alert alert-info p-2 mb-0">
-                                            <small>
-                                              Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'transport')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'transport')}
-                                            </small>
-                                          </div>
-                                        </div>
-                                      </div>
-                                      <div className="row">
-                                        <div className="col-12">
-                                          <div className="alert alert-success p-2 mb-0">
-                                            <small className="fw-bold">
-                                              Total Transport Price: {formatPriceWithCurrencyDisplay(totalTransportPrice, 'transport')}
-                                            </small>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </>
-                                  );
-                                })()}
-
-                                {form.transportSectorId && !form.self && (() => {
-                                  const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
-                                  const note = sector?.note || sector?.description || sector?.transport_note || sector?.note_text || sector?.details;
-                                  if (!note) return null;
-                                  return (
-                                    <div className="row mt-2">
-                                      <div className="col-12">
-                                        <div className="alert alert-secondary p-2">
-                                          <small><strong>Note:</strong> {note}</small>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-
-                              <div className="d-flex justify-content-end mt-3">
-                                <button
-                                  className="btn btn-danger btn-sm"
-                                  onClick={() => removeTransportForm(index)}
-                                  disabled={transportForms.length <= 1}
-                                >
-                                  Remove
-                                </button>
-                              </div>
+                            <div className="mt-3">
+                              <button
+                                id="btn"
+                                className="btn btn-primary btn-lg w-100 d-flex justify-content-center align-items-center"
+                                onClick={addTransportForm}
+                                disabled={!selectedServices.has('transport')}
+                                style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
+                              >
+                                <PlusCircle size={18} className="me-2" /> Add Another Route
+                              </button>
                             </div>
-                          ))}
-
-                          <div className="mt-3">
-                            <button
-                              id="btn"
-                              className="btn btn-primary btn-lg w-100 d-flex justify-content-center align-items-center"
-                              onClick={addTransportForm}
-                              disabled={!selectedServices.has('transport')}
-                              style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
-                            >
-                              <PlusCircle size={18} className="me-2" /> Add Another Route
-                            </button>
                           </div>
                         </div>
-                      </div>
                       )}
 
                       {/* Family Divider editor moved inline; modal removed */}
@@ -6595,207 +6812,207 @@ const AgentUmrahCalculator = () => {
                               )}
                             </div>
                           </div>
-                              {/* Flight details table matching client design */}
-                              <div className="table-responsive mb-3">
-                                <table className="table table-sm align-middle">
-                                  <thead>
-                                    <tr>
-                                      <th style={{ width: "90px" }}></th>
-                                      <th style={{ width: "140px" }}>PNR</th>
-                                      <th style={{ width: "160px" }}>Flight</th>
-                                      <th style={{ width: "90px" }}>No</th>
-                                      <th style={{ width: "120px" }}>FROM</th>
-                                      <th style={{ width: "120px" }}>TO</th>
-                                      <th style={{ width: "160px" }}>Departure Date & Time</th>
-                                      <th style={{ width: "160px" }}>Arrival Date & Time</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    <tr>
-                                      <td><strong>Departure</strong></td>
-                                      <td>
-                                        <input
-                                          type="text"
-                                          className="form-control form-control-sm"
-                                          placeholder="PNR"
-                                          value={pnr}
-                                          onChange={(e) => setPnr(e.target.value)}
-                                          disabled={isFullPackage}
-                                        />
-                                      </td>
-                                      <td>
-                                        <Select
-                                          options={airlines.map(a => ({ 
-                                            value: String(a.id), 
-                                            label: a.code || a.name 
-                                          }))}
-                                          value={airlines.map(a => ({ 
-                                            value: String(a.id), 
-                                            label: a.code || a.name 
-                                          })).find(o => o.value === String(selectedAirline)) || null}
-                                          onChange={(opt) => {
-                                            setSelectedAirline(opt ? opt.value : '');
-                                          }}
-                                          isClearable
-                                          isDisabled={isFullPackage}
-                                          placeholder="Select Airline"
-                                          classNamePrefix="react-select"
-                                        />
-                                      </td>
-                                      <td>
-                                        <input type="text" className="form-control form-control-sm" value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} disabled={isFullPackage} />
-                                      </td>
-                                      <td>
-                                        {ticketId ? (
-                                          <input type="text" className="form-control form-control-sm" value={fromSector} onChange={(e) => setFromSector(e.target.value)} disabled={isFullPackage} />
-                                        ) : (
-                                          <CitySelect
-                                            value={fromSector}
-                                            onChange={(v) => setFromSector(v)}
-                                            placeholder="FROM"
-                                            isDisabled={isFullPackage}
-                                          />
-                                        )}
-                                      </td>
-                                      <td>
-                                        {ticketId ? (
-                                          <input type="text" className="form-control form-control-sm" value={toSector} onChange={(e) => setToSector(e.target.value)} disabled={isFullPackage} />
-                                        ) : (
-                                          <CitySelect
-                                            value={toSector}
-                                            onChange={(v) => setToSector(v)}
-                                            placeholder="TO"
-                                            isDisabled={isFullPackage}
-                                          />
-                                        )}
-                                      </td>
-                                      <td>
-                                        <input type="datetime-local" className="form-control form-control-sm" value={departureDate || ""} onChange={(e) => setDepartureDate(e.target.value)} disabled={isFullPackage} />
-                                      </td>
+                          {/* Flight details table matching client design */}
+                          <div className="table-responsive mb-3">
+                            <table className="table table-sm align-middle">
+                              <thead>
+                                <tr>
+                                  <th style={{ width: "90px" }}></th>
+                                  <th style={{ width: "140px" }}>PNR</th>
+                                  <th style={{ width: "160px" }}>Flight</th>
+                                  <th style={{ width: "90px" }}>No</th>
+                                  <th style={{ width: "120px" }}>FROM</th>
+                                  <th style={{ width: "120px" }}>TO</th>
+                                  <th style={{ width: "160px" }}>Departure Date & Time</th>
+                                  <th style={{ width: "160px" }}>Arrival Date & Time</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr>
+                                  <td><strong>Departure</strong></td>
+                                  <td>
+                                    <input
+                                      type="text"
+                                      className="form-control form-control-sm"
+                                      placeholder="PNR"
+                                      value={pnr}
+                                      onChange={(e) => setPnr(e.target.value)}
+                                      disabled={isFullPackage}
+                                    />
+                                  </td>
+                                  <td>
+                                    <Select
+                                      options={airlines.map(a => ({
+                                        value: String(a.id),
+                                        label: a.code || a.name
+                                      }))}
+                                      value={airlines.map(a => ({
+                                        value: String(a.id),
+                                        label: a.code || a.name
+                                      })).find(o => o.value === String(selectedAirline)) || null}
+                                      onChange={(opt) => {
+                                        setSelectedAirline(opt ? opt.value : '');
+                                      }}
+                                      isClearable
+                                      isDisabled={isFullPackage}
+                                      placeholder="Select Airline"
+                                      classNamePrefix="react-select"
+                                    />
+                                  </td>
+                                  <td>
+                                    <input type="text" className="form-control form-control-sm" value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} disabled={isFullPackage} />
+                                  </td>
+                                  <td>
+                                    {ticketId ? (
+                                      <input type="text" className="form-control form-control-sm" value={fromSector} onChange={(e) => setFromSector(e.target.value)} disabled={isFullPackage} />
+                                    ) : (
+                                      <CitySelect
+                                        value={fromSector}
+                                        onChange={(v) => setFromSector(v)}
+                                        placeholder="FROM"
+                                        isDisabled={isFullPackage}
+                                      />
+                                    )}
+                                  </td>
+                                  <td>
+                                    {ticketId ? (
+                                      <input type="text" className="form-control form-control-sm" value={toSector} onChange={(e) => setToSector(e.target.value)} disabled={isFullPackage} />
+                                    ) : (
+                                      <CitySelect
+                                        value={toSector}
+                                        onChange={(v) => setToSector(v)}
+                                        placeholder="TO"
+                                        isDisabled={isFullPackage}
+                                      />
+                                    )}
+                                  </td>
+                                  <td>
+                                    <input type="datetime-local" className="form-control form-control-sm" value={departureDate || ""} onChange={(e) => setDepartureDate(e.target.value)} disabled={isFullPackage} />
+                                  </td>
 
-                                      <td>
-                                        <input type="datetime-local" className="form-control form-control-sm" value={returnDate || ""} onChange={(e) => setReturnDate(e.target.value)} disabled={isFullPackage} />
-                                      </td>
-                                    </tr>
+                                  <td>
+                                    <input type="datetime-local" className="form-control form-control-sm" value={returnDate || ""} onChange={(e) => setReturnDate(e.target.value)} disabled={isFullPackage} />
+                                  </td>
+                                </tr>
 
-                                    <tr>
-                                      <td><strong>Return</strong></td>
-                                      <td>
-                                        <input
-                                          type="text"
-                                          className="form-control form-control-sm"
-                                          placeholder="PNR"
-                                          value={returnPnr}
-                                          onChange={(e) => setReturnPnr(e.target.value)}
-                                          disabled={isFullPackage}
-                                        />
-                                      </td>
-                                      <td>
-                                        <Select
-                                          options={airlines.map(a => ({ 
-                                            value: String(a.id), 
-                                            label: a.code || a.name 
-                                          }))}
-                                          value={airlines.map(a => ({ 
-                                            value: String(a.id), 
-                                            label: a.code || a.name 
-                                          })).find(o => o.value === String(selectedReturnAirline)) || null}
-                                          onChange={(opt) => {
-                                            setSelectedReturnAirline(opt ? opt.value : '');
-                                          }}
-                                          isClearable
-                                          isDisabled={isFullPackage}
-                                          placeholder="Select Airline"
-                                          classNamePrefix="react-select"
-                                        />
-                                      </td>
-                                      <td>
-                                        <input type="text" className="form-control form-control-sm" value={returnFlightNumber} onChange={(e) => setReturnFlightNumber(e.target.value)} disabled={isFullPackage} />
-                                      </td>
-                                      <td>
-                                        {ticketId ? (
-                                          <input type="text" className="form-control form-control-sm" value={returnFromSector} onChange={(e) => setReturnFromSector(e.target.value)} disabled={isFullPackage} />
-                                        ) : (
-                                          <CitySelect
-                                            value={returnFromSector}
-                                            onChange={(v) => setReturnFromSector(v)}
-                                            placeholder="FROM"
-                                            isDisabled={isFullPackage}
-                                          />
-                                        )}
-                                      </td>
-                                      <td>
-                                        {ticketId ? (
-                                          <input type="text" className="form-control form-control-sm" value={returnToSector} onChange={(e) => setReturnToSector(e.target.value)} disabled={isFullPackage} />
-                                        ) : (
-                                          <CitySelect
-                                            value={returnToSector}
-                                            onChange={(v) => setReturnToSector(v)}
-                                            placeholder="TO"
-                                            isDisabled={isFullPackage}
-                                          />
-                                        )}
-                                      </td>
-                                      <td>
-                                        <input type="datetime-local" className="form-control form-control-sm" value={returnDepartureDate || ""} onChange={(e) => setReturnDepartureDate(e.target.value)} disabled={isFullPackage} />
-                                      </td>
+                                <tr>
+                                  <td><strong>Return</strong></td>
+                                  <td>
+                                    <input
+                                      type="text"
+                                      className="form-control form-control-sm"
+                                      placeholder="PNR"
+                                      value={returnPnr}
+                                      onChange={(e) => setReturnPnr(e.target.value)}
+                                      disabled={isFullPackage}
+                                    />
+                                  </td>
+                                  <td>
+                                    <Select
+                                      options={airlines.map(a => ({
+                                        value: String(a.id),
+                                        label: a.code || a.name
+                                      }))}
+                                      value={airlines.map(a => ({
+                                        value: String(a.id),
+                                        label: a.code || a.name
+                                      })).find(o => o.value === String(selectedReturnAirline)) || null}
+                                      onChange={(opt) => {
+                                        setSelectedReturnAirline(opt ? opt.value : '');
+                                      }}
+                                      isClearable
+                                      isDisabled={isFullPackage}
+                                      placeholder="Select Airline"
+                                      classNamePrefix="react-select"
+                                    />
+                                  </td>
+                                  <td>
+                                    <input type="text" className="form-control form-control-sm" value={returnFlightNumber} onChange={(e) => setReturnFlightNumber(e.target.value)} disabled={isFullPackage} />
+                                  </td>
+                                  <td>
+                                    {ticketId ? (
+                                      <input type="text" className="form-control form-control-sm" value={returnFromSector} onChange={(e) => setReturnFromSector(e.target.value)} disabled={isFullPackage} />
+                                    ) : (
+                                      <CitySelect
+                                        value={returnFromSector}
+                                        onChange={(v) => setReturnFromSector(v)}
+                                        placeholder="FROM"
+                                        isDisabled={isFullPackage}
+                                      />
+                                    )}
+                                  </td>
+                                  <td>
+                                    {ticketId ? (
+                                      <input type="text" className="form-control form-control-sm" value={returnToSector} onChange={(e) => setReturnToSector(e.target.value)} disabled={isFullPackage} />
+                                    ) : (
+                                      <CitySelect
+                                        value={returnToSector}
+                                        onChange={(v) => setReturnToSector(v)}
+                                        placeholder="TO"
+                                        isDisabled={isFullPackage}
+                                      />
+                                    )}
+                                  </td>
+                                  <td>
+                                    <input type="datetime-local" className="form-control form-control-sm" value={returnDepartureDate || ""} onChange={(e) => setReturnDepartureDate(e.target.value)} disabled={isFullPackage} />
+                                  </td>
 
-                                      <td>
-                                        <input type="datetime-local" className="form-control form-control-sm" value={returnReturnDate || ""} onChange={(e) => setReturnReturnDate(e.target.value)} disabled={isFullPackage} />
-                                      </td>
-                                    </tr>
-                                  </tbody>
-                                </table>
-                              </div>
+                                  <td>
+                                    <input type="datetime-local" className="form-control form-control-sm" value={returnReturnDate || ""} onChange={(e) => setReturnReturnDate(e.target.value)} disabled={isFullPackage} />
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
 
-                              {/* Pricing */}
-                              {selectedFlight && (() => {
-                                const adults = parseInt(formData.totalAdults || 0);
-                                const childs = parseInt(formData.totalChilds || 0);
-                                const infants = parseInt(formData.totalInfants || 0);
-                                const adultPrice = selectedFlight.adult_price || selectedFlight.adult_fare || 0;
-                                const childPrice = selectedFlight.child_price || selectedFlight.child_fare || 0;
-                                const infantPrice = selectedFlight.infant_price || selectedFlight.infant_fare || 0;
-                                const totalFlightPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
+                          {/* Pricing */}
+                          {selectedFlight && (() => {
+                            const adults = parseInt(formData.totalAdults || 0);
+                            const childs = parseInt(formData.totalChilds || 0);
+                            const infants = parseInt(formData.totalInfants || 0);
+                            const adultPrice = selectedFlight.adult_price || selectedFlight.adult_fare || 0;
+                            const childPrice = selectedFlight.child_price || selectedFlight.child_fare || 0;
+                            const infantPrice = selectedFlight.infant_price || selectedFlight.infant_fare || 0;
+                            const totalFlightPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
 
-                                return (
-                                  <div className="mt-3 border rounded p-3">
-                                    <small className="fw-semibold">Pricing</small>
-                                    <div className="row mt-2">
-                                      <div className="col-12 col-md-4 mb-2">
-                                        <div className="alert alert-info p-2 mb-0">
-                                          <small>
-                                            Adult: PKR {adultPrice.toLocaleString()} × {adults} = PKR {(adults * adultPrice).toLocaleString()}
-                                          </small>
-                                        </div>
-                                      </div>
-                                      <div className="col-12 col-md-4 mb-2">
-                                        <div className="alert alert-info p-2 mb-0">
-                                          <small>
-                                            Child: PKR {childPrice.toLocaleString()} × {childs} = PKR {(childs * childPrice).toLocaleString()}
-                                          </small>
-                                        </div>
-                                      </div>
-                                      <div className="col-12 col-md-4 mb-2">
-                                        <div className="alert alert-info p-2 mb-0">
-                                          <small>
-                                            Infant: PKR {infantPrice.toLocaleString()} × {infants} = PKR {(infants * infantPrice).toLocaleString()}
-                                          </small>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="row">
-                                      <div className="col-12">
-                                        <div className="alert alert-success p-2 mb-0">
-                                          <small className="fw-bold">
-                                            Total Flight Price: PKR {totalFlightPrice.toLocaleString()}
-                                          </small>
-                                        </div>
-                                      </div>
+                            return (
+                              <div className="mt-3 border rounded p-3">
+                                <small className="fw-semibold">Pricing</small>
+                                <div className="row mt-2">
+                                  <div className="col-12 col-md-4 mb-2">
+                                    <div className="alert alert-info p-2 mb-0">
+                                      <small>
+                                        Adult: PKR {adultPrice.toLocaleString()} × {adults} = PKR {(adults * adultPrice).toLocaleString()}
+                                      </small>
                                     </div>
                                   </div>
-                                );
-                              })()}
+                                  <div className="col-12 col-md-4 mb-2">
+                                    <div className="alert alert-info p-2 mb-0">
+                                      <small>
+                                        Child: PKR {childPrice.toLocaleString()} × {childs} = PKR {(childs * childPrice).toLocaleString()}
+                                      </small>
+                                    </div>
+                                  </div>
+                                  <div className="col-12 col-md-4 mb-2">
+                                    <div className="alert alert-info p-2 mb-0">
+                                      <small>
+                                        Infant: PKR {infantPrice.toLocaleString()} × {infants} = PKR {(infants * infantPrice).toLocaleString()}
+                                      </small>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="row">
+                                  <div className="col-12">
+                                    <div className="alert alert-success p-2 mb-0">
+                                      <small className="fw-bold">
+                                        Total Flight Price: PKR {totalFlightPrice.toLocaleString()}
+                                      </small>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                       <FlightModal
@@ -6854,21 +7071,21 @@ const AgentUmrahCalculator = () => {
                                 <div>
                                   {manualFamilies.map((f, idx) => {
                                     const familySize = (parseInt(f.adults || 0) + parseInt(f.children || 0) + parseInt(f.infants || 0));
-                                    
+
                                     return (
                                       <div className="mb-3 pb-3 border-bottom" key={idx}>
                                         {/* Header row with labels for each family */}
                                         <div className="d-flex align-items-center mb-2">
-                                          <div className="me-2 small fw-semibold" style={{minWidth:140}}>Family Name</div>
+                                          <div className="me-2 small fw-semibold" style={{ minWidth: 140 }}>Family Name</div>
                                           <div className="me-2 small fw-semibold text-center" style={{ width: 120 }}>Adults</div>
                                           <div className="me-2 small fw-semibold text-center" style={{ width: 120 }}>Children</div>
                                           <div className="me-2 small fw-semibold text-center" style={{ width: 120 }}>Infants</div>
                                           <div style={{ width: 100 }}></div>
                                         </div>
-                                        
+
                                         {/* Passenger counts row */}
                                         <div className="d-flex align-items-center mb-2">
-                                          <div className="me-2" style={{minWidth:140}}>{f.name}</div>
+                                          <div className="me-2" style={{ minWidth: 140 }}>{f.name}</div>
                                           <input
                                             type="number"
                                             min={0}
@@ -6964,7 +7181,7 @@ const AgentUmrahCalculator = () => {
                                                           onChange={(opt) => {
                                                             const v = opt ? opt.value : '';
                                                             const roomTypeLower = v.toLowerCase();
-                                                            
+
                                                             // Validate room capacity vs family size
                                                             let roomCapacity = 0;
                                                             if (roomTypeLower === 'single') roomCapacity = 1;
@@ -6973,19 +7190,19 @@ const AgentUmrahCalculator = () => {
                                                             else if (roomTypeLower === 'quad') roomCapacity = 4;
                                                             else if (roomTypeLower === 'quint') roomCapacity = 5;
                                                             else if (roomTypeLower === 'sharing') roomCapacity = 999;
-                                                            
+
                                                             // Check if room capacity is sufficient
                                                             if (roomCapacity > 0 && roomCapacity < familySize) {
                                                               toast.error(`Room capacity (${roomCapacity}) is less than family size (${familySize}). Please select Sharing or adjust family counts.`);
                                                               return;
                                                             }
-                                                            
+
                                                             // Special validation for Single room
                                                             if (roomTypeLower === 'single' && familySize > 1) {
                                                               toast.error(`Single room can only accommodate 1 person. Your family has ${familySize} members. Please select a larger room type or Sharing.`);
                                                               return;
                                                             }
-                                                            
+
                                                             setFamilyRoomTypes(prev => ({ ...prev, [`${idx}_${hi}`]: v }));
                                                           }}
                                                           isClearable
@@ -7009,7 +7226,7 @@ const AgentUmrahCalculator = () => {
                                                         value={{ value: hf.sharingType || 'Family Sharing', label: hf.sharingType || 'Family Sharing' }}
                                                         onChange={(opt) => {
                                                           const v = opt ? opt.value : 'Family Sharing';
-                                                          setHotelForms(prev => prev.map((f, i) => 
+                                                          setHotelForms(prev => prev.map((f, i) =>
                                                             i === hi ? { ...f, sharingType: v } : f
                                                           ));
                                                         }}
@@ -7217,7 +7434,7 @@ const AgentUmrahCalculator = () => {
                                     <div className="mb-2">
                                       <div><strong>Family {fIdx + 1}</strong> <small className="text-muted">({size} pax)</small></div>
                                     </div>
-                                    
+
                                     {/* Hotels for this family */}
                                     <div className="mt-2 ps-3">
                                       <div className="small fw-semibold text-muted mb-2">Hotels:</div>
@@ -7265,7 +7482,7 @@ const AgentUmrahCalculator = () => {
                                                       const v = opt ? opt.value : '';
                                                       const familySize = familyGroups[fIdx];
                                                       const roomTypeLower = v.toLowerCase();
-                                                      
+
                                                       // Validate room capacity vs family size
                                                       let roomCapacity = 0;
                                                       if (roomTypeLower === 'single') roomCapacity = 1;
@@ -7274,19 +7491,19 @@ const AgentUmrahCalculator = () => {
                                                       else if (roomTypeLower === 'quad') roomCapacity = 4;
                                                       else if (roomTypeLower === 'quint') roomCapacity = 5;
                                                       else if (roomTypeLower === 'sharing') roomCapacity = 999; // Unlimited for sharing
-                                                      
+
                                                       // Check if room capacity is sufficient
                                                       if (roomCapacity > 0 && roomCapacity < familySize) {
                                                         toast.error(`Room capacity (${roomCapacity}) is less than family size (${familySize}). Please select Sharing or manage your family groups.`);
                                                         return; // Don't update the selection
                                                       }
-                                                      
+
                                                       // Special validation for Single room (only for 1-person families)
                                                       if (roomTypeLower === 'single' && familySize > 1) {
                                                         toast.error(`Single room can only accommodate 1 person. Your family has ${familySize} members. Please select a larger room type or Sharing.`);
                                                         return;
                                                       }
-                                                      
+
                                                       setFamilyRoomTypes(prev => ({ ...prev, [`${fIdx}_${hi}`]: v }));
                                                     }}
                                                     isClearable
@@ -7310,7 +7527,7 @@ const AgentUmrahCalculator = () => {
                                                   value={{ value: hf.sharingType || 'Family Sharing', label: hf.sharingType || 'Family Sharing' }}
                                                   onChange={(opt) => {
                                                     const v = opt ? opt.value : 'Family Sharing';
-                                                    setHotelForms(prev => prev.map((f, i) => 
+                                                    setHotelForms(prev => prev.map((f, i) =>
                                                       i === hi ? { ...f, sharingType: v } : f
                                                     ));
                                                   }}
@@ -7389,7 +7606,7 @@ const AgentUmrahCalculator = () => {
                                   </div>
 
                                   <div className="col-md-2">
-                                    <label className="small">Hotel {(!foodSelf && !form.selfPickup) ? (<span style={{color:'#d00'}}>*</span>) : null}</label>
+                                    <label className="small">Hotel {(!foodSelf && !form.selfPickup) ? (<span style={{ color: '#d00' }}>*</span>) : null}</label>
                                     <input
                                       type="text"
                                       className="form-control shadow-none"
@@ -7561,55 +7778,55 @@ const AgentUmrahCalculator = () => {
                                 </div>
                               </div>
 
-              {/* Pricing */}
-              <div className="mb-3 border rounded p-3">
-                <small className="fw-semibold">Pricing</small>
-                {form.foodId && (
-                  <>
-                    <div className="row mt-2">
-                      <div className="col-12 col-md-4 mb-2">
-                        <div className="alert alert-info p-2 mb-0">
-                          <small>
-                            Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'food')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'food')}
-                          </small>
-                        </div>
-                      </div>
-                      <div className="col-12 col-md-4 mb-2">
-                        <div className="alert alert-info p-2 mb-0">
-                          <small>
-                            Child: {formatPriceWithCurrencyDisplay(childPrice, 'food')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'food')}
-                          </small>
-                        </div>
-                      </div>
-                      <div className="col-12 col-md-4 mb-2">
-                        <div className="alert alert-info p-2 mb-0">
-                          <small>
-                            Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'food')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'food')}
-                          </small>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="row">
-                      <div className="col-12">
-                        <div className="alert alert-success p-2 mb-0">
-                          <small className="fw-bold">
-                            Total Food Price: {formatPriceWithCurrencyDisplay(computedTotal, 'food')}
-                          </small>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-                {selectedFoodItem && (
-                  <div className="row mt-2">
-                    <div className="col-12">
-                      <div className="alert alert-secondary p-2 mb-0">
-                        <small><strong>Min Persons:</strong> {selectedFoodItem.min_pex || 0}</small>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>                              {/* Actions */}
+                              {/* Pricing */}
+                              <div className="mb-3 border rounded p-3">
+                                <small className="fw-semibold">Pricing</small>
+                                {form.foodId && (
+                                  <>
+                                    <div className="row mt-2">
+                                      <div className="col-12 col-md-4 mb-2">
+                                        <div className="alert alert-info p-2 mb-0">
+                                          <small>
+                                            Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'food')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'food')}
+                                          </small>
+                                        </div>
+                                      </div>
+                                      <div className="col-12 col-md-4 mb-2">
+                                        <div className="alert alert-info p-2 mb-0">
+                                          <small>
+                                            Child: {formatPriceWithCurrencyDisplay(childPrice, 'food')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'food')}
+                                          </small>
+                                        </div>
+                                      </div>
+                                      <div className="col-12 col-md-4 mb-2">
+                                        <div className="alert alert-info p-2 mb-0">
+                                          <small>
+                                            Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'food')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'food')}
+                                          </small>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="row">
+                                      <div className="col-12">
+                                        <div className="alert alert-success p-2 mb-0">
+                                          <small className="fw-bold">
+                                            Total Food Price: {formatPriceWithCurrencyDisplay(computedTotal, 'food')}
+                                          </small>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                                {selectedFoodItem && (
+                                  <div className="row mt-2">
+                                    <div className="col-12">
+                                      <div className="alert alert-secondary p-2 mb-0">
+                                        <small><strong>Min Persons:</strong> {selectedFoodItem.min_pex || 0}</small>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>                              {/* Actions */}
                               <div className="d-flex justify-content-end">
                                 <div className="me-auto align-self-center small text-muted">&nbsp;</div>
                                 <div className="d-flex gap-2">
@@ -7644,7 +7861,7 @@ const AgentUmrahCalculator = () => {
                           );
                         })}
 
-                        
+
 
                         {/* Add More Food button: use same filled primary style as Hotel (JSX-only) */}
                         <div className="mt-3">
@@ -7793,46 +8010,46 @@ const AgentUmrahCalculator = () => {
                                 </div>
                               </div>
 
-              {/* Pricing */}
-              <div className="mb-3 border rounded p-3">
-                <small className="fw-semibold">Pricing</small>
-                {form.ziaratId && (
-                  <>
-                    <div className="row mt-2">
-                      <div className="col-12 col-md-4 mb-2">
-                        <div className="alert alert-info p-2 mb-0">
-                          <small>
-                            Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'ziarat')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'ziarat')}
-                          </small>
-                        </div>
-                      </div>
-                      <div className="col-12 col-md-4 mb-2">
-                        <div className="alert alert-info p-2 mb-0">
-                          <small>
-                            Child: {formatPriceWithCurrencyDisplay(childPrice, 'ziarat')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'ziarat')}
-                          </small>
-                        </div>
-                      </div>
-                      <div className="col-12 col-md-4 mb-2">
-                        <div className="alert alert-info p-2 mb-0">
-                          <small>
-                            Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'ziarat')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'ziarat')}
-                          </small>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="row">
-                      <div className="col-12">
-                        <div className="alert alert-success p-2 mb-0">
-                          <small className="fw-bold">
-                            Total Ziarat Price: {formatPriceWithCurrencyDisplay(totalPrice, 'ziarat')}
-                          </small>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>                              {/* Actions */}
+                              {/* Pricing */}
+                              <div className="mb-3 border rounded p-3">
+                                <small className="fw-semibold">Pricing</small>
+                                {form.ziaratId && (
+                                  <>
+                                    <div className="row mt-2">
+                                      <div className="col-12 col-md-4 mb-2">
+                                        <div className="alert alert-info p-2 mb-0">
+                                          <small>
+                                            Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'ziarat')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'ziarat')}
+                                          </small>
+                                        </div>
+                                      </div>
+                                      <div className="col-12 col-md-4 mb-2">
+                                        <div className="alert alert-info p-2 mb-0">
+                                          <small>
+                                            Child: {formatPriceWithCurrencyDisplay(childPrice, 'ziarat')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'ziarat')}
+                                          </small>
+                                        </div>
+                                      </div>
+                                      <div className="col-12 col-md-4 mb-2">
+                                        <div className="alert alert-info p-2 mb-0">
+                                          <small>
+                                            Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'ziarat')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'ziarat')}
+                                          </small>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="row">
+                                      <div className="col-12">
+                                        <div className="alert alert-success p-2 mb-0">
+                                          <small className="fw-bold">
+                                            Total Ziarat Price: {formatPriceWithCurrencyDisplay(totalPrice, 'ziarat')}
+                                          </small>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                              </div>                              {/* Actions */}
                               <div className="d-flex justify-content-end">
                                 <div className="me-auto align-self-center small text-muted">&nbsp;</div>
                                 <div className="d-flex gap-2">
@@ -8091,7 +8308,7 @@ const AgentUmrahCalculator = () => {
                                                 // use default
                                               }
 
-                                              // Pass the complete package data (already in correct format)
+                                              // Pass the complete package data (keep big sector as-is)
                                               const transformedPkg = pkg;
 
                                               // Save transformed package data to sessionStorage
@@ -8100,10 +8317,10 @@ const AgentUmrahCalculator = () => {
                                                 __expiresAt: expiresAt,
                                                 value: transformedPkg
                                               };
-                                              
+
                                               sessionStorage.setItem('umrah_booknow_v1', JSON.stringify(payload));
                                               toast.success('Saved — continuing to booking');
-                                              
+
                                               // Use draft ID for navigation
                                               const draftId = `draft-${Date.now()}`;
                                               window.location.href = `/packages/custom-umrah/detail/${draftId}`;

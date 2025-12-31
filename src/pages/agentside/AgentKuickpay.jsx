@@ -160,7 +160,7 @@ const AgentKuickpay = () => {
     try {
       const token = localStorage.getItem("token");
       const response = await axios.post(
-        "https://api.saer.pk/api/kuickpay/payment/",
+        "http://127.0.0.1:8000/api/kuickpay/payment/",
         {
           ...paymentForm,
           amount: parseFloat(paymentForm.amount),
@@ -208,7 +208,7 @@ const AgentKuickpay = () => {
     try {
       const token = localStorage.getItem("token");
       const response = await axios.post(
-        "https://api.saer.pk/api/kuickpay/inquiry/",
+        "http://127.0.0.1:8000/api/kuickpay/inquiry/",
         {
           transaction_id: inquiryForm.transaction_id,
         },
@@ -389,7 +389,7 @@ const AgentKuickpay = () => {
                     <Send size={24} className="me-2" />
                     Initiate Payment
                   </h4>
-                  
+
                   <Form onSubmit={handlePaymentSubmit}>
                     <Row className="mb-3">
                       <Col md={6}>
@@ -678,360 +678,360 @@ const AgentKuickpay = () => {
             {/* Transaction History Tab */}
             {activeTab === "transactions" && (
               <>
-            {/* Statistics Cards */}
-            <Row className="mb-4">
-              <Col md={3} sm={6} className="mb-3">
-                <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#e3f2fd" }}>
-                  <Card.Body>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <p className="text-muted mb-1">Total Transactions</p>
-                        <h3 className="mb-0 fw-bold">{statistics.total}</h3>
-                      </div>
-                      <div
-                        className="rounded-circle d-flex align-items-center justify-content-center"
-                        style={{ width: "50px", height: "50px", backgroundColor: "#2196f3" }}
-                      >
-                        <FileText size={24} className="text-white" />
-                      </div>
-                    </div>
-                  </Card.Body>
-                </Card>
-              </Col>
-
-              <Col md={3} sm={6} className="mb-3">
-                <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#e8f5e9" }}>
-                  <Card.Body>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <p className="text-muted mb-1">Successful</p>
-                        <h3 className="mb-0 fw-bold">{statistics.success}</h3>
-                      </div>
-                      <div
-                        className="rounded-circle d-flex align-items-center justify-content-center"
-                        style={{ width: "50px", height: "50px", backgroundColor: "#4caf50" }}
-                      >
-                        <CheckCircle size={24} className="text-white" />
-                      </div>
-                    </div>
-                  </Card.Body>
-                </Card>
-              </Col>
-
-              <Col md={3} sm={6} className="mb-3">
-                <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#fff3e0" }}>
-                  <Card.Body>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <p className="text-muted mb-1">Pending</p>
-                        <h3 className="mb-0 fw-bold">{statistics.pending}</h3>
-                      </div>
-                      <div
-                        className="rounded-circle d-flex align-items-center justify-content-center"
-                        style={{ width: "50px", height: "50px", backgroundColor: "#ff9800" }}
-                      >
-                        <Clock size={24} className="text-white" />
-                      </div>
-                    </div>
-                  </Card.Body>
-                </Card>
-              </Col>
-
-              <Col md={3} sm={6} className="mb-3">
-                <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#f3e5f5" }}>
-                  <Card.Body>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <p className="text-muted mb-1">Total Revenue</p>
-                        <h3 className="mb-0 fw-bold" style={{ fontSize: "1.3rem" }}>
-                          {formatCurrency(statistics.total_amount)}
-                        </h3>
-                      </div>
-                      <div
-                        className="rounded-circle d-flex align-items-center justify-content-center"
-                        style={{ width: "50px", height: "50px", backgroundColor: "#9c27b0" }}
-                      >
-                        <DollarSign size={24} className="text-white" />
-                      </div>
-                    </div>
-                  </Card.Body>
-                </Card>
-              </Col>
-            </Row>
-
-            {/* Additional Stats */}
-            <Row className="mb-4">
-              <Col md={6} className="mb-3">
-                <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#ffebee" }}>
-                  <Card.Body>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <p className="text-muted mb-1">Failed Transactions</p>
-                        <h3 className="mb-0 fw-bold">{statistics.failed}</h3>
-                      </div>
-                      <div
-                        className="rounded-circle d-flex align-items-center justify-content-center"
-                        style={{ width: "50px", height: "50px", backgroundColor: "#f44336" }}
-                      >
-                        <XCircle size={24} className="text-white" />
-                      </div>
-                    </div>
-                  </Card.Body>
-                </Card>
-              </Col>
-
-              <Col md={6} className="mb-3">
-                <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#e0f2f1" }}>
-                  <Card.Body>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <div>
-                        <p className="text-muted mb-1">Refunded</p>
-                        <h3 className="mb-0 fw-bold">{statistics.refunded}</h3>
-                      </div>
-                      <div
-                        className="rounded-circle d-flex align-items-center justify-content-center"
-                        style={{ width: "50px", height: "50px", backgroundColor: "#009688" }}
-                      >
-                        <RefreshCw size={24} className="text-white" />
-                      </div>
-                    </div>
-                  </Card.Body>
-                </Card>
-              </Col>
-            </Row>
-
-            {/* Search and Filters */}
-            <Card className="mb-4 shadow-sm border-0">
-              <Card.Body>
-                <Row className="g-3">
-                  <Col md={6}>
-                    <div className="position-relative">
-                      <Search className="position-absolute" style={{ top: "12px", left: "12px" }} size={18} />
-                      <Form.Control
-                        type="text"
-                        placeholder="Search by transaction ID, booking ID, customer name..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        style={{ paddingLeft: "40px" }}
-                      />
-                    </div>
+                {/* Statistics Cards */}
+                <Row className="mb-4">
+                  <Col md={3} sm={6} className="mb-3">
+                    <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#e3f2fd" }}>
+                      <Card.Body>
+                        <div className="d-flex justify-content-between align-items-center">
+                          <div>
+                            <p className="text-muted mb-1">Total Transactions</p>
+                            <h3 className="mb-0 fw-bold">{statistics.total}</h3>
+                          </div>
+                          <div
+                            className="rounded-circle d-flex align-items-center justify-content-center"
+                            style={{ width: "50px", height: "50px", backgroundColor: "#2196f3" }}
+                          >
+                            <FileText size={24} className="text-white" />
+                          </div>
+                        </div>
+                      </Card.Body>
+                    </Card>
                   </Col>
 
-                  <Col md={3}>
-                    <Form.Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                      <option value="all">All Status</option>
-                      <option value="success">✅ Success</option>
-                      <option value="pending">⏳ Pending</option>
-                      <option value="failed">❌ Failed</option>
-                      <option value="refunded">🔄 Refunded</option>
-                    </Form.Select>
+                  <Col md={3} sm={6} className="mb-3">
+                    <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#e8f5e9" }}>
+                      <Card.Body>
+                        <div className="d-flex justify-content-between align-items-center">
+                          <div>
+                            <p className="text-muted mb-1">Successful</p>
+                            <h3 className="mb-0 fw-bold">{statistics.success}</h3>
+                          </div>
+                          <div
+                            className="rounded-circle d-flex align-items-center justify-content-center"
+                            style={{ width: "50px", height: "50px", backgroundColor: "#4caf50" }}
+                          >
+                            <CheckCircle size={24} className="text-white" />
+                          </div>
+                        </div>
+                      </Card.Body>
+                    </Card>
                   </Col>
 
-                  <Col md={3} className="d-flex gap-2">
-                    <Button
-                      variant="outline-secondary"
-                      onClick={() => {
-                        setSearchTerm("");
-                        setStatusFilter("all");
-                      }}
-                      className="w-50"
-                    >
-                      Clear
-                    </Button>
-                    <Button variant="outline-primary" className="w-50">
-                      <Download size={18} className="me-2" />
-                      Export
-                    </Button>
+                  <Col md={3} sm={6} className="mb-3">
+                    <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#fff3e0" }}>
+                      <Card.Body>
+                        <div className="d-flex justify-content-between align-items-center">
+                          <div>
+                            <p className="text-muted mb-1">Pending</p>
+                            <h3 className="mb-0 fw-bold">{statistics.pending}</h3>
+                          </div>
+                          <div
+                            className="rounded-circle d-flex align-items-center justify-content-center"
+                            style={{ width: "50px", height: "50px", backgroundColor: "#ff9800" }}
+                          >
+                            <Clock size={24} className="text-white" />
+                          </div>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+
+                  <Col md={3} sm={6} className="mb-3">
+                    <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#f3e5f5" }}>
+                      <Card.Body>
+                        <div className="d-flex justify-content-between align-items-center">
+                          <div>
+                            <p className="text-muted mb-1">Total Revenue</p>
+                            <h3 className="mb-0 fw-bold" style={{ fontSize: "1.3rem" }}>
+                              {formatCurrency(statistics.total_amount)}
+                            </h3>
+                          </div>
+                          <div
+                            className="rounded-circle d-flex align-items-center justify-content-center"
+                            style={{ width: "50px", height: "50px", backgroundColor: "#9c27b0" }}
+                          >
+                            <DollarSign size={24} className="text-white" />
+                          </div>
+                        </div>
+                      </Card.Body>
+                    </Card>
                   </Col>
                 </Row>
-              </Card.Body>
-            </Card>
 
-            {/* Transactions Table */}
-            <Card className="shadow-sm border-0">
-              <Card.Body style={{ overflowX: "auto" }}>
-                {loading ? (
-                  <div className="text-center py-5">
-                    <Spinner animation="border" variant="primary" />
-                    <p className="mt-3">Loading transactions...</p>
-                  </div>
-                ) : filteredTransactions.length === 0 ? (
-                  <div className="text-center py-5">
-                    <AlertCircle size={48} className="text-muted mb-3" />
-                    <h5 className="text-muted">No transactions found</h5>
-                    <p className="text-muted">Try adjusting your filters or search query</p>
-                  </div>
-                ) : (
-                  <table className="table table-hover">
-                    <thead>
-                      <tr style={{ backgroundColor: "#f8f9fa" }}>
-                        <th style={{ minWidth: "140px" }}>Transaction ID</th>
-                        <th style={{ minWidth: "120px" }}>Booking ID</th>
-                        <th style={{ minWidth: "150px" }}>Customer</th>
-                        <th style={{ minWidth: "120px" }}>Amount</th>
-                        <th style={{ minWidth: "140px" }}>Payment Method</th>
-                        <th style={{ minWidth: "120px" }}>Status</th>
-                        <th style={{ minWidth: "160px" }}>Date & Time</th>
-                        <th style={{ minWidth: "100px" }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredTransactions.map((transaction) => (
-                        <tr key={transaction.id}>
-                          <td className="fw-semibold">{transaction.transaction_id}</td>
-                          <td>{transaction.booking_id}</td>
-                          <td>{transaction.customer_name}</td>
-                          <td className="fw-bold text-success">{formatCurrency(transaction.amount)}</td>
-                          <td>{getPaymentMethodBadge(transaction.payment_method)}</td>
-                          <td>{getStatusBadge(transaction.status)}</td>
-                          <td>
-                            <Calendar size={14} className="me-1 text-muted" />
-                            {formatDate(transaction.created_at)}
-                          </td>
-                          <td>
-                            <Button
-                              size="sm"
-                              variant="outline-primary"
-                              onClick={() => openDetailsModal(transaction)}
-                              title="View Details"
-                            >
-                              <Eye size={16} />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </Card.Body>
-            </Card>
+                {/* Additional Stats */}
+                <Row className="mb-4">
+                  <Col md={6} className="mb-3">
+                    <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#ffebee" }}>
+                      <Card.Body>
+                        <div className="d-flex justify-content-between align-items-center">
+                          <div>
+                            <p className="text-muted mb-1">Failed Transactions</p>
+                            <h3 className="mb-0 fw-bold">{statistics.failed}</h3>
+                          </div>
+                          <div
+                            className="rounded-circle d-flex align-items-center justify-content-center"
+                            style={{ width: "50px", height: "50px", backgroundColor: "#f44336" }}
+                          >
+                            <XCircle size={24} className="text-white" />
+                          </div>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
 
-      {/* Transaction Details Modal */}
-      <Modal show={showDetailsModal} onHide={() => setShowDetailsModal(false)} size="lg">
-        <Modal.Header closeButton>
-          <Modal.Title>
-            <FileText size={24} className="me-2" />
-            Transaction Details
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {selectedTransaction && (
-            <div>
-              <Row className="g-3">
-                <Col md={6}>
-                  <div className="border-bottom pb-2 mb-2">
-                    <small className="text-muted d-block mb-1">Transaction ID</small>
-                    <div className="fw-bold">{selectedTransaction.transaction_id}</div>
-                  </div>
-                </Col>
+                  <Col md={6} className="mb-3">
+                    <Card className="h-100 shadow-sm border-0" style={{ backgroundColor: "#e0f2f1" }}>
+                      <Card.Body>
+                        <div className="d-flex justify-content-between align-items-center">
+                          <div>
+                            <p className="text-muted mb-1">Refunded</p>
+                            <h3 className="mb-0 fw-bold">{statistics.refunded}</h3>
+                          </div>
+                          <div
+                            className="rounded-circle d-flex align-items-center justify-content-center"
+                            style={{ width: "50px", height: "50px", backgroundColor: "#009688" }}
+                          >
+                            <RefreshCw size={24} className="text-white" />
+                          </div>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                </Row>
 
-                <Col md={6}>
-                  <div className="border-bottom pb-2 mb-2">
-                    <small className="text-muted d-block mb-1">Booking ID</small>
-                    <div className="fw-bold">{selectedTransaction.booking_id}</div>
-                  </div>
-                </Col>
+                {/* Search and Filters */}
+                <Card className="mb-4 shadow-sm border-0">
+                  <Card.Body>
+                    <Row className="g-3">
+                      <Col md={6}>
+                        <div className="position-relative">
+                          <Search className="position-absolute" style={{ top: "12px", left: "12px" }} size={18} />
+                          <Form.Control
+                            type="text"
+                            placeholder="Search by transaction ID, booking ID, customer name..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            style={{ paddingLeft: "40px" }}
+                          />
+                        </div>
+                      </Col>
 
-                <Col md={6}>
-                  <div className="border-bottom pb-2 mb-2">
-                    <small className="text-muted d-block mb-1">Customer Name</small>
-                    <div className="fw-bold">{selectedTransaction.customer_name}</div>
-                  </div>
-                </Col>
+                      <Col md={3}>
+                        <Form.Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                          <option value="all">All Status</option>
+                          <option value="success">✅ Success</option>
+                          <option value="pending">⏳ Pending</option>
+                          <option value="failed">❌ Failed</option>
+                          <option value="refunded">🔄 Refunded</option>
+                        </Form.Select>
+                      </Col>
 
-                <Col md={6}>
-                  <div className="border-bottom pb-2 mb-2">
-                    <small className="text-muted d-block mb-1">Amount</small>
-                    <div className="fw-bold text-success">{formatCurrency(selectedTransaction.amount)}</div>
-                  </div>
-                </Col>
+                      <Col md={3} className="d-flex gap-2">
+                        <Button
+                          variant="outline-secondary"
+                          onClick={() => {
+                            setSearchTerm("");
+                            setStatusFilter("all");
+                          }}
+                          className="w-50"
+                        >
+                          Clear
+                        </Button>
+                        <Button variant="outline-primary" className="w-50">
+                          <Download size={18} className="me-2" />
+                          Export
+                        </Button>
+                      </Col>
+                    </Row>
+                  </Card.Body>
+                </Card>
 
-                <Col md={6}>
-                  <div className="border-bottom pb-2 mb-2">
-                    <small className="text-muted d-block mb-1">Payment Method</small>
-                    <div>{getPaymentMethodBadge(selectedTransaction.payment_method)}</div>
-                  </div>
-                </Col>
-
-                <Col md={6}>
-                  <div className="border-bottom pb-2 mb-2">
-                    <small className="text-muted d-block mb-1">Status</small>
-                    <div>{getStatusBadge(selectedTransaction.status)}</div>
-                  </div>
-                </Col>
-
-                <Col md={6}>
-                  <div className="border-bottom pb-2 mb-2">
-                    <small className="text-muted d-block mb-1">Reference</small>
-                    <div className="fw-bold">{selectedTransaction.reference}</div>
-                  </div>
-                </Col>
-
-                <Col md={6}>
-                  <div className="border-bottom pb-2 mb-2">
-                    <small className="text-muted d-block mb-1">Created At</small>
-                    <div className="fw-bold">{formatDate(selectedTransaction.created_at)}</div>
-                  </div>
-                </Col>
-
-                {selectedTransaction.card_last4 && (
-                  <Col md={6}>
-                    <div className="border-bottom pb-2 mb-2">
-                      <small className="text-muted d-block mb-1">Card Details</small>
-                      <div className="fw-bold">
-                        {selectedTransaction.card_brand} •••• {selectedTransaction.card_last4}
+                {/* Transactions Table */}
+                <Card className="shadow-sm border-0">
+                  <Card.Body style={{ overflowX: "auto" }}>
+                    {loading ? (
+                      <div className="text-center py-5">
+                        <Spinner animation="border" variant="primary" />
+                        <p className="mt-3">Loading transactions...</p>
                       </div>
-                    </div>
-                  </Col>
-                )}
+                    ) : filteredTransactions.length === 0 ? (
+                      <div className="text-center py-5">
+                        <AlertCircle size={48} className="text-muted mb-3" />
+                        <h5 className="text-muted">No transactions found</h5>
+                        <p className="text-muted">Try adjusting your filters or search query</p>
+                      </div>
+                    ) : (
+                      <table className="table table-hover">
+                        <thead>
+                          <tr style={{ backgroundColor: "#f8f9fa" }}>
+                            <th style={{ minWidth: "140px" }}>Transaction ID</th>
+                            <th style={{ minWidth: "120px" }}>Booking ID</th>
+                            <th style={{ minWidth: "150px" }}>Customer</th>
+                            <th style={{ minWidth: "120px" }}>Amount</th>
+                            <th style={{ minWidth: "140px" }}>Payment Method</th>
+                            <th style={{ minWidth: "120px" }}>Status</th>
+                            <th style={{ minWidth: "160px" }}>Date & Time</th>
+                            <th style={{ minWidth: "100px" }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredTransactions.map((transaction) => (
+                            <tr key={transaction.id}>
+                              <td className="fw-semibold">{transaction.transaction_id}</td>
+                              <td>{transaction.booking_id}</td>
+                              <td>{transaction.customer_name}</td>
+                              <td className="fw-bold text-success">{formatCurrency(transaction.amount)}</td>
+                              <td>{getPaymentMethodBadge(transaction.payment_method)}</td>
+                              <td>{getStatusBadge(transaction.status)}</td>
+                              <td>
+                                <Calendar size={14} className="me-1 text-muted" />
+                                {formatDate(transaction.created_at)}
+                              </td>
+                              <td>
+                                <Button
+                                  size="sm"
+                                  variant="outline-primary"
+                                  onClick={() => openDetailsModal(transaction)}
+                                  title="View Details"
+                                >
+                                  <Eye size={16} />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </Card.Body>
+                </Card>
 
-                {selectedTransaction.bank_name && (
-                  <Col md={6}>
-                    <div className="border-bottom pb-2 mb-2">
-                      <small className="text-muted d-block mb-1">Bank Name</small>
-                      <div className="fw-bold">{selectedTransaction.bank_name}</div>
-                    </div>
-                  </Col>
-                )}
+                {/* Transaction Details Modal */}
+                <Modal show={showDetailsModal} onHide={() => setShowDetailsModal(false)} size="lg">
+                  <Modal.Header closeButton>
+                    <Modal.Title>
+                      <FileText size={24} className="me-2" />
+                      Transaction Details
+                    </Modal.Title>
+                  </Modal.Header>
+                  <Modal.Body>
+                    {selectedTransaction && (
+                      <div>
+                        <Row className="g-3">
+                          <Col md={6}>
+                            <div className="border-bottom pb-2 mb-2">
+                              <small className="text-muted d-block mb-1">Transaction ID</small>
+                              <div className="fw-bold">{selectedTransaction.transaction_id}</div>
+                            </div>
+                          </Col>
 
-                {selectedTransaction.failure_reason && (
-                  <Col md={12}>
-                    <Alert variant="danger" className="mb-0">
-                      <strong>Failure Reason:</strong> {selectedTransaction.failure_reason}
-                    </Alert>
-                  </Col>
-                )}
+                          <Col md={6}>
+                            <div className="border-bottom pb-2 mb-2">
+                              <small className="text-muted d-block mb-1">Booking ID</small>
+                              <div className="fw-bold">{selectedTransaction.booking_id}</div>
+                            </div>
+                          </Col>
 
-                {selectedTransaction.refund_reason && (
-                  <Col md={12}>
-                    <Alert variant="info" className="mb-0">
-                      <strong>Refund Reason:</strong> {selectedTransaction.refund_reason}
-                    </Alert>
-                  </Col>
-                )}
+                          <Col md={6}>
+                            <div className="border-bottom pb-2 mb-2">
+                              <small className="text-muted d-block mb-1">Customer Name</small>
+                              <div className="fw-bold">{selectedTransaction.customer_name}</div>
+                            </div>
+                          </Col>
 
-                <Col md={12}>
-                  <div className="border-bottom pb-2 mb-2">
-                    <small className="text-muted d-block mb-1">Last Updated</small>
-                    <div className="fw-bold">{formatDate(selectedTransaction.updated_at)}</div>
-                  </div>
-                </Col>
-              </Row>
-            </div>
-          )}
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowDetailsModal(false)}>
-            Close
-          </Button>
-          {selectedTransaction && selectedTransaction.status === "success" && (
-            <Button variant="primary">
-              <Download size={18} className="me-2" />
-              Download Receipt
-            </Button>
-          )}
-        </Modal.Footer>
-      </Modal>
+                          <Col md={6}>
+                            <div className="border-bottom pb-2 mb-2">
+                              <small className="text-muted d-block mb-1">Amount</small>
+                              <div className="fw-bold text-success">{formatCurrency(selectedTransaction.amount)}</div>
+                            </div>
+                          </Col>
+
+                          <Col md={6}>
+                            <div className="border-bottom pb-2 mb-2">
+                              <small className="text-muted d-block mb-1">Payment Method</small>
+                              <div>{getPaymentMethodBadge(selectedTransaction.payment_method)}</div>
+                            </div>
+                          </Col>
+
+                          <Col md={6}>
+                            <div className="border-bottom pb-2 mb-2">
+                              <small className="text-muted d-block mb-1">Status</small>
+                              <div>{getStatusBadge(selectedTransaction.status)}</div>
+                            </div>
+                          </Col>
+
+                          <Col md={6}>
+                            <div className="border-bottom pb-2 mb-2">
+                              <small className="text-muted d-block mb-1">Reference</small>
+                              <div className="fw-bold">{selectedTransaction.reference}</div>
+                            </div>
+                          </Col>
+
+                          <Col md={6}>
+                            <div className="border-bottom pb-2 mb-2">
+                              <small className="text-muted d-block mb-1">Created At</small>
+                              <div className="fw-bold">{formatDate(selectedTransaction.created_at)}</div>
+                            </div>
+                          </Col>
+
+                          {selectedTransaction.card_last4 && (
+                            <Col md={6}>
+                              <div className="border-bottom pb-2 mb-2">
+                                <small className="text-muted d-block mb-1">Card Details</small>
+                                <div className="fw-bold">
+                                  {selectedTransaction.card_brand} •••• {selectedTransaction.card_last4}
+                                </div>
+                              </div>
+                            </Col>
+                          )}
+
+                          {selectedTransaction.bank_name && (
+                            <Col md={6}>
+                              <div className="border-bottom pb-2 mb-2">
+                                <small className="text-muted d-block mb-1">Bank Name</small>
+                                <div className="fw-bold">{selectedTransaction.bank_name}</div>
+                              </div>
+                            </Col>
+                          )}
+
+                          {selectedTransaction.failure_reason && (
+                            <Col md={12}>
+                              <Alert variant="danger" className="mb-0">
+                                <strong>Failure Reason:</strong> {selectedTransaction.failure_reason}
+                              </Alert>
+                            </Col>
+                          )}
+
+                          {selectedTransaction.refund_reason && (
+                            <Col md={12}>
+                              <Alert variant="info" className="mb-0">
+                                <strong>Refund Reason:</strong> {selectedTransaction.refund_reason}
+                              </Alert>
+                            </Col>
+                          )}
+
+                          <Col md={12}>
+                            <div className="border-bottom pb-2 mb-2">
+                              <small className="text-muted d-block mb-1">Last Updated</small>
+                              <div className="fw-bold">{formatDate(selectedTransaction.updated_at)}</div>
+                            </div>
+                          </Col>
+                        </Row>
+                      </div>
+                    )}
+                  </Modal.Body>
+                  <Modal.Footer>
+                    <Button variant="secondary" onClick={() => setShowDetailsModal(false)}>
+                      Close
+                    </Button>
+                    {selectedTransaction && selectedTransaction.status === "success" && (
+                      <Button variant="primary">
+                        <Download size={18} className="me-2" />
+                        Download Receipt
+                      </Button>
+                    )}
+                  </Modal.Footer>
+                </Modal>
               </>
             )}
 

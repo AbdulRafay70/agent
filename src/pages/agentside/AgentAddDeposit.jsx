@@ -199,9 +199,9 @@ const AddDepositForm = () => {
     let msg = '';
     if (!payload) msg = 'No details available';
     else if (typeof payload === 'string') msg = payload;
-  else if (payload instanceof Error) msg = formatAxiosError(payload);
-  else if (payload && payload.response) msg = formatAxiosError(payload);
-  else if (payload && payload.message) msg = payload.message;
+    else if (payload instanceof Error) msg = formatAxiosError(payload);
+    else if (payload && payload.response) msg = formatAxiosError(payload);
+    else if (payload && payload.message) msg = payload.message;
     else msg = JSON.stringify(payload);
 
     const fn = map[type] || map.info;
@@ -351,7 +351,7 @@ const AddDepositForm = () => {
     showNotification('info', 'Submitting payment...');
     setIsSubmitting(true);
     console.debug('About to POST /api/payments/ with headers and FormData');
-    axios.post('https://api.saer.pk/api/payments/', form, { headers, timeout: 30000 })
+    axios.post('http://127.0.0.1:8000/api/payments/', form, { headers, timeout: 30000 })
       .then((res) => {
         // prefer server response details when available
         const created = res.data || {};
@@ -430,7 +430,7 @@ const AddDepositForm = () => {
     const token = localStorage.getItem('agentAccessToken');
     if (!token || !orgId) return;
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-    axios.get('https://api.saer.pk/api/bank-accounts/', { params: { organization: orgId }, headers })
+    axios.get('http://127.0.0.1:8000/api/bank-accounts/', { params: { organization: orgId }, headers })
       .then((res) => {
         let items = [];
         if (Array.isArray(res.data)) items = res.data;
@@ -544,7 +544,7 @@ const AddDepositForm = () => {
     }
 
     console.debug('Fetching payments with params:', params);
-    axios.get('https://api.saer.pk/api/payments/', { params, headers })
+    axios.get('http://127.0.0.1:8000/api/payments/', { params, headers })
       .then((res) => {
         let items = [];
         if (Array.isArray(res.data)) items = res.data;

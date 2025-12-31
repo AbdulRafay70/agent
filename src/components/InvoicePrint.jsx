@@ -50,7 +50,7 @@ const InvoicePrint = ({
     const yyyy = d.getFullYear();
     return `${dd}-${mon}-${yyyy}`;
   };
-  
+
   const formatTime = (d) => {
     if (!d || isNaN(d)) return '';
     const hh = String(d.getHours()).padStart(2, '0');
@@ -176,17 +176,17 @@ const InvoicePrint = ({
 
   // Generate hotel rows: one row per family per hotel
   const hotelRows = [];
-  
+
   if (familyGroups && familyGroups.length > 0) {
     // Family mode: generate rows for each family × hotel combination
     familyGroups.forEach((familySize, familyIndex) => {
       hotelForms.filter(f => f.hotelId || f.isSelfHotel).forEach((form, hotelIndex) => {
         const roomTypeKey = `${familyIndex}_${hotelIndex}`;
         const selectedRoomType = familyRoomTypes[roomTypeKey];
-        
+
         // Skip if no room type selected for this family-hotel combination
         if (!selectedRoomType) return;
-        
+
         // Handle self-hotel case
         if (form.isSelfHotel) {
           const roomTypeLower = selectedRoomType.toLowerCase();
@@ -196,11 +196,11 @@ const InvoicePrint = ({
           else if (roomTypeLower === 'triple') qty = 3;
           else if (roomTypeLower === 'quad') qty = 4;
           else if (roomTypeLower === 'quint') qty = 5;
-          
+
           const nights = parseInt(form.noOfNights) || 0;
           const rate = 0;
           const net = rate * qty * nights;
-          
+
           hotelRows.push({
             name: form.selfHotelName || 'Self Hotel',
             roomType: selectedRoomType,
@@ -213,9 +213,9 @@ const InvoicePrint = ({
           });
           return;
         }
-        
+
         const hotel = hotels.find(h => String(h.id) === String(form.hotelId)) || {};
-        
+
         // Debug logging
         console.log('🏨 Invoice Hotel Debug:', {
           hotelName: hotel.name,
@@ -226,11 +226,11 @@ const InvoicePrint = ({
           hotelIndex,
           roomTypeKey
         });
-        
+
         const priceObj = hotel.prices?.find(p => p.room_type && p.room_type.toLowerCase() === selectedRoomType.toLowerCase());
         const rate = priceObj?.price || priceObj?.selling_price || 0;
         const nights = parseInt(form.noOfNights) || 0;
-        
+
         // Calculate QTY based on room type
         const roomTypeLower = selectedRoomType.toLowerCase();
         let qty = 1;
@@ -239,10 +239,10 @@ const InvoicePrint = ({
         else if (roomTypeLower === 'triple') qty = 3;
         else if (roomTypeLower === 'quad') qty = 4;
         else if (roomTypeLower === 'quint') qty = 5;
-        
+
         // Net = Rate × QTY × Nights
         const net = rate * qty * nights;
-        
+
         console.log('💰 Price Calculation:', {
           priceObj,
           rate,
@@ -251,7 +251,7 @@ const InvoicePrint = ({
           net,
           calculation: `${rate} × ${qty} × ${nights} = ${net}`
         });
-        
+
         hotelRows.push({
           name: hotel.name || 'N/A',
           roomType: selectedRoomType,
@@ -281,12 +281,12 @@ const InvoicePrint = ({
         });
         return;
       }
-      
+
       const hotel = hotels.find(h => String(h.id) === String(form.hotelId)) || {};
-      
+
       // Use the calculateHotelCost function passed from parent component
       const { perNight = 0, total = 0 } = calculateHotelCost(form);
-      
+
       hotelRows.push({
         name: hotel.name || 'N/A',
         roomType: form.roomType || '',
@@ -321,11 +321,11 @@ const InvoicePrint = ({
     const childPrice = item.child_selling_price || 0;
     const infantPrice = item.infant_selling_price || 0;
     const net = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
-    return { 
-      title: item.title || item.name || 'Food', 
+    return {
+      title: item.title || item.name || 'Food',
       adults, childs, infants,
       adultPrice, childPrice, infantPrice,
-      net 
+      net
     };
   });
 
@@ -338,11 +338,11 @@ const InvoicePrint = ({
     const childPrice = item.child_selling_price || 0;
     const infantPrice = item.infant_selling_price || 0;
     const net = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
-    return { 
+    return {
       title: item.ziarat_title || item.title || item.name || 'Ziarat',
       adults, childs, infants,
       adultPrice, childPrice, infantPrice,
-      net 
+      net
     };
   });
 
@@ -634,14 +634,14 @@ const InvoicePrint = ({
       {/* Bottom full-width Invoice Details section */}
       <div className="invoice-details-section">
         <h5 className="section-title">Invoice Details</h5>
-        <div className="invoice-details" style={{display:'flex',gap:24,flexWrap:'wrap'}}>
-          <div style={{flex:'1 1 520px',minWidth:300}}>
+        <div className="invoice-details" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 520px', minWidth: 300 }}>
             <div className="summary-row"><span>Travel Date:</span><strong>{formatTravelString()}</strong></div>
             <div className="summary-row"><span>Return Date:</span><strong>{formatReturnString()}</strong></div>
             <div className="summary-row"><span>Invoice Date:</span><strong>{generateInvoiceDate()}</strong></div>
           </div>
 
-          <div style={{flex:'0 0 320px',minWidth:260}}>
+          <div style={{ flex: '0 0 320px', minWidth: 260 }}>
             <div className="summary-box">
               <div className="tot-row"><span>{getCurrency('visa')} Rate: Visa @ {riyalRate?.rate ?? '—'}</span><strong>{formatPrice(visaCost, 'visa')}</strong></div>
               <div className="tot-row"><span>Tickets :</span><strong>PKR {flightCost.toLocaleString()}</strong></div>
@@ -649,8 +649,8 @@ const InvoicePrint = ({
               <div className="tot-row"><span>{getCurrency('transport')} Rate: Transport @ {riyalRate?.rate ?? '—'}</span><strong>{formatPrice(transportTotal, 'transport')}</strong></div>
               {foodTotal > 0 && <div className="tot-row"><span>Food Services :</span><strong>{formatPrice(foodTotal, 'food')}</strong></div>}
               {ziaratTotal > 0 && <div className="tot-row"><span>Ziarat Services :</span><strong>{formatPrice(ziaratTotal, 'ziarat')}</strong></div>}
-              <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
-                <div className="net-badge">Net Total = <strong>{formatPrice(netPKR, 'visa')}</strong></div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                <div className="net-badge">Net Total = <strong>PKR {netPKR.toLocaleString()}</strong></div>
               </div>
             </div>
           </div>

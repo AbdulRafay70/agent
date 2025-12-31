@@ -4,6 +4,7 @@ import AgentHeader from "../../components/AgentHeader";
 import { Bag, PersonAdd, PersonDash } from "react-bootstrap-icons";
 import { Baby, Utensils } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import Select from 'react-select';
 
 const FlightBookingForm = () => {
   const location = useLocation();
@@ -304,8 +305,22 @@ const FlightBookingForm = () => {
       if (!passedTicket || !passedTicket.id) return false;
       const td = passedTicket.trip_details;
       if (!Array.isArray(td) || td.length === 0) return true;
-      // If no 'Departure' trip present, fetch full details
-      return !td.some(t => t && t.trip_type === "Departure");
+
+      // If there's a 'Departure' trip, we're good
+      if (td.some(t => t && t.trip_type === "Departure")) return false;
+
+      // If no trip_type is set but we have at least one trip with valid data, accept it
+      // (we'll use the first trip as outbound)
+      const hasValidTrip = td.some(t =>
+        t &&
+        t.departure_date_time &&
+        t.arrival_date_time &&
+        (t.departure_city || t.departure_city === 0) &&
+        (t.arrival_city || t.arrival_city === 0)
+      );
+
+      // Only fetch if we don't have any valid trip
+      return !hasValidTrip;
     };
 
     if (!needsFetch()) {
@@ -411,7 +426,7 @@ const FlightBookingForm = () => {
         // Try each org id sequentially until we find a usable ticket
         for (let i = 0; i < tryOrgIds.length; i++) {
           const org = tryOrgIds[i];
-          const queryUrl = org ? `https://api.saer.pk/api/tickets/?id=${id}&organization=${org}` : `https://api.saer.pk/api/tickets/?id=${id}`;
+          const queryUrl = org ? `http://127.0.0.1:8000/api/tickets/?id=${id}&organization=${org}` : `http://127.0.0.1:8000/api/tickets/?id=${id}`;
           console.debug('Attempting ticket fetch for organization:', org, 'url:', queryUrl);
 
           const resp = await tryFetch(queryUrl, headers);
@@ -448,8 +463,8 @@ const FlightBookingForm = () => {
                 }
                 return;
               }
-              // If item exists but doesn't have outbound, log and continue
-              console.warn('Ticket for id', id, 'returned for org', org, 'but missing explicit outbound trip_details', candidate);
+              // If item exists but doesn't have outbound, continue to next org
+              // (This is now handled by the needsFetch check, so we shouldn't reach here often)
             }
             // no items -> continue to next org
             continue;
@@ -1403,20 +1418,27 @@ const FlightBookingForm = () => {
                         {/* Country Field */}
                         <div className="col-md-2">
                           <label className="form-label">Country</label>
-                          <select
-                            className={`form-select shadow-none ${formErrors[`passenger-${passenger.id}-country`] ? "is-invalid" : ""}`}
-                            required
-                            value={passenger.country}
-                            onChange={(e) => updatePassenger(passenger.id, "country", e.target.value)}
+                          <Select
+                            options={countries.map(country => ({ label: country, value: country }))}
+                            value={passenger.country ? { label: passenger.country, value: passenger.country } : null}
+                            onChange={(opt) => updatePassenger(passenger.id, "country", opt ? opt.value : "")}
                             onBlur={() => handleFieldBlur(passenger.id, "country")}
-                          >
-                            <option value="">Select Country</option>
-                            {countries.map(country => (
-                              <option key={country} value={country}>{country}</option>
-                            ))}
-                          </select>
+                            placeholder="Select Country"
+                            isClearable
+                            isSearchable
+                            classNamePrefix="react-select"
+                            styles={{
+                              control: (base) => ({
+                                ...base,
+                                borderColor: formErrors[`passenger-${passenger.id}-country`] ? '#dc3545' : '#ced4da',
+                                '&:hover': {
+                                  borderColor: formErrors[`passenger-${passenger.id}-country`] ? '#dc3545' : '#ced4da'
+                                }
+                              })
+                            }}
+                          />
                           {formErrors[`passenger-${passenger.id}-country`] && (
-                            <div className="invalid-feedback">
+                            <div className="invalid-feedback d-block">
                               {formErrors[`passenger-${passenger.id}-country`]}
                             </div>
                           )}

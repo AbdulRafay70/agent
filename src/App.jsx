@@ -25,6 +25,7 @@ import CustomUmrahPackagesReview from "./pages/agentside/CustomUmrahPackagesRevi
 import CustomUmrahPackagesPay from "./pages/agentside/CustomUmrahPackagesPay";
 import AgentBookingHistory from "./pages/agentside/AgentBookingHistory";
 import AgentHotelVoucher from "./pages/agentside/AgentHotelVoucher";
+import PublicHotelVoucher from "./pages/agentside/PublicHotelVoucher";
 import AgentBookingInvoice from "./pages/agentside/AgentBookingInvoice";
 import AgentBookingGroupTicket from "./pages/agentside/AgentBookingGroupTicket";
 import AgentGroupTicketInvoice from "./pages/agentside/AgentGroupTicketInvoice";
@@ -88,6 +89,14 @@ function App() {
             element={
               <AgentProtectedRoute>
                 <BookingPay />
+              </AgentProtectedRoute>
+            }
+          />
+          <Route
+            path="/booking/:id"
+            element={
+              <AgentProtectedRoute>
+                <AgentHotelVoucher />
               </AgentProtectedRoute>
             }
           />
@@ -274,6 +283,10 @@ function App() {
                 <AgentPaxMovement />
               </AgentProtectedRoute>
             }
+          />
+          <Route
+            path="/public-voucher/:bookingNo"
+            element={<PublicHotelVoucher />}
           />
         </Routes>
       </Container>

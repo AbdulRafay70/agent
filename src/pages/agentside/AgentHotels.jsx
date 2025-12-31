@@ -118,10 +118,24 @@ const AgentHotels = () => {
   const [hotelStatus, setHotelStatus] = useState("active");
 
   // Be tolerant when reading organization info from localStorage. Support a few possible keys
+  // For agent users, prioritize agentOrganization which contains {ids: [...], user_id: ...}
+  const _agentOrgRaw = localStorage.getItem("agentOrganization");
   const _orgRaw = localStorage.getItem("selectedOrganization") || localStorage.getItem("organization") || localStorage.getItem("selected_org");
   let parsedOrg = null;
   try {
-    parsedOrg = _orgRaw ? JSON.parse(_orgRaw) : null;
+    // First try agentOrganization
+    if (_agentOrgRaw) {
+      const agentOrg = JSON.parse(_agentOrgRaw);
+      if (agentOrg && Array.isArray(agentOrg.ids) && agentOrg.ids.length > 0) {
+        parsedOrg = { id: agentOrg.ids[0] };
+      } else if (agentOrg && agentOrg.id) {
+        parsedOrg = { id: agentOrg.id };
+      }
+    }
+    // Fallback to other organization keys
+    if (!parsedOrg && _orgRaw) {
+      parsedOrg = JSON.parse(_orgRaw);
+    }
   } catch (e) {
     parsedOrg = null;
   }

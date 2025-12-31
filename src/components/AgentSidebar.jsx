@@ -71,7 +71,7 @@ const Sidebar = () => {
 
         // ✅ Step 3: fetch from API
         const orgRes = await axios.get(
-          `https://api.saer.pk/api/organizations/${orgId}/`,
+          `http://127.0.0.1:8000/api/organizations/${orgId}/`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -101,15 +101,33 @@ const Sidebar = () => {
           return;
         }
 
+        // Get agency ID from localStorage
+        const agentOrg = localStorage.getItem("agentOrganization");
+        if (!agentOrg) {
+          console.warn("No organization data found.");
+          setBalanceLoading(false);
+          return;
+        }
+
+        const orgData = JSON.parse(agentOrg);
+        const agencyId = orgData.agency_id;
+
+        if (!agencyId) {
+          console.warn("No agency ID found.");
+          setBalanceLoading(false);
+          return;
+        }
+
+        // Fetch balance from ledger API
         const response = await axios.get(
-          "https://api.saer.pk/api/final-balance/",
+          `http://127.0.0.1:8000/api/ledger/agency/${agencyId}/`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
 
-        // The API might return different formats, handle both
-        const balance = response.data?.final_balance ?? response.data?.balance ?? response.data;
+        // Get net_balance from summary
+        const balance = response.data?.summary?.net_balance ?? 0;
         setFinalBalance(balance);
       } catch (err) {
         console.error("Error fetching final balance:", err);
@@ -124,7 +142,7 @@ const Sidebar = () => {
     };
 
     fetchOrganization();
-    fetchFinalBalance();
+    fetchFinalBalance(); // ✅ Now using ledger API
   }, []);
 
 

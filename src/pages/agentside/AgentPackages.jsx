@@ -95,7 +95,7 @@ const ShimmerLoader = ({ count = 3 }) => {
  */
 const RoomBookingModal = ({ pkg, show, onClose, bedsPerRoomType, calculatePrice, rooms, setRooms }) => {
   const navigate = useNavigate();
-  
+
   if (!show || !pkg) return null;
 
   const roomTypes = Object.keys(bedsPerRoomType);
@@ -118,7 +118,10 @@ const RoomBookingModal = ({ pkg, show, onClose, bedsPerRoomType, calculatePrice,
   }, 0);
 
   const totalPrice = Object.entries(rooms).reduce((sum, [type, count]) => {
-    return sum + calculatePrice(pkg, type) * count;
+    const pricePerPerson = calculatePrice(pkg, type);
+    const bedsInRoom = bedsPerRoomType[type] || 0;
+    const roomsCount = count;
+    return sum + (pricePerPerson * bedsInRoom * roomsCount);
   }, 0);
 
   const handleBooking = () => {
@@ -126,21 +129,28 @@ const RoomBookingModal = ({ pkg, show, onClose, bedsPerRoomType, calculatePrice,
       toast.error("Please select at least one room type.");
       return;
     }
-    
-    // Get the first selected room type for initial navigation
-    const selectedRoomTypes = Object.keys(rooms).filter(type => rooms[type] > 0);
-    const firstRoomType = selectedRoomTypes[0];
-    
+
+    // Create an array with each room type repeated by its count
+    // e.g., if rooms = {double: 2, triple: 1}, result = ['DOUBLE', 'DOUBLE', 'TRIPLE']
+    const expandedRoomTypes = [];
+    Object.entries(rooms).forEach(([type, count]) => {
+      for (let i = 0; i < count; i++) {
+        expandedRoomTypes.push(type.toUpperCase());
+      }
+    });
+
+    const firstRoomType = expandedRoomTypes[0];
+
     // Navigate to booking detail page
     navigate('/packages/detail', {
       state: {
         package: pkg,
-        roomType: firstRoomType.toUpperCase(),
-        roomTypes: selectedRoomTypes.map(rt => rt.toUpperCase()),
+        roomType: firstRoomType,
+        roomTypes: expandedRoomTypes, // Now includes duplicates for multiple rooms
         totalPrice: totalPrice,
       }
     });
-    
+
     onClose();
   };
 
@@ -251,7 +261,7 @@ const AgentPackages = () => {
 
         // Fetch packages and airlines for all organization IDs (agent may be linked to a parent org)
         const packagePromises = orgIds.map((id) =>
-          axios.get(`https://api.saer.pk/api/umrah-packages/?organization=${id}`, {
+          axios.get(`http://127.0.0.1:8000/api/umrah-packages/?organization=${id}`, {
             headers: {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
@@ -260,7 +270,7 @@ const AgentPackages = () => {
         );
 
         const airlinePromises = orgIds.map((id) =>
-          axios.get("https://api.saer.pk/api/airlines/", {
+          axios.get("http://127.0.0.1:8000/api/airlines/", {
             params: { organization: id },
             headers: {
               Authorization: `Bearer ${token}`,
@@ -441,27 +451,27 @@ const AgentPackages = () => {
         return undefined;
       };
       const sharing = priceCandidates(
-        ['sharing_bed_selling_price','sharing_bed_price','sharing_selling_price','sharing_price','sharing'],
+        ['sharing_bed_selling_price', 'sharing_bed_price', 'sharing_selling_price', 'sharing_price', 'sharing'],
         ['sharing_bed_purchase_price']
-      ) || findPriceInPricesArray(['sharing','shared']);
+      ) || findPriceInPricesArray(['sharing', 'shared']);
       const quaint = priceCandidates(
-        ['quaint_bed_selling_price','quaint_bed_price','quaint_selling_price','quaint_price','quaint'],
+        ['quaint_bed_selling_price', 'quaint_bed_price', 'quaint_selling_price', 'quaint_price', 'quaint'],
         ['quaint_bed_purchase_price']
-      ) || findPriceInPricesArray(['quaint','quint','quintet']);
+      ) || findPriceInPricesArray(['quaint', 'quint', 'quintet']);
       const quad = priceCandidates(
-        ['quad_bed_selling_price','quad_bed_price','quad_selling_price','quad_price','quad'],
+        ['quad_bed_selling_price', 'quad_bed_price', 'quad_selling_price', 'quad_price', 'quad'],
         ['quad_bed_purchase_price']
       ) || findPriceInPricesArray(['quad']);
       const triple = priceCandidates(
-        ['triple_bed_selling_price','triple_bed_price','triple_selling_price','triple_price','triple'],
+        ['triple_bed_selling_price', 'triple_bed_price', 'triple_selling_price', 'triple_price', 'triple'],
         ['triple_bed_purchase_price']
       ) || findPriceInPricesArray(['triple']);
       const doubleBed = priceCandidates(
-        ['double_bed_selling_price','double_bed_price','double_selling_price','double_price','double'],
+        ['double_bed_selling_price', 'double_bed_price', 'double_selling_price', 'double_price', 'double'],
         ['double_bed_purchase_price']
       ) || findPriceInPricesArray(['double']);
       const single = priceCandidates(
-        ['single_bed_selling_price','single_bed_price','single_selling_price','single_price','single'],
+        ['single_bed_selling_price', 'single_bed_price', 'single_selling_price', 'single_price', 'single'],
         ['single_bed_purchase_price']
       ) || findPriceInPricesArray(['single']);
       return {
@@ -486,11 +496,11 @@ const AgentPackages = () => {
       }
       return 0;
     };
-    const food = pkgPick(['food_selling_price','food_price','food_selling_price']);
-    const makkah = pkgPick(['makkah_ziyarat_selling_price','makkah_ziyarat_price']);
-    const madinah = pkgPick(['madinah_ziyarat_selling_price','madinah_ziyarat_price']);
-    const transport = pkgPick(['transport_selling_price','transport_price']);
-    const visaAdult = pkgPick(['adault_visa_selling_price','adault_visa_price']);
+    const food = pkgPick(['food_selling_price', 'food_price', 'food_selling_price']);
+    const makkah = pkgPick(['makkah_ziyarat_selling_price', 'makkah_ziyarat_price']);
+    const madinah = pkgPick(['madinah_ziyarat_selling_price', 'madinah_ziyarat_price']);
+    const transport = pkg?.transport_details?.[0]?.transport_selling_price || pkgPick(['transport_selling_price', 'transport_price']);
+    const visaAdult = pkgPick(['adault_visa_selling_price', 'adault_visa_price']);
     const ticketInfo = pkg?.ticket_details?.[0]?.ticket_info || {};
     let adultTicketRaw = pick(ticketInfo, ['adult_selling_price', 'adult_price', 'adult_fare', 'adult_ticket_price']);
     let childTicketRaw = pick(ticketInfo, ['child_selling_price', 'child_price', 'child_fare', 'child_ticket_price']);
@@ -511,7 +521,7 @@ const AgentPackages = () => {
     const totalDouble = adultCost + doubleHotelTotal;
     const totalSingle = adultCost + singleHotelTotal;
     // Infant price should be ticket selling price + infant visa selling price.
-    let infantTicketRaw = pick(ticketInfo, ['infant_selling_price', 'infant_price', 'infant_ticket_selling_price', 'infant_ticket_price', 'infantTicketPrice','infant_fare']);
+    let infantTicketRaw = pick(ticketInfo, ['infant_selling_price', 'infant_price', 'infant_ticket_selling_price', 'infant_ticket_price', 'infantTicketPrice', 'infant_fare']);
     let infantTicket = Number(infantTicketRaw) || 0;
     const infantVisa = pkgPick(['infant_visa_selling_price', 'infant_visa_price', 'infant_visa_cost']);
     const totalInfant = Number(infantTicket) + Number(infantVisa || 0);
@@ -641,31 +651,56 @@ const AgentPackages = () => {
     return scanObject(ticketInfo) || null;
   };
 
+  // Format sector reference to readable route
+  const formatSectorReference = (reference) => {
+    if (!reference) return '';
+
+    const referenceMap = {
+      'full_package': 'R/T - Jed(A)-Mak(H)-Med(H)-Mak(H)-Jed(A)',
+      'jeddah_makkah': 'Jed(A)-Mak(H)',
+      'makkah_madinah': 'Mak(H)-Med(H)',
+      'madinah_makkah': 'Med(H)-Mak(H)',
+      'makkah_jeddah': 'Mak(H)-Jed(A)',
+      'jeddah_madinah': 'Jed(A)-Med(H)',
+      'madinah_jeddah': 'Med(H)-Jed(A)',
+    };
+
+    return referenceMap[reference] || reference.replace(/_/g, '-').toUpperCase();
+  };
+
   const resolveTransportDisplay = (pkg, orgIds = []) => {
     if (!pkg) return null;
     if (pkg.transport) return pkg.transport;
     if (pkg.transport_name) return pkg.transport_name;
 
-    // transport_details can be an array; pick one that belongs to one of the agent orgIds
+    // transport_details can be an array
     const tDetails = pkg.transport_details;
     if (Array.isArray(tDetails) && tDetails.length) {
-      // try to find a transport whose sector organization matches one of our orgIds
+      // First try to find a transport whose sector organization matches one of our orgIds
       for (const td of tDetails) {
         const sector = td.transport_sector_info || td.transport_sector || td.transport_sector_info?.organization ? td.transport_sector_info : null;
         const sectorOrg = sector?.organization ?? sector?.org ?? td.organization ?? null;
         if (sectorOrg != null && orgIds && orgIds.length) {
           for (const oid of orgIds) {
             if (String(sectorOrg) === String(oid)) {
-              return sector.name || td.transport_sector_info?.name || td.transport_name || td.transport || null;
+              // Return formatted route instead of name
+              const reference = sector?.reference || td.transport_sector_info?.reference;
+              return formatSectorReference(reference) || sector.name || td.transport_sector_info?.name || td.transport_name || td.transport || null;
             }
           }
         }
       }
-      // if none matched our orgIds, don't surface transport (respect org boundaries)
+      // If none matched our orgIds, still show the first transport (don't hide it)
+      const firstTransport = tDetails[0];
+      const sector = firstTransport?.transport_sector_info || firstTransport?.transport_sector;
+      if (sector) {
+        const reference = sector?.reference || firstTransport?.transport_sector_info?.reference;
+        return formatSectorReference(reference) || sector.name || firstTransport?.transport_sector_info?.name || firstTransport?.transport_name || firstTransport?.transport || null;
+      }
     }
 
     // Fallback: if transport_price exists and > 0, show Included
-    if (pkg.transport_price) return 'Included';
+    if (pkg.transport_price || pkg.transport_selling_price) return 'Included';
     return null;
   };
 
@@ -723,11 +758,10 @@ const AgentPackages = () => {
                           <NavLink
                             key={index}
                             to={tab.path}
-                            className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${
-                              tab.name === "Umrah Package"
-                                ? "text-primary fw-semibold"
-                                : "text-muted"
-                            }`}
+                            className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${tab.name === "Umrah Package"
+                              ? "text-primary fw-semibold"
+                              : "text-muted"
+                              }`}
                             style={{ backgroundColor: "transparent" }}
                           >
                             {tab.name}
@@ -775,11 +809,10 @@ const AgentPackages = () => {
                         <NavLink
                           key={index}
                           to={tab.path}
-                          className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${
-                            tab.name === "Umrah Package"
-                              ? "text-primary fw-semibold"
-                              : "text-muted"
-                          }`}
+                          className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${tab.name === "Umrah Package"
+                            ? "text-primary fw-semibold"
+                            : "text-muted"
+                            }`}
                           style={{ backgroundColor: "transparent" }}
                         >
                           {tab.name}
@@ -792,7 +825,7 @@ const AgentPackages = () => {
                       <div className="text-center py-5">
                         <div className="mb-4">
                           <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" fill="#dee2e6" viewBox="0 0 16 16">
-                            <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1h-7z"/>
+                            <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1h-7z" />
                           </svg>
                         </div>
                         <h4 className="text-muted mb-3">No Umrah Packages Found</h4>
@@ -891,11 +924,10 @@ const AgentPackages = () => {
                         <NavLink
                           key={index}
                           to={tab.path}
-                          className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${
-                            tab.name === "Umrah Package"
-                              ? "text-primary fw-semibold"
-                              : "text-muted"
-                          }`}
+                          className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${tab.name === "Umrah Package"
+                            ? "text-primary fw-semibold"
+                            : "text-muted"
+                            }`}
                           style={{ backgroundColor: "transparent" }}
                         >
                           {tab.name}
@@ -946,55 +978,68 @@ const AgentPackages = () => {
 
 
                         return (
-                          <div key={index} className="border rounded-3 mb-4 package-card" style={{padding: "24px", background: "white"}}>
-                              <div className="row align-items-start">
-                                <div className="col-lg-8">
+                          <div key={index} className="border rounded-3 mb-4 package-card" style={{ padding: "24px", background: "white" }}>
+                            <div className="row align-items-start">
+                              <div className="col-lg-8">
                                 {/* Title and Seats Row */}
                                 <div className="d-flex justify-content-between align-items-start mb-3">
                                   <div>
-                                    <h4 className="fw-bold mb-0" style={{fontSize: "22px", color: "#333"}}>
+                                    <h4 className="fw-bold mb-0" style={{ fontSize: "22px", color: "#333" }}>
                                       {pkg?.title || "Umrah Package"}
                                     </h4>
                                   </div>
                                   <div className="text-end">
-                                    <h3 className="fw-bold mb-0" style={{color: "#dc3545", fontSize: "32px"}}>{pkg?.total_seats || "0"}</h3>
-                                    <div className="text-danger fw-semibold" style={{fontSize: "14px"}}>Seats Left</div>
+                                    <h3 className="fw-bold mb-0" style={{ color: "#dc3545", fontSize: "32px" }}>{pkg?.total_seats || "0"}</h3>
+                                    <div className="text-danger fw-semibold" style={{ fontSize: "14px" }}>Seats Left</div>
                                   </div>
                                 </div>
 
                                 {/* Hotel and Package Details */}
                                 <div className="row mb-3 g-3">
-                                  <div className="col-6 col-md-2">
-                                    <div className="text-uppercase fw-bold text-muted" style={{fontSize: "11px", marginBottom: "4px"}}>MAKKAH HOTEL:</div>
-                                    <div style={{fontSize: "14px", color: "#333"}}>{pkg?.hotel_details?.[0]?.hotel_info?.name || "N/A"}</div>
-                                  </div>
-                                  <div className="col-6 col-md-2">
-                                    <div className="text-uppercase fw-bold text-muted" style={{fontSize: "11px", marginBottom: "4px"}}>MADINA HOTEL:</div>
-                                    <div style={{fontSize: "14px", color: "#333"}}>{pkg?.hotel_details?.[1]?.hotel_info?.name || "N/A"}</div>
-                                  </div>
-                                  <div className="col-4 col-md-2">
-                                    <div className="text-uppercase fw-bold text-muted" style={{fontSize: "11px", marginBottom: "4px"}}>ZAYARAT:</div>
-                                    <div style={{fontSize: "14px", color: "#333"}}>
-                                      {pkg?.makkah_ziyarat_price || pkg?.madinah_ziyarat_price ? "YES" : "N/A"}
+                                  {pkg?.hotel_details?.[0]?.hotel_info?.name && (
+                                    <div className="col-6 col-md-2">
+                                      <div className="text-uppercase fw-bold text-muted" style={{ fontSize: "11px", marginBottom: "4px" }}>MAKKAH HOTEL:</div>
+                                      <div style={{ fontSize: "14px", color: "#333" }}>{pkg.hotel_details[0].hotel_info.name}</div>
                                     </div>
-                                  </div>
-                                  <div className="col-4 col-md-2">
-                                    <div className="text-uppercase fw-bold text-muted" style={{fontSize: "11px", marginBottom: "4px"}}>FOOD:</div>
-                                    <div style={{fontSize: "14px", color: "#333"}}>
-                                      {pkg?.food_price > 0 ? "INCLUDED" : "N/A"}
+                                  )}
+                                  {pkg?.hotel_details?.[1]?.hotel_info?.name && (
+                                    <div className="col-6 col-md-2">
+                                      <div className="text-uppercase fw-bold text-muted" style={{ fontSize: "11px", marginBottom: "4px" }}>MADINA HOTEL:</div>
+                                      <div style={{ fontSize: "14px", color: "#333" }}>{pkg.hotel_details[1].hotel_info.name}</div>
                                     </div>
-                                  </div>
-                                  <div className="col-4 col-md-4">
-                                    <div className="text-uppercase fw-bold text-muted" style={{fontSize: "11px", marginBottom: "4px"}}>RULES:</div>
-                                    <div style={{fontSize: "13px", color: "#333", lineHeight: "1.4"}}>{pkg?.rules || "N/A"}</div>
-                                  </div>
+                                  )}
+                                  {(() => {
+                                    const hasZiyarat = (pkg?.makkah_ziyarat_selling_price || pkg?.makkah_ziyarat_price || pkg?.madinah_ziyarat_selling_price || pkg?.madinah_ziyarat_price) > 0;
+
+                                    return hasZiyarat && (
+                                      <div className="col-4 col-md-2">
+                                        <div className="text-uppercase fw-bold text-muted" style={{ fontSize: "11px", marginBottom: "4px" }}>ZAYARAT:</div>
+                                        <div style={{ fontSize: "14px", color: "#333" }}>YES</div>
+                                      </div>
+                                    );
+                                  })()}
+                                  {(() => {
+                                    const hasFood = (pkg?.food_selling_price || pkg?.food_price) > 0;
+                                    return hasFood && (
+                                      <div className="col-4 col-md-2">
+                                        <div className="text-uppercase fw-bold text-muted" style={{ fontSize: "11px", marginBottom: "4px" }}>FOOD:</div>
+                                        <div style={{ fontSize: "14px", color: "#333" }}>INCLUDED</div>
+                                      </div>
+                                    );
+                                  })()}
+                                  {pkg?.rules && (
+                                    <div className="col-4 col-md-4">
+                                      <div className="text-uppercase fw-bold text-muted" style={{ fontSize: "11px", marginBottom: "4px" }}>RULES:</div>
+                                      <div style={{ fontSize: "13px", color: "#333", lineHeight: "1.4" }}>{pkg.rules}</div>
+                                    </div>
+                                  )}
                                 </div>
                                 {/* Hotel Prices - consolidated */}
                                 <div className="mb-3">
                                   <h6 className="mb-2">Per Adult Package Price (Varies by Room Type)</h6>
                                   <div className="row g-2 text-center">
                                     <div className="col-4 col-sm-4 col-lg-2">
-                                      <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>SHARING</div>
+                                      <div className="text-uppercase fw-bold" style={{ fontSize: "12px" }}>SHARING</div>
                                       <div className={sharingPrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
                                         {sharingPrice > 0 ? `Rs. ${Number(sharingPrice || 0).toLocaleString()}/.` : "N/A"}
                                       </div>
@@ -1002,7 +1047,7 @@ const AgentPackages = () => {
                                     </div>
 
                                     <div className="col-4 col-sm-4 col-lg-2">
-                                      <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>QUINT</div>
+                                      <div className="text-uppercase fw-bold" style={{ fontSize: "12px" }}>QUINT</div>
                                       <div className={quintPrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
                                         {quintPrice > 0 ? `Rs. ${Number(quintPrice || 0).toLocaleString()}/.` : "N/A"}
                                       </div>
@@ -1010,7 +1055,7 @@ const AgentPackages = () => {
                                     </div>
 
                                     <div className="col-4 col-sm-4 col-lg-2">
-                                      <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>QUAD BED</div>
+                                      <div className="text-uppercase fw-bold" style={{ fontSize: "12px" }}>QUAD BED</div>
                                       <div className={quadPrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
                                         {quadPrice > 0 ? `Rs. ${Number(quadPrice || 0).toLocaleString()}/.` : "N/A"}
                                       </div>
@@ -1018,7 +1063,7 @@ const AgentPackages = () => {
                                     </div>
 
                                     <div className="col-4 col-sm-4 col-lg-2">
-                                      <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>TRIPLE BED</div>
+                                      <div className="text-uppercase fw-bold" style={{ fontSize: "12px" }}>TRIPLE BED</div>
                                       <div className={triplePrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
                                         {triplePrice > 0 ? `Rs. ${Number(triplePrice || 0).toLocaleString()}/.` : "N/A"}
                                       </div>
@@ -1026,15 +1071,15 @@ const AgentPackages = () => {
                                     </div>
 
                                     <div className="col-4 col-sm-4 col-lg-2">
-                                      <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>DOUBLE BED</div>
+                                      <div className="text-uppercase fw-bold" style={{ fontSize: "12px" }}>DOUBLE BED</div>
                                       <div className={doublePrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
                                         {doublePrice > 0 ? `Rs. ${Number(doublePrice || 0).toLocaleString()}/.` : "N/A"}
                                       </div>
                                       <small className="text-muted">per adult</small>
                                     </div>
-                                    
+
                                     <div className="col-4 col-sm-4 col-lg-2">
-                                      <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>SINGLE BED</div>
+                                      <div className="text-uppercase fw-bold" style={{ fontSize: "12px" }}>SINGLE BED</div>
                                       <div className={singlePrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
                                         {singlePrice > 0 ? `Rs. ${Number(singlePrice || 0).toLocaleString()}/.` : "N/A"}
                                       </div>
@@ -1045,7 +1090,7 @@ const AgentPackages = () => {
                                 </div>
 
                                 {/* Child Discount & Infant Price */}
-                                <div className="mb-3 d-flex gap-4" style={{fontSize: "13px"}}>
+                                <div className="mb-3 d-flex gap-4" style={{ fontSize: "13px" }}>
                                   {childPrices > 0 && (
                                     <div className="text-success">
                                       Per Child <span className="text-primary fw-bold">Rs {Number(childPrices).toLocaleString()}/.</span> discount.
@@ -1061,7 +1106,7 @@ const AgentPackages = () => {
                                   className="btn text-white w-100"
                                   id="btn"
                                   data-html2canvas-ignore="true"
-                                  style={{padding: "12px", fontSize: "16px", fontWeight: "600"}}
+                                  style={{ padding: "12px", fontSize: "16px", fontWeight: "600" }}
                                   onClick={() => {
                                     setSelectedPackage(pkg);
                                     setSelectedRooms({}); // reset previous selections
@@ -1086,25 +1131,105 @@ const AgentPackages = () => {
                                   </p>
 
                                   <p className="text-muted small mb-1">Umrah Visa:</p>
-                                  <p className="fw-semibold mb-3">{pkg?.adault_visa_price !== undefined ? 'INCLUDED' : 'N/A'}</p>
+                                  <p className="fw-semibold mb-3">{(pkg?.adault_visa_selling_price || pkg?.adault_visa_price) > 0 ? 'INCLUDED' : 'N/A'}</p>
 
                                   <p className="text-muted small mb-1">Transport:</p>
                                   <p className="fw-semibold mb-3">{resolveTransportDisplay(pkg, orgIds) || 'N/A'}</p>
 
                                   <p className="text-muted small mb-1">Flight:</p>
-                                  <p className="fw-semibold mb-3">{airlineName || 'N/A'}</p>
+                                  <p className="fw-semibold mb-2">Travel Date:</p>
+                                  <p className="fw-semibold mb-3" style={{ fontSize: '13px' }}>
+                                    {(() => {
+                                      const ticketData = pkg?.ticket_details?.[0] || {};
+                                      const tripDetails = ticketInfo?.trip_details || ticketData?.trip_details || [];
+                                      const flightFrom = tripDetails.find(t => t?.trip_type?.toLowerCase() === 'departure') || tripDetails[0];
 
-                                  <p className="text-muted small mb-1">Travel Date:</p>
-                                  <p className="fw-semibold mb-3">{resolveDateField(ticketInfo, 'departure_date') ? formatDateTime(resolveDateField(ticketInfo, 'departure_date')) : (resolveDateField(ticketInfo, 'departure') ? formatDateTime(resolveDateField(ticketInfo, 'departure')) : 'N/A')}</p>
+                                      if (!flightFrom?.departure_date_time) return 'N/A';
 
-                                  <p className="text-muted small mb-1">Return Date:</p>
-                                  <p className="fw-semibold mb-3">{resolveDateField(ticketInfo, 'return_date') ? formatDateTime(resolveDateField(ticketInfo, 'return_date')) : (resolveDateField(ticketInfo, 'return') ? formatDateTime(resolveDateField(ticketInfo, 'return')) : 'N/A')}</p>
+                                      // Get airline code
+                                      const airlineNameToCode = {
+                                        'pakistan international airline': 'PIA',
+                                        'pia': 'PIA',
+                                        'saudi arabian airlines': 'SV',
+                                        'saudia': 'SV',
+                                        'emirates': 'EK',
+                                        'etihad': 'EY',
+                                        'qatar airways': 'QR',
+                                        'fly dubai': 'FZ',
+                                        'air arabia': 'G9',
+                                        'air blue': 'PA',
+                                        'serene air': 'ER',
+                                      };
+
+                                      const airlineData = ticketData?.airline || ticketInfo?.airline;
+                                      let airlineCode = '';
+                                      if (typeof airlineData === 'object') {
+                                        airlineCode = airlineData?.code || airlineData?.airline_code;
+                                        if (!airlineCode && airlineData?.name) {
+                                          const nameLower = airlineData.name.toLowerCase().trim();
+                                          airlineCode = airlineNameToCode[nameLower] || airlineData.name.substring(0, 3).toUpperCase();
+                                        }
+                                      }
+
+                                      if (!airlineCode) {
+                                        const flightNum = ticketInfo?.flight_number || flightFrom?.flight_number || '';
+                                        const match = flightNum.match(/^([A-Z]{2,3})/);
+                                        airlineCode = match ? match[1] : 'XX';
+                                      }
+
+                                      return `${ticketInfo?.flight_number || 'N/A'} - ${formatDateTime(flightFrom.departure_date_time)}${flightFrom.arrival_date_time ? ` - ${formatDateTime(flightFrom.arrival_date_time)}` : ''}`;
+                                    })()}
+                                  </p>
+
+                                  <p className="fw-semibold mb-2">Return Date:</p>
+                                  <p className="fw-semibold mb-3" style={{ fontSize: '13px' }}>
+                                    {(() => {
+                                      const ticketData = pkg?.ticket_details?.[0] || {};
+                                      const tripDetails = ticketInfo?.trip_details || ticketData?.trip_details || [];
+                                      const flightTo = tripDetails.find(t => t?.trip_type?.toLowerCase() === 'return') || tripDetails[1];
+
+                                      if (!flightTo?.departure_date_time) return 'N/A';
+
+                                      // Get airline code
+                                      const airlineNameToCode = {
+                                        'pakistan international airline': 'PIA',
+                                        'pia': 'PIA',
+                                        'saudi arabian airlines': 'SV',
+                                        'saudia': 'SV',
+                                        'emirates': 'EK',
+                                        'etihad': 'EY',
+                                        'qatar airways': 'QR',
+                                        'fly dubai': 'FZ',
+                                        'air arabia': 'G9',
+                                        'air blue': 'PA',
+                                        'serene air': 'ER',
+                                      };
+
+                                      const airlineData = ticketData?.airline || ticketInfo?.airline;
+                                      let airlineCode = '';
+                                      if (typeof airlineData === 'object') {
+                                        airlineCode = airlineData?.code || airlineData?.airline_code;
+                                        if (!airlineCode && airlineData?.name) {
+                                          const nameLower = airlineData.name.toLowerCase().trim();
+                                          airlineCode = airlineNameToCode[nameLower] || airlineData.name.substring(0, 3).toUpperCase();
+                                        }
+                                      }
+
+                                      if (!airlineCode) {
+                                        const flightNum = ticketInfo?.flight_number || flightTo?.flight_number || '';
+                                        const match = flightNum.match(/^([A-Z]{2,3})/);
+                                        airlineCode = match ? match[1] : 'XX';
+                                      }
+
+                                      return `${ticketInfo?.flight_number || 'N/A'} - ${formatDateTime(flightTo.departure_date_time)}${flightTo.arrival_date_time ? ` - ${formatDateTime(flightTo.arrival_date_time)}` : ''}`;
+                                    })()}
+                                  </p>
 
                                   <p className="text-muted small mb-1">ZAYARAT:</p>
-                                  <p className="fw-semibold mb-3">{(pkg?.makkah_ziyarat_price || pkg?.madinah_ziyarat_price) ? 'YES' : 'N/A'}</p>
+                                  <p className="fw-semibold mb-3">{(pkg?.makkah_ziyarat_selling_price || pkg?.makkah_ziyarat_price || pkg?.madinah_ziyarat_selling_price || pkg?.madinah_ziyarat_price) > 0 ? 'YES' : 'N/A'}</p>
 
                                   <p className="text-muted small mb-1">FOOD:</p>
-                                  <p className="fw-semibold mb-0">{pkg?.food_price > 0 ? 'INCLUDED' : 'N/A'}</p>
+                                  <p className="fw-semibold mb-0">{(pkg?.food_selling_price || pkg?.food_price) > 0 ? 'INCLUDED' : 'N/A'}</p>
                                 </div>
                               </div>
                             </div>

@@ -72,16 +72,16 @@ const AgentRegister = () => {
       try {
         const token = localStorage.getItem('agentAccessToken');
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
-  // Fetch organizations (for Branch parent selection). The backend returns organizations when you request ?type=branch
-  const orgResp = await fetch('https://api.saer.pk/api/universal/available-parents/?type=branch', { headers });
+        // Fetch organizations (for Branch parent selection). The backend returns organizations when you request ?type=branch
+        const orgResp = await fetch('http://127.0.0.1:8000/api/universal/available-parents/?type=branch', { headers });
         if (orgResp.ok) {
           const orgJson = await orgResp.json();
           // expected shape: { available_parents: [{ id, name }, ...] }
           setOrganizations(orgJson.available_parents || []);
         }
 
-  // Fetch branches (for Agent/Employee parent selection). The backend returns branches when you request ?type=agent
-  const branchResp = await fetch('https://api.saer.pk/api/universal/available-parents/?type=agent', { headers });
+        // Fetch branches (for Agent/Employee parent selection). The backend returns branches when you request ?type=agent
+        const branchResp = await fetch('http://127.0.0.1:8000/api/universal/available-parents/?type=agent', { headers });
         if (branchResp.ok) {
           const branchJson = await branchResp.json();
           if (branchJson.available_parents && branchJson.available_parents.length > 0) {
@@ -245,7 +245,7 @@ const AgentRegister = () => {
         }
       }
 
-      const resp = await fetch('https://api.saer.pk/api/universal/register/', {
+      const resp = await fetch('http://127.0.0.1:8000/api/universal/register/', {
         method: 'POST',
         headers,
         body: form,
@@ -283,7 +283,7 @@ const AgentRegister = () => {
       const respJson = bodyJson;
       console.log('Registration response:', respJson);
       setFieldErrors({});
-  setDebugServerError(null);
+      setDebugServerError(null);
       setSuccess('Registration request sent successfully! We will contact you soon.');
       // clear file inputs
       document.querySelectorAll('input[type="file"]').forEach(input => { input.value = ''; });
@@ -472,30 +472,30 @@ const AgentRegister = () => {
                           <div style={{ maxHeight: showOptionalDocsBranch ? 800 : 0, overflow: 'hidden', transition: 'max-height 280ms ease' }}>
                             <div className="row">
                               <div className="col-12 col-md-6 mb-2">
-                              <label className="form-label fw-semibold">CNIC Front (Optional)</label>
-                              <input type="file" onChange={(e) => handleBranchFileChange(e, 'cnic_front')} className="form-control" />
-                              {branchPreviews.cnic_front && typeof branchPreviews.cnic_front === 'string' && branchPreviews.cnic_front.startsWith('blob:') && (
-                                <img src={branchPreviews.cnic_front} alt="cnic_front" style={{ height: 80, marginTop: 8 }} />
-                              )}
-                            </div>
+                                <label className="form-label fw-semibold">CNIC Front (Optional)</label>
+                                <input type="file" onChange={(e) => handleBranchFileChange(e, 'cnic_front')} className="form-control" />
+                                {branchPreviews.cnic_front && typeof branchPreviews.cnic_front === 'string' && branchPreviews.cnic_front.startsWith('blob:') && (
+                                  <img src={branchPreviews.cnic_front} alt="cnic_front" style={{ height: 80, marginTop: 8 }} />
+                                )}
+                              </div>
                               <div className="col-12 col-md-6 mb-2">
-                              <label className="form-label fw-semibold">CNIC Back (Optional)</label>
-                              <input type="file" onChange={(e) => handleBranchFileChange(e, 'cnic_back')} className="form-control" />
-                              {branchPreviews.cnic_back && typeof branchPreviews.cnic_back === 'string' && branchPreviews.cnic_back.startsWith('blob:') && (
-                                <img src={branchPreviews.cnic_back} alt="cnic_back" style={{ height: 80, marginTop: 8 }} />
-                              )}
-                            </div>
+                                <label className="form-label fw-semibold">CNIC Back (Optional)</label>
+                                <input type="file" onChange={(e) => handleBranchFileChange(e, 'cnic_back')} className="form-control" />
+                                {branchPreviews.cnic_back && typeof branchPreviews.cnic_back === 'string' && branchPreviews.cnic_back.startsWith('blob:') && (
+                                  <img src={branchPreviews.cnic_back} alt="cnic_back" style={{ height: 80, marginTop: 8 }} />
+                                )}
+                              </div>
                               <div className="col-12 col-md-6 mb-2">
-                              <label className="form-label fw-semibold">Visiting Card (Optional)</label>
-                              <input type="file" onChange={(e) => handleBranchFileChange(e, 'visiting_card')} className="form-control" />
-                              {branchPreviews.visiting_card && typeof branchPreviews.visiting_card === 'string' && branchPreviews.visiting_card.startsWith('blob:') && (
-                                <img src={branchPreviews.visiting_card} alt="visiting_card" style={{ height: 80, marginTop: 8 }} />
-                              )}
-                            </div>
+                                <label className="form-label fw-semibold">Visiting Card (Optional)</label>
+                                <input type="file" onChange={(e) => handleBranchFileChange(e, 'visiting_card')} className="form-control" />
+                                {branchPreviews.visiting_card && typeof branchPreviews.visiting_card === 'string' && branchPreviews.visiting_card.startsWith('blob:') && (
+                                  <img src={branchPreviews.visiting_card} alt="visiting_card" style={{ height: 80, marginTop: 8 }} />
+                                )}
+                              </div>
                               <div className="col-12 col-md-6 mb-2">
-                              <label className="form-label fw-semibold">DTS License (Optional)</label>
-                              <input type="file" onChange={(e) => handleBranchFileChange(e, 'dts_license')} className="form-control" />
-                            </div>
+                                <label className="form-label fw-semibold">DTS License (Optional)</label>
+                                <input type="file" onChange={(e) => handleBranchFileChange(e, 'dts_license')} className="form-control" />
+                              </div>
                             </div>
                           </div>
                         </div>

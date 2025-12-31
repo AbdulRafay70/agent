@@ -354,7 +354,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
                               whiteSpace: "nowrap",
                             }}
                           >
-                                          {getCityName(outboundStopover?.stopover_city)}
+                            {getCityName(outboundStopover?.stopover_city)}
                           </div>
                         </div>
                         <hr className="w-50 m-0" />
@@ -675,13 +675,13 @@ const TicketBooking = () => {
         if (typeof city === 'object') {
           if (city.code) return city.code;
           if (city.id && cityCodeMap && cityCodeMap[city.id]) return cityCodeMap[city.id];
-          if (city.name) return String(city.name).split(' ')[0].substring(0,3).toUpperCase();
+          if (city.name) return String(city.name).split(' ')[0].substring(0, 3).toUpperCase();
         }
         // string or number -> try direct map or use first 3 chars
         const key = city;
         if (cityCodeMap && cityCodeMap[key]) return cityCodeMap[key];
-        if (cityMap && cityMap[key]) return String(cityMap[key]).split(' ')[0].substring(0,3).toUpperCase();
-        return String(city).substring(0,3).toUpperCase();
+        if (cityMap && cityMap[key]) return String(cityMap[key]).split(' ')[0].substring(0, 3).toUpperCase();
+        return String(city).substring(0, 3).toUpperCase();
       };
 
       const depCode = cityToCode(outboundTrip.departure_city) || "UNK";
@@ -821,9 +821,9 @@ const TicketBooking = () => {
         setError(null);
         setIsLoading(true);
 
-        const ticketUrls = uniqueOrgIds.map((id) => `https://api.saer.pk/api/tickets/?organization=${id}`);
-        const airlineUrls = uniqueOrgIds.map((id) => `https://api.saer.pk/api/airlines/?organization=${id}`);
-        const cityUrls = uniqueOrgIds.map((id) => `https://api.saer.pk/api/cities/?organization=${id}`);
+        const ticketUrls = uniqueOrgIds.map((id) => `http://127.0.0.1:8000/api/tickets/?organization=${id}`);
+        const airlineUrls = uniqueOrgIds.map((id) => `http://127.0.0.1:8000/api/airlines/?organization=${id}`);
+        const cityUrls = uniqueOrgIds.map((id) => `http://127.0.0.1:8000/api/cities/?organization=${id}`);
 
         const [ticketsResponses, airlinesResponses, citiesResponses] = await Promise.all([
           ticketUrls.length ? fetchUrlsInBatches(ticketUrls, 3) : [],
@@ -909,8 +909,21 @@ const TicketBooking = () => {
 
     let result = [...tickets];
 
-    // Filter out tickets without trip details
-    result = result.filter((ticket) => ticket.trip_details && Array.isArray(ticket.trip_details) && ticket.trip_details.length > 0);
+    // Filter out tickets without proper trip details
+    result = result.filter((ticket) => {
+      if (!ticket.trip_details || !Array.isArray(ticket.trip_details) || ticket.trip_details.length === 0) {
+        return false;
+      }
+      // Check if there's at least one trip with departure info (outbound trip)
+      const hasValidTrip = ticket.trip_details.some(trip =>
+        trip &&
+        trip.departure_date_time &&
+        trip.arrival_date_time &&
+        (trip.departure_city || trip.departure_city === 0) &&
+        (trip.arrival_city || trip.arrival_city === 0)
+      );
+      return hasValidTrip;
+    });
 
     // PNR search
     if (pnr) {
@@ -1037,7 +1050,7 @@ const TicketBooking = () => {
   ]);
 
   // Generate unique routes from tickets
-  useEffect(() => { 
+  useEffect(() => {
     if (tickets.length === 0 || Object.keys(cityCodeMap).length === 0) return;
 
     const uniqueRoutes = {};
@@ -1050,7 +1063,7 @@ const TicketBooking = () => {
     // Initialize routeFilters with unique routes
     const newRouteFilters = {};
     Object.keys(uniqueRoutes).forEach((route) => {
-      newRouteFilters[route] = routeFilters[route] || false; 
+      newRouteFilters[route] = routeFilters[route] || false;
     });
 
     setRouteFilters(newRouteFilters);
@@ -1128,7 +1141,7 @@ const TicketBooking = () => {
                 `}
       </style>
 
-      
+
       <div className="row g-0">
         {/* Sidebar */}
         <div className="col-12 col-lg-2">
@@ -1141,244 +1154,244 @@ const TicketBooking = () => {
             <div className="px-3 mt-3 px-lg-4">
               {/* Navigation Tabs */}
               <div className="row ">
-              <div className="d-flex flex-wrap justify-content-end align-items-center w-100">
+                <div className="d-flex flex-wrap justify-content-end align-items-center w-100">
 
-                {/* Action Buttons */}
-                <div className="d-flex gap-2">
-                  <div className="input-group" style={{ maxWidth: "300px" }}>
-                    <span className="input-group-text">
-                      <Search />
-                    </span>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="Search name, address, job, etc"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                  <div className="">
-                    <button
-                      className="btn text-white"
-                    >
-                      Export
-                    </button>
-                  </div>
-                </div>
-              </div>
-            
-
-            {/* Flight Booking Interface */}
-            <div className="container-fluid ">
-              {/* Header */}
-              <div className="shadow-sm p-3 mb-4 rounded">
-                <h5 className="mb-4 fw-bold">Groups Tickets</h5>
-                {/* Search Form */}
-                <div className="row">
-                  <div className="col-md-5">
-                    <label htmlFor="" className="Control-label">Enter Destination</label>
-                    <div className="input-group border rounded bg-light">
-                      <span className="input-group-text border-0 text-primary">
-                        <BedDouble />
+                  {/* Action Buttons */}
+                  <div className="d-flex gap-2">
+                    <div className="input-group" style={{ maxWidth: "300px" }}>
+                      <span className="input-group-text">
+                        <Search />
                       </span>
                       <input
                         type="text"
-                        className="form-control rounded shadow-none border-0 bg-light px-1 py-2"
-                        value={destination}
-                        onChange={(e) => setDestination(e.target.value)}
-                        placeholder="Dubai (DXB)"
+                        className="form-control"
+                        placeholder="Search name, address, job, etc"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
                       />
                     </div>
-                  </div>
-
-                  <div className="col-md-3">
-                    <label htmlFor="" className="Control-label">Travel Date</label>
-                    <div className="input-group">
-                      <input
-                        type="date"
-                        className="form-control rounded shadow-none bg-light px-1 py-2"
-                        value={travelDate}
-                        onChange={(e) => setTravelDate(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="col-md-3 d-flex justify-content-center align-items-end">
-                    <div>
+                    <div className="">
                       <button
-                        id="btn" className="btn me-2  px-4"
-                        onClick={handleSearch}
+                        className="btn text-white"
                       >
-                        Search
-                      </button>
-                    </div>
-                    <div>
-                      <button
-                        id="btn" className="btn px-4"
-                        onClick={handleShowAll}
-                      >
-                        Show All
+                        Export
                       </button>
                     </div>
                   </div>
                 </div>
-              </div>
-              {/* Sort Options */}
-              <div className=" mb-4 d-flex gap-5 justify-content-center flex-wrap">
-                <div className="">
-                  <h5 className="mb-0 fw-bold">Sort:</h5>
-                </div>
-                <div className="d-flex flex-wrap gap-3">
-                  {Object.entries({
-                    airline: "Airline",
-                    price: "Price",
-                    departureDate: "Departure Date",
-                    umrahGroups: "Umrah Groups",
-                  }).map(([key, label]) => (
-                    <div className="form-check" key={key}>
-                      <input
-                        className="form-check-input "
-                        type="checkbox"
-                        checked={sortOptions[key]}
-                        onChange={() => handleSortChange(key)}
-                        id={key}
-                      />
-                      <label className="form-check-label" htmlFor={key}>
-                        {label}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="row">
-                <div className="col-md-3">
-                  {/* Route Filter */}
-                  <div className="mb-4 border rounded">
-                    <div className="mt-4 ps-4">
-                      <h6 className="mb-4 fw-bold" style={{ color: "#548579" }}>
-                        Route
-                      </h6>
-                    </div>
-                    <div className="d-flex flex-column justify-content-start align-items-start gap-3 ps-4">
-                      {/* Dynamic route filters */}
-                      {Object.keys(routeFilters).map((route) => (
-                        <div className="form-check d-flex align-items-center" key={route}>
+
+
+                {/* Flight Booking Interface */}
+                <div className="container-fluid ">
+                  {/* Header */}
+                  <div className="shadow-sm p-3 mb-4 rounded">
+                    <h5 className="mb-4 fw-bold">Groups Tickets</h5>
+                    {/* Search Form */}
+                    <div className="row">
+                      <div className="col-md-5">
+                        <label htmlFor="" className="Control-label">Enter Destination</label>
+                        <div className="input-group border rounded bg-light">
+                          <span className="input-group-text border-0 text-primary">
+                            <BedDouble />
+                          </span>
                           <input
-                            className="form-check-input  me-2"
-                            type="checkbox"
-                            checked={routeFilters[route]}
-                            onChange={() => handleRouteFilterChange(route)}
-                            id={route}
+                            type="text"
+                            className="form-control rounded shadow-none border-0 bg-light px-1 py-2"
+                            value={destination}
+                            onChange={(e) => setDestination(e.target.value)}
+                            placeholder="Dubai (DXB)"
                           />
-                          <label className="form-check-label small" htmlFor={route}>
-                            {route}
-                          </label>
                         </div>
-                      ))}
-                    </div>
+                      </div>
 
-                    {/* Airline Filter */}
-                    <div className=" ps-4">
-                      <h6 className="mb-4 fw-bold mt-4" style={{ color: "#548579" }}>
-                        Airline
-                      </h6>
-                    </div>
-                    <div className="d-flex flex-column mb-3 justify-content-start align-items-start gap-3 ps-4">
-                      {Object.keys(airlineFilters).map((airlineName) => (
-                        <div className="form-check d-flex align-items-center" key={airlineName}>
+                      <div className="col-md-3">
+                        <label htmlFor="" className="Control-label">Travel Date</label>
+                        <div className="input-group">
                           <input
-                            className="form-check-input  me-2"
-                            type="checkbox"
-                            checked={airlineFilters[airlineName]}
-                            onChange={() => handleAirlineFilterChange(airlineName)}
-                            id={airlineName}
+                            type="date"
+                            className="form-control rounded shadow-none bg-light px-1 py-2"
+                            value={travelDate}
+                            onChange={(e) => setTravelDate(e.target.value)}
                           />
-                          <label className="form-check-label small" htmlFor={airlineName}>
-                            {airlineName}
-                          </label>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                      </div>
 
-                {/* Main Content */}
-                <div className="col-md-9">
-                  {/* Loading state with shimmer effect */}
-                  {isLoading && (
-                    <>
-                      <FlightCardShimmer />
-                      <FlightCardShimmer />
-                      <FlightCardShimmer />
-                    </>
-                  )}
-
-                  {/* Error state */}
-                  {!isLoading && error && (
-                    <div className="alert alert-danger my-5">
-                      <h5>Error Loading Data</h5>
-                      <p className="mb-1">{error}</p>
-                      <p className="small mb-0">Organization ID: {uniqueOrgIds && uniqueOrgIds.length ? uniqueOrgIds.join(',') : 'N/A'}</p>
-                      <div className="mt-3">
-                        <button
-                          className="btn btn-sm btn-outline-danger me-2"
-                          onClick={() => window.location.reload()}
-                        >
-                          Retry
-                        </button>
-                        <a
-                          href={`https://api.saer.pk/api/tickets/?organization=${uniqueOrgIds && uniqueOrgIds.length ? uniqueOrgIds[0] : ''}`}
-                          className="btn btn-sm btn-outline-primary"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Test API
-                        </a>
+                      <div className="col-md-3 d-flex justify-content-center align-items-end">
+                        <div>
+                          <button
+                            id="btn" className="btn me-2  px-4"
+                            onClick={handleSearch}
+                          >
+                            Search
+                          </button>
+                        </div>
+                        <div>
+                          <button
+                            id="btn" className="btn px-4"
+                            onClick={handleShowAll}
+                          >
+                            Show All
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  )}
-
-                  {/* No tickets found */}
-                  {!isLoading && !error && filteredTickets.length === 0 && (
-                    <div className="text-center my-5">
-                      <h5>No tickets found</h5>
-                      <p>Try adjusting your search criteria</p>
-                      <button
-                        id="btn" className="btn mt-2"
-                        onClick={handleShowAll}
-                      >
-                        Show All Tickets
-                      </button>
+                  </div>
+                  {/* Sort Options */}
+                  <div className=" mb-4 d-flex gap-5 justify-content-center flex-wrap">
+                    <div className="">
+                      <h5 className="mb-0 fw-bold">Sort:</h5>
                     </div>
-                  )}
+                    <div className="d-flex flex-wrap gap-3">
+                      {Object.entries({
+                        airline: "Airline",
+                        price: "Price",
+                        departureDate: "Departure Date",
+                        umrahGroups: "Umrah Groups",
+                      }).map(([key, label]) => (
+                        <div className="form-check" key={key}>
+                          <input
+                            className="form-check-input "
+                            type="checkbox"
+                            checked={sortOptions[key]}
+                            onChange={() => handleSortChange(key)}
+                            id={key}
+                          />
+                          <label className="form-check-label" htmlFor={key}>
+                            {label}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="row">
+                    <div className="col-md-3">
+                      {/* Route Filter */}
+                      <div className="mb-4 border rounded">
+                        <div className="mt-4 ps-4">
+                          <h6 className="mb-4 fw-bold" style={{ color: "#548579" }}>
+                            Route
+                          </h6>
+                        </div>
+                        <div className="d-flex flex-column justify-content-start align-items-start gap-3 ps-4">
+                          {/* Dynamic route filters */}
+                          {Object.keys(routeFilters).map((route) => (
+                            <div className="form-check d-flex align-items-center" key={route}>
+                              <input
+                                className="form-check-input  me-2"
+                                type="checkbox"
+                                checked={routeFilters[route]}
+                                onChange={() => handleRouteFilterChange(route)}
+                                id={route}
+                              />
+                              <label className="form-check-label small" htmlFor={route}>
+                                {route}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
 
-                  {/* Display filtered tickets */}
-                  {!isLoading && !error && filteredTickets.length > 0 && (
-                    <div>
-                      {/* <div className="mb-3 text-muted">
+                        {/* Airline Filter */}
+                        <div className=" ps-4">
+                          <h6 className="mb-4 fw-bold mt-4" style={{ color: "#548579" }}>
+                            Airline
+                          </h6>
+                        </div>
+                        <div className="d-flex flex-column mb-3 justify-content-start align-items-start gap-3 ps-4">
+                          {Object.keys(airlineFilters).map((airlineName) => (
+                            <div className="form-check d-flex align-items-center" key={airlineName}>
+                              <input
+                                className="form-check-input  me-2"
+                                type="checkbox"
+                                checked={airlineFilters[airlineName]}
+                                onChange={() => handleAirlineFilterChange(airlineName)}
+                                id={airlineName}
+                              />
+                              <label className="form-check-label small" htmlFor={airlineName}>
+                                {airlineName}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="col-md-9">
+                      {/* Loading state with shimmer effect */}
+                      {isLoading && (
+                        <>
+                          <FlightCardShimmer />
+                          <FlightCardShimmer />
+                          <FlightCardShimmer />
+                        </>
+                      )}
+
+                      {/* Error state */}
+                      {!isLoading && error && (
+                        <div className="alert alert-danger my-5">
+                          <h5>Error Loading Data</h5>
+                          <p className="mb-1">{error}</p>
+                          <p className="small mb-0">Organization ID: {uniqueOrgIds && uniqueOrgIds.length ? uniqueOrgIds.join(',') : 'N/A'}</p>
+                          <div className="mt-3">
+                            <button
+                              className="btn btn-sm btn-outline-danger me-2"
+                              onClick={() => window.location.reload()}
+                            >
+                              Retry
+                            </button>
+                            <a
+                              href={`http://127.0.0.1:8000/api/tickets/?organization=${uniqueOrgIds && uniqueOrgIds.length ? uniqueOrgIds[0] : ''}`}
+                              className="btn btn-sm btn-outline-primary"
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Test API
+                            </a>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* No tickets found */}
+                      {!isLoading && !error && filteredTickets.length === 0 && (
+                        <div className="text-center my-5">
+                          <h5>No tickets found</h5>
+                          <p>Try adjusting your search criteria</p>
+                          <button
+                            id="btn" className="btn mt-2"
+                            onClick={handleShowAll}
+                          >
+                            Show All Tickets
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Display filtered tickets */}
+                      {!isLoading && !error && filteredTickets.length > 0 && (
+                        <div>
+                          {/* <div className="mb-3 text-muted">
                       Showing {filteredTickets.length} of {tickets.length}{" "}
                       tickets
                     </div> */}
-                      {filteredTickets.map((ticket) => (
-                        <FlightCard
-                          key={ticket.id}
-                          ticket={ticket}
-                          airlineMap={airlineMap}
-                          cityMap={cityMap}
-                        />
-                      ))}
+                          {filteredTickets.map((ticket) => (
+                            <FlightCard
+                              key={ticket.id}
+                              ticket={ticket}
+                              airlineMap={airlineMap}
+                              cityMap={cityMap}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                </div>
+                <div>
+                  <AdminFooter />
                 </div>
               </div>
             </div>
-            <div>
-              <AdminFooter />
-            </div>
-          </div>
           </div>
         </div>
-      </div>
       </div>
     </div>
   );
