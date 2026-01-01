@@ -70,7 +70,7 @@ const CustomUmrahPackagesPay = () => {
 
       // Update booking status to Confirmed
       const response = await axios.patch(
-        `http://127.0.0.1:8000/api/bookings/${bookingId}/`,
+        `https://api.saer.pk/api/bookings/${bookingId}/`,
         { status: 'Confirmed' },
         {
           headers: {

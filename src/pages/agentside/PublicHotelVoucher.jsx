@@ -18,7 +18,7 @@ const PublicHotelVoucher = () => {
         const fetchPublicBooking = async () => {
             try {
                 const response = await axios.get(
-                    `http://127.0.0.1:8000/api/public/booking-status/${bookingNo}/?ref=${ref}`,
+                    `https://api.saer.pk/api/public/booking-status/${bookingNo}/?ref=${ref}`,
                     {
                         headers: {
                             "Content-Type": "application/json",

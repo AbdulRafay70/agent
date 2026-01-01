@@ -279,7 +279,7 @@ const BookingPay = () => {
       const token = localStorage.getItem('agentAccessToken') || localStorage.getItem('accessToken') || localStorage.getItem('token');
 
       try {
-        const resp = await axios.get(`http://127.0.0.1:8000/api/bank-accounts/?organization=${orgId}`, {
+        const resp = await axios.get(`https://api.saer.pk/api/bank-accounts/?organization=${orgId}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
 
@@ -400,7 +400,7 @@ const BookingPay = () => {
       }
 
       // send payment to backend
-      const resp = await axios.post('http://127.0.0.1:8000/api/payments/', formPayload, {
+      const resp = await axios.post('https://api.saer.pk/api/payments/', formPayload, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
 
@@ -413,7 +413,7 @@ const BookingPay = () => {
         payment_status: 'Pending',
         is_paid: false
       };
-      await axios.patch(`http://127.0.0.1:8000/api/bookings/${bookingId}/`, patchBody, { headers: paymentPatchHeaders });
+      await axios.patch(`https://api.saer.pk/api/bookings/${bookingId}/`, patchBody, { headers: paymentPatchHeaders });
       console.log('Booking patched to Confirmed with payment pending');
 
       // Navigate to booking history (the Add Payment page will show the deposit as pending)
@@ -436,7 +436,7 @@ const BookingPay = () => {
       const token = localStorage.getItem('agentAccessToken') || localStorage.getItem('accessToken') || localStorage.getItem('token');
       const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
       // ensure booking.status and payment_status are both Pending
-      await axios.patch(`http://127.0.0.1:8000/api/bookings/${bookingId}/`, { status: 'Pending', payment_status: 'Pending', is_paid: false }, { headers });
+      await axios.patch(`https://api.saer.pk/api/bookings/${bookingId}/`, { status: 'Pending', payment_status: 'Pending', is_paid: false }, { headers });
       navigate('/booking-history');
     } catch (err) {
       console.error('Failed to put booking on hold:', err);

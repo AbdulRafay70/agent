@@ -94,7 +94,7 @@ const Profile = () => {
         localStorage.setItem("userId", JSON.stringify(userId));
         // Step 1: Get current user
         const userRes = await axios.get(
-          `http://127.0.0.1:8000/api/users/${userId}/?organization=${orgId}`,
+          `https://api.saer.pk/api/users/${userId}/?organization=${orgId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -112,7 +112,7 @@ const Profile = () => {
 
         // Step 3: Get agency details
         const agencyRes = await axios.get(
-          `http://127.0.0.1:8000/api/agencies/${agencyId}/?organization=${orgId}`,
+          `https://api.saer.pk/api/agencies/${agencyId}/?organization=${orgId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -203,7 +203,7 @@ const Profile = () => {
       };
 
       const response = await axios.put(
-        `http://127.0.0.1:8000/api/agencies/${agencyId}/?organization=${orgId}`,
+        `https://api.saer.pk/api/agencies/${agencyId}/?organization=${orgId}`,
         payload,
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -253,7 +253,7 @@ const Profile = () => {
       formData.append("description", "Agency logo");
 
       const response = await axios.post(
-        `http://127.0.0.1:8000/api/agencies/${agencyId}/files/`,
+        `https://api.saer.pk/api/agencies/${agencyId}/files/`,
         formData,
         {
           headers: {

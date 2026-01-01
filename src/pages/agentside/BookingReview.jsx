@@ -30,7 +30,7 @@ const BookingReview = () => {
       try {
         const token = localStorage.getItem("agentAccessToken");
         const orgId = getOrgId();
-        const response = await axios.get(`http://127.0.0.1:8000/api/booking-expiry/?organization=${orgId}`, {
+        const response = await axios.get(`https://api.saer.pk/api/booking-expiry/?organization=${orgId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -391,7 +391,7 @@ const BookingReview = () => {
 
       // Make API call with proper axios syntax
       const response = await axios.post(
-        `http://127.0.0.1:8000/api/bookings/`,
+        `https://api.saer.pk/api/bookings/`,
         bookingData,
         {
           headers: {

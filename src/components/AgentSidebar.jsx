@@ -71,7 +71,7 @@ const Sidebar = () => {
 
         // ✅ Step 3: fetch from API
         const orgRes = await axios.get(
-          `http://127.0.0.1:8000/api/organizations/${orgId}/`,
+          `https://api.saer.pk/api/organizations/${orgId}/`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -120,7 +120,7 @@ const Sidebar = () => {
 
         // Fetch balance from ledger API
         const response = await axios.get(
-          `http://127.0.0.1:8000/api/ledger/agency/${agencyId}/`,
+          `https://api.saer.pk/api/ledger/agency/${agencyId}/`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }

@@ -369,7 +369,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
       }
 
       const response = await axios.post(
-        "http://127.0.0.1:8000/api/tickets/",
+        "https://api.saer.pk/api/tickets/",
         payload,
         {
           headers: {
@@ -454,7 +454,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
       }
 
       const response = await axios.post(
-        "http://127.0.0.1:8000/api/tickets/",
+        "https://api.saer.pk/api/tickets/",
         payload,
         {
           headers: {
@@ -897,7 +897,7 @@ const AgentUmrahCalculator = () => {
         setLoadingCities(true);
         try {
           const token = localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzk1NTU4Nzk0LCJpYXQiOjE3NjQwMjI3OTQsImp0aSI6ImViNTQ0ZTk5ZTA5YTQyYjY4ODAyMDIwN2JlZTAyOWM3IiwidXNlcl9pZCI6MzV9.hTZqqJSK-EF6-pMEBr8lR7VTE81Z7E5RUvp_ShxHjmY';
-          const res = await fetch('http://127.0.0.1:8000/api/cities/', {
+          const res = await fetch('https://api.saer.pk/api/cities/', {
             headers: {
               accept: 'application/json',
               Authorization: `Bearer ${token}`,
@@ -1609,7 +1609,7 @@ const AgentUmrahCalculator = () => {
 
     try {
       const response = await axios.get(
-        `http://127.0.0.1:8000/api/all-prices/?organization_id=${orgId}`,
+        `https://api.saer.pk/api/all-prices/?organization_id=${orgId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -1772,10 +1772,10 @@ const AgentUmrahCalculator = () => {
   };
 
   // const fetchRiyalRate = () =>
-  //   fetchData("http://127.0.0.1:8000/api/riyal-rates/", setRiyalRate, "riyalRate");
+  //   fetchData("https://api.saer.pk/api/riyal-rates/", setRiyalRate, "riyalRate");
 
   const fetchTickets = () =>
-    fetchData("http://127.0.0.1:8000/api/tickets/", setTicketsList, "flights");
+    fetchData("https://api.saer.pk/api/tickets/", setTicketsList, "flights");
 
   const fetchTransportSectors = async () => {
     const endpoints = [
@@ -1893,12 +1893,12 @@ const AgentUmrahCalculator = () => {
   };
 
   const fetchHotels = () =>
-    fetchData("http://127.0.0.1:8000/api/hotels/", setHotels, "hotels");
+    fetchData("https://api.saer.pk/api/hotels/", setHotels, "hotels");
 
   const fetchVisaTypes = async () => {
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const url = "http://127.0.0.1:8000/api/set-visa-type/";
+      const url = "https://api.saer.pk/api/set-visa-type/";
       const safeOrg = getSafeOrgId();
       if (!safeOrg) {
         return;
@@ -1919,7 +1919,7 @@ const AgentUmrahCalculator = () => {
 
   const fetchVisaPricesOne = () =>
     fetchData(
-      "http://127.0.0.1:8000/api/umrah-visa-prices/",
+      "https://api.saer.pk/api/umrah-visa-prices/",
       setVisaPricesOne,
       "visaTypes"
     );
@@ -1932,7 +1932,7 @@ const AgentUmrahCalculator = () => {
         console.warn("⚠️ fetchVisaPricesTwo: invalid organization id, skipping");
         return;
       }
-      const response = await axios.get("http://127.0.0.1:8000/api/umrah-visa-type-two/", {
+      const response = await axios.get("https://api.saer.pk/api/umrah-visa-type-two/", {
         params: { organization: safeOrg },
         headers: headers,
       });
@@ -1943,10 +1943,10 @@ const AgentUmrahCalculator = () => {
   };
 
   const fetchFoodPrices = () =>
-    fetchData("http://127.0.0.1:8000/api/food-prices/", setFoodPrices, "food");
+    fetchData("https://api.saer.pk/api/food-prices/", setFoodPrices, "food");
 
   const fetchZiaratPrices = () =>
-    fetchData("http://127.0.0.1:8000/api/ziarat-prices/", setZiaratPrices, "ziarat");
+    fetchData("https://api.saer.pk/api/ziarat-prices/", setZiaratPrices, "ziarat");
 
   const fetchAirlines = async () => {
     try {
@@ -1955,7 +1955,7 @@ const AgentUmrahCalculator = () => {
         console.warn("⚠️ fetchAirlines: invalid organization id, skipping");
         return;
       }
-      const response = await axios.get("http://127.0.0.1:8000/api/airlines/", {
+      const response = await axios.get("https://api.saer.pk/api/airlines/", {
         params: { organization: safeOrg },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1977,7 +1977,7 @@ const AgentUmrahCalculator = () => {
         console.warn("⚠️ fetchCities: invalid organization id, skipping");
         return;
       }
-      const response = await axios.get("http://127.0.0.1:8000/api/cities/", {
+      const response = await axios.get("https://api.saer.pk/api/cities/", {
         params: { organization: safeOrg },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1994,7 +1994,7 @@ const AgentUmrahCalculator = () => {
   const fetchOnlyVisaPrices = async () => {
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const url = "http://127.0.0.1:8000/api/only-visa-prices/";
+      const url = "https://api.saer.pk/api/only-visa-prices/";
       const safeOrg = getSafeOrgId();
       if (!safeOrg) {
         console.warn("⚠️ fetchOnlyVisaPrices: invalid organization id, skipping request");
@@ -3475,7 +3475,7 @@ const AgentUmrahCalculator = () => {
 
     try {
       const response = await axios.post(
-        `http://127.0.0.1:8000/api/umrah-packages/?organization=${orgId}`,
+        `https://api.saer.pk/api/umrah-packages/?organization=${orgId}`,
         payload,
         {
           headers: {
@@ -4799,7 +4799,7 @@ const AgentUmrahCalculator = () => {
   const handleEditCalculation = async (packageId) => {
     try {
       const response = await axios.get(
-        `http://127.0.0.1:8000/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
+        `https://api.saer.pk/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -4862,7 +4862,7 @@ const AgentUmrahCalculator = () => {
       if (packageData.ticket_details?.length > 0) {
         try {
           const flightResponse = await axios.get(
-            `http://127.0.0.1:8000/api/tickets/${packageData.ticket_details[0].ticket}/?organization=${orgId}`,
+            `https://api.saer.pk/api/tickets/${packageData.ticket_details[0].ticket}/?organization=${orgId}`,
             {
               headers: { Authorization: `Bearer ${token}` },
             }
@@ -5033,7 +5033,7 @@ const AgentUmrahCalculator = () => {
 
       // Make the PUT request
       const response = await axios.put(
-        `http://127.0.0.1:8000/api/custom-umrah-packages/${costs.queryNumber}/`,
+        `https://api.saer.pk/api/custom-umrah-packages/${costs.queryNumber}/`,
         payload,
         {
           headers: {
@@ -5074,7 +5074,7 @@ const AgentUmrahCalculator = () => {
       params.append('organization', orgId);
       if (agencyId && agencyId !== 'null') params.append('agency', agencyId);
 
-      const url = `http://127.0.0.1:8000/api/custom-umrah-packages/?${params.toString()}`;
+      const url = `https://api.saer.pk/api/custom-umrah-packages/?${params.toString()}`;
 
       const response = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
@@ -5099,7 +5099,7 @@ const AgentUmrahCalculator = () => {
     if (window.confirm("Are you sure you want to delete this package?")) {
       try {
         await axios.delete(
-          `http://127.0.0.1:8000/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
+          `https://api.saer.pk/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -5363,7 +5363,7 @@ const AgentUmrahCalculator = () => {
   // And update the fetchRiyalRate function:
   const fetchRiyalRate = async () => {
     try {
-      const response = await axios.get("http://127.0.0.1:8000/api/riyal-rates/", {
+      const response = await axios.get("https://api.saer.pk/api/riyal-rates/", {
         params: { organization: orgId },
         headers: { Authorization: `Bearer ${token}` },
       });

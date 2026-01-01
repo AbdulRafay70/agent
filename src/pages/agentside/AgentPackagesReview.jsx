@@ -69,7 +69,7 @@ const BookingReview = () => {
       try {
         const token = localStorage.getItem("agentAccessToken");
         const orgId = getOrgId();
-        const response = await axios.get(`http://127.0.0.1:8000/api/riyal-rates/?organization=${orgId}`, {
+        const response = await axios.get(`https://api.saer.pk/api/riyal-rates/?organization=${orgId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -91,7 +91,7 @@ const BookingReview = () => {
       try {
         const token = localStorage.getItem("agentAccessToken");
         const orgId = getOrgId();
-        const response = await fetch(`http://127.0.0.1:8000/api/booking-expiry/?organization=${orgId}`, {
+        const response = await fetch(`https://api.saer.pk/api/booking-expiry/?organization=${orgId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -112,7 +112,7 @@ const BookingReview = () => {
       try {
         const token = localStorage.getItem("agentAccessToken");
         const orgId = getOrgId();
-        const response = await fetch(`http://127.0.0.1:8000/api/bookings/?organization=${orgId}`, {
+        const response = await fetch(`https://api.saer.pk/api/bookings/?organization=${orgId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -278,7 +278,7 @@ const BookingReview = () => {
 
   //     console.log("BookingData Payload:", bookingData);
 
-  //     const response = await axios.post(`http://127.0.0.1:8000/api/bookings/`, bookingData, {
+  //     const response = await axios.post(`https://api.saer.pk/api/bookings/`, bookingData, {
   //       headers: {
   //         // "Content-Type": "application/json",
   //          "Content-Type": "multipart/form-data",
@@ -656,7 +656,7 @@ const BookingReview = () => {
 
       // -------- API call - SEND AS JSON, NOT FormData! --------
       const response = await axios.post(
-        `http://127.0.0.1:8000/api/bookings/`,
+        `https://api.saer.pk/api/bookings/`,
         bookingData,  // Send as JSON object, not FormData
         {
           headers: {

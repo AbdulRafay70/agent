@@ -68,7 +68,7 @@ const BookingReview = () => {
 
         console.log('Fetching riyal rate for org:', orgId);
         const response = await axios.get(
-          `http://127.0.0.1:8000/api/riyal-rates/?organization=${orgId}`,
+          `https://api.saer.pk/api/riyal-rates/?organization=${orgId}`,
           {
             headers: {
               Authorization: `Bearer ${token}`
@@ -695,7 +695,7 @@ const BookingReview = () => {
 
       // Make API call to create booking (JSON only - passport images not included)
       const response = await axios.post(
-        "http://127.0.0.1:8000/api/bookings/",
+        "https://api.saer.pk/api/bookings/",
         bookingData,
         {
           headers: {
@@ -750,7 +750,7 @@ const BookingReview = () => {
 
             // Upload passport image via PATCH to update the booking
             const uploadPromise = axios.patch(
-              `http://127.0.0.1:8000/api/bookings/${result.id}/`,
+              `https://api.saer.pk/api/bookings/${result.id}/`,
               formData,
               {
                 headers: {

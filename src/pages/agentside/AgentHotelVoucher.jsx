@@ -19,7 +19,7 @@ const AgentHotelVoucher = () => {
       try {
         const token = localStorage.getItem("agentAccessToken");
         const response = await axios.get(
-          `http://127.0.0.1:8000/api/bookings/${id}/`,
+          `https://api.saer.pk/api/bookings/${id}/`,
           {
             headers: {
               Authorization: `Bearer ${token}`,

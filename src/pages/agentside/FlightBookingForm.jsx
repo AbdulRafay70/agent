@@ -426,7 +426,7 @@ const FlightBookingForm = () => {
         // Try each org id sequentially until we find a usable ticket
         for (let i = 0; i < tryOrgIds.length; i++) {
           const org = tryOrgIds[i];
-          const queryUrl = org ? `http://127.0.0.1:8000/api/tickets/?id=${id}&organization=${org}` : `http://127.0.0.1:8000/api/tickets/?id=${id}`;
+          const queryUrl = org ? `https://api.saer.pk/api/tickets/?id=${id}&organization=${org}` : `https://api.saer.pk/api/tickets/?id=${id}`;
           console.debug('Attempting ticket fetch for organization:', org, 'url:', queryUrl);
 
           const resp = await tryFetch(queryUrl, headers);
