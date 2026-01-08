@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import ReactDOM from "react-dom";
 import { Download, Filter } from "lucide-react";
 import { Dropdown } from "react-bootstrap";
 import { Gear } from "react-bootstrap-icons";
@@ -10,9 +11,64 @@ import axios from "axios";
 /**
  * Shimmer placeholder row for loading state
  */
+/**
+ * Mini countdown timer for table cells
+ */
+const ExpiryCountdown = ({ expiryTime, status }) => {
+  const [timeLeft, setTimeLeft] = React.useState('');
+  const [isExpired, setIsExpired] = React.useState(false);
+
+  // Don't show timer for confirmed/approved/paid bookings
+  const statusLower = (status || '').toLowerCase();
+  const isCompleted = ['confirmed', 'approved', 'paid', 'completed'].includes(statusLower);
+
+  React.useEffect(() => {
+    if (!expiryTime || isCompleted) return;
+
+    const updateTimer = () => {
+      const now = new Date();
+      const expiry = new Date(expiryTime);
+      const diff = expiry - now;
+
+      if (diff <= 0) {
+        setIsExpired(true);
+        setTimeLeft('Expired');
+        return;
+      }
+
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [expiryTime, isCompleted]);
+
+  // Show "Confirmed" for completed bookings
+  if (isCompleted) {
+    return <span style={{ color: '#10B981', fontWeight: 'bold', fontSize: '12px' }}>✅ Confirmed</span>;
+  }
+
+  if (!expiryTime) return <span className="text-muted">N/A</span>;
+
+  return (
+    <span style={{
+      color: isExpired ? '#DC2626' : '#F59E0B',
+      fontWeight: 'bold',
+      fontSize: '12px'
+    }}>
+      {isExpired ? '⏰ Expired' : `⏱️ ${timeLeft}`}
+    </span>
+  );
+};
+
 const ShimmerRow = () => (
   <tr>
-    {Array(8)
+    {Array(7)
       .fill(0)
       .map((_, i) => (
         <td key={i}>
@@ -59,7 +115,7 @@ const BookingHistory = () => {
       }
 
       const response = await axios.get(
-        `https://api.saer.pk/api/bookings/?organization=${orgId}`,
+        `http://127.0.0.1:8000/api/bookings/?organization=${orgId}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -90,6 +146,9 @@ const BookingHistory = () => {
     }
     if (s === 'pending' || s === 'under-process') {
       return { color: '#F59E0B' };
+    }
+    if (s === 'rejected') {
+      return { color: '#DC2626' }; // Red for rejected
     }
     if (s === 'inactive' || s === 'cancelled') {
       return { color: '#6B7280' };
@@ -123,14 +182,21 @@ const BookingHistory = () => {
 
   // Filter bookings by tab
   const filteredByTab = bookings.filter(booking => {
-    if (activeTab === "UMRAH BOOKINGS") {
-      return booking.category === "Package" || booking.category === "Custom_Umrah_Package";
-    }
+    const bookingType = booking.booking_type || '';
+
     if (activeTab === "Groups Tickets") {
-      return booking.category === "Ticket_Booking";
+      return bookingType === "Group Ticket";
     }
-    // Add other tab filters as needed
-    return true;
+
+    if (activeTab === "UMRAH BOOKINGS") {
+      return bookingType === "Umrah Package";
+    }
+
+    if (activeTab === "Custom Package Bookings") {
+      return bookingType === "Custom Package";
+    }
+
+    return false;
   });
 
   // Apply search filters
@@ -291,22 +357,10 @@ const BookingHistory = () => {
                       UMRAH BOOKINGS
                     </button>
                     <button
-                      className={`tab-button ${activeTab === "Insurance" ? "active" : ""}`}
-                      onClick={() => setActiveTab("Insurance")}
+                      className={`tab-button ${activeTab === "Custom Package Bookings" ? "active" : ""}`}
+                      onClick={() => setActiveTab("Custom Package Bookings")}
                     >
-                      Insurance
-                    </button>
-                    <button
-                      className={`tab-button ${activeTab === "Trips" ? "active" : ""}`}
-                      onClick={() => setActiveTab("Trips")}
-                    >
-                      Trips
-                    </button>
-                    <button
-                      className={`tab-button ${activeTab === "VISA" ? "active" : ""}`}
-                      onClick={() => setActiveTab("VISA")}
-                    >
-                      VISA
+                      Custom Package Bookings
                     </button>
                   </div>
 
@@ -336,8 +390,7 @@ const BookingHistory = () => {
                           <th className="text-muted small fw-normal">Booking Date</th>
                           <th className="text-muted small fw-normal">Order No.</th>
                           <th className="text-muted small fw-normal">Pax Name</th>
-                          <th className="text-muted small fw-normal">Booking Included</th>
-                          <th className="text-muted small fw-normal">Booking Expiry</th>
+                          <th className="text-muted small fw-normal">Expiry Timer</th>
                           <th className="text-muted small fw-normal">Booking Status</th>
                           <th className="text-muted small fw-normal">Amount</th>
                           <th className="text-muted small fw-normal">Action</th>
@@ -351,7 +404,7 @@ const BookingHistory = () => {
                         ) : error ? (
                           <tr>
                             <td
-                              colSpan="8"
+                              colSpan="7"
                               className="text-center text-danger py-4"
                             >
                               Error: {error}
@@ -364,23 +417,64 @@ const BookingHistory = () => {
                               <td className="small fw-semibold">{booking.booking_number || "N/A"}</td>
                               <td className="small">{getPassengerNames(booking.person_details)}</td>
                               <td className="small">
-                                <Link
-                                  to={`/booking/${booking.id}`}
-                                  className="text-primary"
+                                <ExpiryCountdown expiryTime={booking.expiry_time} status={booking.status} />
+                              </td>
+                              <td>
+                                <span
+                                  className="status-badge"
                                   style={{
-                                    cursor: "pointer",
-                                    textDecoration: "underline",
+                                    ...getStatusStyle(booking.status),
+                                    cursor: booking.status === 'Rejected' && booking.rejected_notes ? 'help' : 'default',
+                                    position: 'relative',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (booking.status === 'Rejected' && booking.rejected_notes) {
+                                      const popup = document.getElementById(`agent-rejection-popup-${booking.id}`);
+                                      if (popup) {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        popup.style.display = 'block';
+                                        popup.style.left = `${rect.left + rect.width / 2 - 150}px`;
+                                        popup.style.top = `${rect.top - 130}px`;
+                                      }
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (booking.status === 'Rejected' && booking.rejected_notes) {
+                                      const popup = document.getElementById(`agent-rejection-popup-${booking.id}`);
+                                      if (popup) popup.style.display = 'none';
+                                    }
                                   }}
                                 >
-                                  see
-                                </Link>
-                              </td>
-                              <td className="small">{formatDate(booking.expiry_time)}</td>
-                              <td>
-                                <span className="status-badge" style={getStatusStyle(booking.status)}>
                                   <span className="status-dot" style={{ background: getStatusStyle(booking.status).color }}></span>
                                   {booking.status || 'N/A'}
                                 </span>
+                                {booking.status === 'Rejected' && booking.rejected_notes && ReactDOM.createPortal(
+                                  <div
+                                    id={`agent-rejection-popup-${booking.id}`}
+                                    style={{
+                                      display: 'none',
+                                      position: 'fixed',
+                                      backgroundColor: '#fff',
+                                      border: '2px solid #dc3545',
+                                      borderRadius: '8px',
+                                      padding: '16px',
+                                      boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+                                      zIndex: 99999,
+                                      minWidth: '300px',
+                                      maxWidth: '500px',
+                                      whiteSpace: 'normal',
+                                      pointerEvents: 'none',
+                                    }}
+                                  >
+                                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#dc3545', marginBottom: '8px', borderBottom: '1px solid #ddd', paddingBottom: '6px' }}>
+                                      📝 Rejection Note
+                                    </div>
+                                    <div style={{ fontSize: '14px', color: '#333', lineHeight: '1.6' }}>
+                                      {booking.rejected_notes}
+                                    </div>
+                                  </div>,
+                                  document.body
+                                )}
                               </td>
                               <td className="small fw-semibold">
                                 RS.{booking.total_amount?.toLocaleString() || "0"}/-
@@ -402,6 +496,41 @@ const BookingHistory = () => {
                                     >
                                       See Booking
                                     </Dropdown.Item>
+                                    {/* Show Make Payment for pending/unpaid/under-process bookings */}
+                                    {(booking.status?.toLowerCase() === 'pending' ||
+                                      booking.status?.toLowerCase() === 'unpaid' ||
+                                      booking.status?.toLowerCase() === 'under-process') && (
+                                        <Dropdown.Item
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            // Check if booking is expired
+                                            const expiryTime = new Date(booking.expiry_time);
+                                            const now = new Date();
+
+                                            if (expiryTime < now) {
+                                              // Booking expired - show toast error
+                                              alert('⏰ Booking Expired!\n\nThis booking has expired. Please create a new booking.');
+                                              return;
+                                            }
+
+                                            // Not expired - navigate to appropriate payment page based on booking type
+                                            if (booking.booking_type === 'Umrah Package') {
+                                              // Navigate to Umrah Package payment page
+                                              window.location.href = `/packages/pay?bookingId=${booking.id}`;
+                                            } else if (booking.booking_type === 'Custom Package') {
+                                              // Navigate to Custom Package payment page
+                                              window.location.href = `/packages/custom-umrah/pay?bookingId=${booking.id}`;
+                                            } else {
+                                              // Navigate to regular booking payment page (for tickets)
+                                              window.location.href = `/booking/pay?bookingId=${booking.id}`;
+                                            }
+                                          }}
+                                          className="text-success fw-semibold"
+                                          style={{ cursor: 'pointer' }}
+                                        >
+                                          💳 Make Payment
+                                        </Dropdown.Item>
+                                      )}
                                     <Dropdown.Item
                                       as={Link}
                                       to={`/booking-history/invoice/${booking.id}`}

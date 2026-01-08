@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "https://api.saer.pk",
+  baseURL: "http://127.0.0.1:8000",
 });
 
 // Attach Authorization header from localStorage when available.
@@ -38,7 +38,7 @@ api.interceptors.request.use((config) => {
   try {
     // eslint-disable-next-line no-console
     console.debug('API request:', config.method?.toUpperCase(), config.url, 'Authorization:', config.headers?.Authorization || 'none');
-  } catch (e) {}
+  } catch (e) { }
   return config;
 }, (error) => Promise.reject(error));
 

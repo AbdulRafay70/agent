@@ -73,7 +73,7 @@ const AgentRegister = () => {
         const token = localStorage.getItem('agentAccessToken');
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
         // Fetch organizations (for Branch parent selection). The backend returns organizations when you request ?type=branch
-        const orgResp = await fetch('https://api.saer.pk/api/universal/available-parents/?type=branch', { headers });
+        const orgResp = await fetch('http://127.0.0.1:8000/api/universal/available-parents/?type=branch', { headers });
         if (orgResp.ok) {
           const orgJson = await orgResp.json();
           // expected shape: { available_parents: [{ id, name }, ...] }
@@ -81,7 +81,7 @@ const AgentRegister = () => {
         }
 
         // Fetch branches (for Agent/Employee parent selection). The backend returns branches when you request ?type=agent
-        const branchResp = await fetch('https://api.saer.pk/api/universal/available-parents/?type=agent', { headers });
+        const branchResp = await fetch('http://127.0.0.1:8000/api/universal/available-parents/?type=agent', { headers });
         if (branchResp.ok) {
           const branchJson = await branchResp.json();
           if (branchJson.available_parents && branchJson.available_parents.length > 0) {
@@ -245,7 +245,7 @@ const AgentRegister = () => {
         }
       }
 
-      const resp = await fetch('https://api.saer.pk/api/universal/register/', {
+      const resp = await fetch('http://127.0.0.1:8000/api/universal/register/', {
         method: 'POST',
         headers,
         body: form,

@@ -75,7 +75,21 @@ const Profile = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [userType, setUserType] = useState(null);
+  const [selectedAgencyId, setSelectedAgencyId] = useState(null);
+  const [availableAgencies, setAvailableAgencies] = useState([]);
   const [agencyId, setAgencyId] = useState(null);
+
+  // New state for employee details
+  const [employeeDetails, setEmployeeDetails] = useState({
+    branchName: "",
+    branchCode: "",
+    organizationName: "",
+    organizationCode: "",
+    userName: "",
+    userEmail: "",
+  });
+  const isInitialLoad = React.useRef(true);
 
   const getOrgId = () => {
     const agentOrg = localStorage.getItem("agentOrganization");
@@ -92,44 +106,128 @@ const Profile = () => {
         const decoded = jwtDecode(token);
         const userId = decoded.user_id || decoded.id;
         localStorage.setItem("userId", JSON.stringify(userId));
+
         // Step 1: Get current user
         const userRes = await axios.get(
-          `https://api.saer.pk/api/users/${userId}/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/users/${userId}/?organization=${orgId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
         const userData = userRes.data;
+        const currentUserType = userData.profile?.type;
+        setUserType(currentUserType);
 
-        // Step 2: Get agency ID from user
-        const agency = userData.agency_details?.[0];
-        if (!agency) {
-          throw new Error("No agency associated with this user.");
+        // Step 2: If employee, fetch all agencies for their branch
+        if (currentUserType === "employee") {
+          const branchId = userData.branch_details?.[0]?.id;
+          const branchName = userData.branch_details?.[0]?.name || "";
+          const branchCode = userData.branch_details?.[0]?.branch_code || "";
+          const organizationName = userData.organization_details?.[0]?.name || "";
+          const organizationCode = userData.organization_details?.[0]?.org_code || "";
+
+          // Set employee details
+          setEmployeeDetails({
+            branchName,
+            branchCode,
+            organizationName,
+            organizationCode,
+            userName: `${userData.first_name || ""} ${userData.last_name || ""}`.trim(),
+            userEmail: userData.email || "",
+          });
+
+          if (branchId) {
+            const agenciesRes = await axios.get(
+              `http://127.0.0.1:8000/api/agencies/?organization=${orgId}`,
+              {
+                headers: { Authorization: `Bearer ${token}` },
+              }
+            );
+            // Filter agencies by branch
+            const branchAgencies = agenciesRes.data.filter(
+              (agency) => agency.branch === branchId
+            );
+            setAvailableAgencies(branchAgencies);
+
+            // Set first agency as default if not already selected
+            if (branchAgencies.length > 0) {
+              setSelectedAgencyId(branchAgencies[0].id);
+              setAgencyId(branchAgencies[0].id);
+            }
+          }
+        } else if (currentUserType === "subagent") {
+          // For branch users (subagents), fetch all agencies for their branch
+          const branchId = userData.branch_details?.[0]?.id;
+          if (branchId) {
+            const agenciesRes = await axios.get(
+              `http://127.0.0.1:8000/api/agencies/?organization=${orgId}`,
+              {
+                headers: { Authorization: `Bearer ${token}` },
+              }
+            );
+            // Filter agencies by branch
+            const branchAgencies = agenciesRes.data.filter(
+              (agency) => agency.branch === branchId
+            );
+            setAvailableAgencies(branchAgencies);
+
+            // Set first agency as default if not already selected
+            if (branchAgencies.length > 0) {
+              setSelectedAgencyId(branchAgencies[0].id);
+              setAgencyId(branchAgencies[0].id);
+            }
+          }
+        } else {
+          // For agents, get their agency from user data
+          const agency = userData.agency_details?.[0];
+          if (!agency) {
+            throw new Error("No agency associated with this user.");
+          }
+          setAgencyId(agency.id);
+          setSelectedAgencyId(agency.id);
         }
 
-        const agencyId = agency.id;
-        setAgencyId(agencyId);
+        setLoading(false);
+      } catch (err) {
+        setError("Failed to fetch profile data");
+        setLoading(false);
+        console.error("Error fetching profile data:", err);
+      }
+    };
 
-        // Step 3: Get agency details
+    fetchProfileData();
+  }, []);
+
+  // Fetch agency details when selected agency changes
+  useEffect(() => {
+    if (!selectedAgencyId) return;
+
+    const fetchAgencyDetails = async () => {
+      try {
+        const token = localStorage.getItem("agentAccessToken");
         const agencyRes = await axios.get(
-          `https://api.saer.pk/api/agencies/${agencyId}/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/agencies/${selectedAgencyId}/?organization=${orgId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
 
         const agencyData = agencyRes.data;
-        // localStorage.setItem("agencyId", JSON.stringify(agencyData));
         localStorage.setItem("agencyId", String(agencyData.id));
         localStorage.setItem("agencyName", String(agencyData.ageny_name));
-        // console.log(agency.id)
-        // console.log(agencyData.ageny_name)
         if (agencyData.branch) {
           localStorage.setItem("branchId", String(agencyData.branch));
-          // console.log(agencyData.branch);
         }
 
-        // Step 4: Set profile data
+        // Update agentOrganization with the selected agency_id
+        const agentOrg = localStorage.getItem("agentOrganization");
+        if (agentOrg) {
+          const orgData = JSON.parse(agentOrg);
+          orgData.agency_id = agencyData.id;
+          localStorage.setItem("agentOrganization", JSON.stringify(orgData));
+        }
+
+        // Set profile data
         setProfileData({
           travelAgencyName: agencyData.ageny_name || "",
           agentName: agencyData.name || "",
@@ -153,17 +251,13 @@ const Profile = () => {
             agentName: contact.name || prev.agentName,
           }));
         }
-
-        setLoading(false);
       } catch (err) {
-        setError("Failed to fetch profile data");
-        setLoading(false);
-        console.error("Error fetching profile data:", err);
+        console.error("Error fetching agency details:", err);
       }
     };
 
-    fetchProfileData();
-  }, []);
+    fetchAgencyDetails();
+  }, [selectedAgencyId]);
 
   const handleProfileChange = (e) => {
     const { name, value } = e.target;
@@ -203,7 +297,7 @@ const Profile = () => {
       };
 
       const response = await axios.put(
-        `https://api.saer.pk/api/agencies/${agencyId}/?organization=${orgId}`,
+        `http://127.0.0.1:8000/api/agencies/${agencyId}/?organization=${orgId}`,
         payload,
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -253,7 +347,7 @@ const Profile = () => {
       formData.append("description", "Agency logo");
 
       const response = await axios.post(
-        `https://api.saer.pk/api/agencies/${agencyId}/files/`,
+        `http://127.0.0.1:8000/api/agencies/${agencyId}/files/`,
         formData,
         {
           headers: {
@@ -350,6 +444,96 @@ const Profile = () => {
                     <div className="card-body">
                       <h2 className="text-center mb-4 mt-5">Profile Page</h2>
 
+                      {/* Agent Selector for Employees and Branch Users */}
+                      {(userType === "employee" || userType === "subagent") && availableAgencies.length > 0 && (
+                        <div className="row mb-4">
+                          <div className="col-md-12">
+                            <div className="alert alert-info">
+                              <label htmlFor="agentSelector" className="form-label fw-bold">
+                                Select Agent to Manage
+                              </label>
+                              <select
+                                id="agentSelector"
+                                className="form-select"
+                                value={selectedAgencyId || ""}
+                                onChange={(e) => setSelectedAgencyId(parseInt(e.target.value))}
+                              >
+                                {availableAgencies.map((agency) => (
+                                  <option key={agency.id} value={agency.id}>
+                                    {agency.ageny_name} - {agency.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <small className="text-muted">
+                                You can switch between agents in your branch
+                              </small>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Employee Details Section */}
+                      {userType === "employee" && (
+                        <div className="row mb-4">
+                          <div className="col-md-12">
+                            <div className="card border-primary">
+                              <div className="card-header bg-primary text-white">
+                                <h5 className="mb-0">Employee Details</h5>
+                              </div>
+                              <div className="card-body">
+                                <div className="row mb-3">
+                                  <div className="col-md-6">
+                                    <label className="fw-bold">Name:</label>
+                                    <p className="mb-0">{employeeDetails.userName || "N/A"}</p>
+                                  </div>
+                                  <div className="col-md-6">
+                                    <label className="fw-bold">Email:</label>
+                                    <p className="mb-0">{employeeDetails.userEmail || "N/A"}</p>
+                                  </div>
+                                </div>
+                                <div className="row mb-3">
+                                  <div className="col-md-6">
+                                    <label className="fw-bold">Organization:</label>
+                                    <p className="mb-0">
+                                      {employeeDetails.organizationName || "N/A"}
+                                      {employeeDetails.organizationCode && ` (${employeeDetails.organizationCode})`}
+                                    </p>
+                                  </div>
+                                  <div className="col-md-6">
+                                    <label className="fw-bold">Branch:</label>
+                                    <p className="mb-0">
+                                      {employeeDetails.branchName || "N/A"}
+                                      {employeeDetails.branchCode && ` (${employeeDetails.branchCode})`}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="row">
+                                  <div className="col-md-12">
+                                    <label className="fw-bold">Agencies in Your Branch ({availableAgencies.length}):</label>
+                                    {availableAgencies.length > 0 ? (
+                                      <ul className="list-group mt-2">
+                                        {availableAgencies.map((agency) => (
+                                          <li key={agency.id} className="list-group-item d-flex justify-content-between align-items-center">
+                                            <div>
+                                              <strong>{agency.ageny_name}</strong>
+                                              <br />
+                                              <small className="text-muted">{agency.name} - {agency.agency_code}</small>
+                                            </div>
+                                            <span className="badge bg-primary rounded-pill">{agency.id}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p className="text-muted mt-2">No agencies found in your branch</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="row mb-3">
                         <div className="col-md-4">
                           <label htmlFor="" className="">
@@ -439,7 +623,7 @@ const Profile = () => {
                                 <img
                                   src={
                                     typeof profileData.logo === "string"
-                                      ? `https://api.saer.pk/${profileData.logo}`
+                                      ? `http://127.0.0.1:8000/${profileData.logo}`
                                       : URL.createObjectURL(profileData.logo)
                                   }
                                   alt="Logo Preview"

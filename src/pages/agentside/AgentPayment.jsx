@@ -33,6 +33,7 @@ const AgentPayment = () => {
     closingBalance: 'PKR 0'
   });
   const [loading, setLoading] = useState(true);
+  const [agencyCredit, setAgencyCredit] = useState(null);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -59,7 +60,7 @@ const AgentPayment = () => {
         console.log("🔍 Fetching ledger for agency:", agencyId);
 
         const response = await axios.get(
-          `https://api.saer.pk/api/ledger/agency/${agencyId}/`,
+          `http://127.0.0.1:8000/api/ledger/agency/${agencyId}/`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
 
@@ -96,6 +97,23 @@ const AgentPayment = () => {
           shuttleNights: 0,
           closingBalance: closingBalance
         });
+
+        // Fetch agency credit information
+        try {
+          const agencyResponse = await axios.get(
+            `http://127.0.0.1:8000/api/agencies/${agencyId}/`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+
+          setAgencyCredit({
+            credit_limit: agencyResponse.data.credit_limit || 0,
+            credit_limit_days: agencyResponse.data.credit_limit_days || 0,
+            credit_used: agencyResponse.data.credit_used || 0,
+            available_credit: (agencyResponse.data.credit_limit || 0) - (agencyResponse.data.credit_used || 0)
+          });
+        } catch (creditError) {
+          console.error("❌ Error fetching agency credit:", creditError);
+        }
 
       } catch (error) {
         console.error("❌ Error fetching ledger:", error);
@@ -202,6 +220,70 @@ const AgentPayment = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* Credit Limit Summary Card */}
+                  {agencyCredit && agencyCredit.credit_limit > 0 && (
+                    <div className="bg-white rounded shadow-sm p-4 mb-4">
+                      <div className="d-flex justify-content-between align-items-center mb-3">
+                        <h5 className="mb-0">💳 Credit Limit Summary</h5>
+                        <span className="badge bg-primary">Active</span>
+                      </div>
+
+                      <div className="row g-3">
+                        <div className="col-md-3">
+                          <div className="p-3 bg-light rounded">
+                            <div className="text-muted small mb-1">Total Credit Limit</div>
+                            <div className="fw-bold fs-5 text-primary">
+                              PKR {agencyCredit.credit_limit.toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="col-md-3">
+                          <div className="p-3 bg-light rounded">
+                            <div className="text-muted small mb-1">Credit Used</div>
+                            <div className="fw-bold fs-5 text-danger">
+                              PKR {agencyCredit.credit_used.toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="col-md-3">
+                          <div className="p-3 bg-light rounded">
+                            <div className="text-muted small mb-1">Available Credit</div>
+                            <div className="fw-bold fs-5 text-success">
+                              PKR {agencyCredit.available_credit.toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="col-md-3">
+                          <div className="p-3 bg-light rounded">
+                            <div className="text-muted small mb-1">Payment Due Days</div>
+                            <div className="fw-bold fs-5 text-info">
+                              {agencyCredit.credit_limit_days} Days
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3">
+                        <div className="progress" style={{ height: '8px' }}>
+                          <div
+                            className="progress-bar bg-danger"
+                            role="progressbar"
+                            style={{ width: `${(agencyCredit.credit_used / agencyCredit.credit_limit) * 100}%` }}
+                            aria-valuenow={agencyCredit.credit_used}
+                            aria-valuemin="0"
+                            aria-valuemax={agencyCredit.credit_limit}
+                          ></div>
+                        </div>
+                        <div className="text-muted small mt-1">
+                          {((agencyCredit.credit_used / agencyCredit.credit_limit) * 100).toFixed(1)}% of credit limit used
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Ledger Content */}
                   <div className="bg-white rounded shadow-sm p-4">

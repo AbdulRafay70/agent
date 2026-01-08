@@ -27,8 +27,15 @@ const BookingReview = () => {
     if (!pkgState) {
       try {
         const bookRaw = sessionStorage.getItem('agent_package_book_v1') || sessionStorage.getItem('umrah_booknow_v1');
+        console.log('📦 Loading from sessionStorage:', bookRaw ? 'found data' : 'no data');
         if (bookRaw) {
           const parsed = JSON.parse(bookRaw);
+          console.log('📦 Parsed sessionStorage data:', {
+            totalPrice: parsed?.value?.totalPrice,
+            childPrices: parsed?.value?.childPrices,
+            infantPrices: parsed?.value?.infantPrices,
+            hasPackage: !!parsed?.value?.package
+          });
           if (parsed && parsed.value) {
             const v = parsed.value;
             setPkgState(v.package || null);
@@ -36,6 +43,7 @@ const BookingReview = () => {
             setTotalPriceState(v.totalPrice || 0);
             setChildPrices(v.childPrices || 0);
             setInfantPrices(v.infantPrices || 0);
+            console.log('📦 Set totalPriceState to:', v.totalPrice || 0);
           }
         }
 
@@ -69,7 +77,7 @@ const BookingReview = () => {
       try {
         const token = localStorage.getItem("agentAccessToken");
         const orgId = getOrgId();
-        const response = await axios.get(`https://api.saer.pk/api/riyal-rates/?organization=${orgId}`, {
+        const response = await axios.get(`http://127.0.0.1:8000/api/riyal-rates/?organization=${orgId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -91,7 +99,7 @@ const BookingReview = () => {
       try {
         const token = localStorage.getItem("agentAccessToken");
         const orgId = getOrgId();
-        const response = await fetch(`https://api.saer.pk/api/booking-expiry/?organization=${orgId}`, {
+        const response = await fetch(`http://127.0.0.1:8000/api/booking-expiry/?organization=${orgId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -112,7 +120,7 @@ const BookingReview = () => {
       try {
         const token = localStorage.getItem("agentAccessToken");
         const orgId = getOrgId();
-        const response = await fetch(`https://api.saer.pk/api/bookings/?organization=${orgId}`, {
+        const response = await fetch(`http://127.0.0.1:8000/api/bookings/?organization=${orgId}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -278,7 +286,7 @@ const BookingReview = () => {
 
   //     console.log("BookingData Payload:", bookingData);
 
-  //     const response = await axios.post(`https://api.saer.pk/api/bookings/`, bookingData, {
+  //     const response = await axios.post(`http://127.0.0.1:8000/api/bookings/`, bookingData, {
   //       headers: {
   //         // "Content-Type": "application/json",
   //          "Content-Type": "multipart/form-data",
@@ -330,7 +338,11 @@ const BookingReview = () => {
         triple_bed_price: hotel.triple_bed_price
       });
 
-      const roomType = hotel.hotel_info?.prices?.[0]?.room_type || "";
+
+      // Get the room type from user's selection (roomTypesState), not from hotel prices array
+      // The user selected a specific room type (e.g., "sharing"), so use that
+      const selectedRoomType = roomTypesState[0] || "sharing";  // Default to sharing if not found
+      const roomType = selectedRoomType;
       const paxCount = roomTypeCounts[roomType] || 0;
       // Simple quantity calculation - default to 1 room
       const quantity = paxCount > 0 ? 1 : 1;  // Always at least 1 room
@@ -348,6 +360,7 @@ const BookingReview = () => {
       }
 
       console.log('🏨 Using package-level PKR price:', {
+        selectedRoomType,
         roomType,
         pricePerNight,
         nights: hotel.number_of_nights,
@@ -381,15 +394,29 @@ const BookingReview = () => {
     });
 
     // Format transport details
-    const transportDetails = pkgState.transport_details.map(transport => ({
-      vehicle_type: transport.transport_sector_info?.vehicle_type,
-      transport_sector: transport.transport_sector_info?.id,
-      price: Number(transport.price || transport.transport_sector_info?.adault_price) || 0,
-      quantity: 1,
-      total_price: Number(transport.price || transport.transport_sector_info?.adault_price) || 0,
-      is_price_pkr: riyalRate?.is_transport_pkr ?? true,
-      riyal_rate: Number(riyalRate?.rate) || 0,
-    }));
+    // If package has transport_details array, use it; otherwise create from package-level transport_selling_price
+    const transportDetails = (pkgState.transport_details && pkgState.transport_details.length > 0)
+      ? pkgState.transport_details.map(transport => ({
+        vehicle_type: transport.transport_sector_info?.vehicle_type,
+        transport_sector: transport.transport_sector_info?.id,
+        price: Number(transport.price || transport.transport_sector_info?.adault_price) || 0,
+        quantity: 1,
+        total_price: Number(transport.price || transport.transport_sector_info?.adault_price) || 0,
+        is_price_pkr: riyalRate?.is_transport_pkr ?? true,
+        riyal_rate: Number(riyalRate?.rate) || 0,
+      }))
+      : (pkgState.transport_selling_price && Number(pkgState.transport_selling_price) > 0)
+        ? [{
+          // Create transport detail from package-level price
+          vehicle_type: null,
+          transport_sector: null,
+          price: Number(pkgState.transport_selling_price) || 0,
+          quantity: passengersState.length,  // Per passenger
+          total_price: (Number(pkgState.transport_selling_price) || 0) * passengersState.length,
+          is_price_pkr: true,
+          riyal_rate: Number(riyalRate?.rate) || 0,
+        }]
+        : [];  // No transport
 
     // Format ticket details
     const flightDetails = getFlightDetails();
@@ -446,7 +473,7 @@ const BookingReview = () => {
     const personDetails = await Promise.all(passengersState.map(async (passenger, index) => {
       const isAdult = passenger.type === "Adult";
       const isChild = passenger.type === "Child";
-      const isVisaIncluded = pkgState.adault_visa_price > 0 || pkgState.child_visa_price > 0 || pkgState.infant_visa_price > 0;
+      const isVisaIncluded = pkgState.adault_visa_selling_price > 0 || pkgState.child_visa_selling_price > 0 || pkgState.infant_visa_selling_price > 0;
       const visaStatus = isVisaIncluded ? "NOT APPLIED" : "NOT INCLUDED";
 
       const isTicketIncluded = pkgState.ticket_details && pkgState.ticket_details.length > 0;
@@ -502,7 +529,7 @@ const BookingReview = () => {
         is_visa_included: isVisaIncluded,
         is_ziyarat_included: true,
         is_food_included: true,
-        visa_price: parseFloat(isAdult ? pkgState.adault_visa_price : isChild ? pkgState.child_visa_price : pkgState.infant_visa_price) || 0,
+        visa_price: parseFloat(isAdult ? pkgState.adault_visa_selling_price : isChild ? pkgState.child_visa_selling_price : pkgState.infant_visa_selling_price) || 0,
         food_price: parseFloat(pkgState.food_selling_price) || 0,  // Changed from food_price to food_selling_price
         ziyarat_price: parseFloat(isAdult ? (Number(pkgState.makkah_ziyarat_selling_price) || 0) + (Number(pkgState.madinah_ziyarat_selling_price) || 0) : 0) || 0,  // Changed to *_selling_price
         ticket_price: parseFloat(isAdult ? adultTicketPrice : isChild ? childTicketPrice : infantTicketPrice) || 0,
@@ -543,7 +570,23 @@ const BookingReview = () => {
       totalVisaAmount,
       totalFoodAmount,
       totalZiyaratAmount,
-      allTotalPrice
+      allTotalPrice,
+      totalPriceState: totalPriceState,  // The package selling price from UI
+      childPrices: childPrices,
+      infantPrices: infantPrices
+    });
+
+    // Use totalPriceState (package selling price from UI) if available and is a valid price
+    // This is the package price including profit margin that was displayed to the user
+    const finalTotalAmount = (Number(totalPriceState) > 0 ? Number(totalPriceState) : allTotalPrice) +
+      (Number(childPrices) || 0) + (Number(infantPrices) || 0);
+
+    console.log('💰 Final Total Amount:', {
+      usingPackagePrice: Number(totalPriceState) > 0,
+      totalPriceState,
+      childPrices,
+      infantPrices,
+      finalTotalAmount
     });
 
     const orgId = parseInt(getOrgId()) || 0;
@@ -616,7 +659,7 @@ const BookingReview = () => {
       total_hotel_amount: Number(totalHotelAmount) || 0,  // Changed from totalPriceState to totalHotelAmount
       total_transport_amount: Number(totalTransportAmount) || 0,
       total_visa_amount: Number(totalVisaAmount) || 0,
-      total_amount: Number(allTotalPrice) || 0,
+      total_amount: Number(finalTotalAmount) || 0,  // Use package selling price, not component costs
 
       // PKR/SAR specific amounts (matching Custom Umrah)
       // For Umrah packages, prices are ALREADY in PKR, so don't multiply by riyal_rate
@@ -634,11 +677,13 @@ const BookingReview = () => {
       category: "Package",
       booking_type: "UMRAH",  // Add booking_type like Custom Umrah
       is_full_package: true,  // Add is_full_package like Custom Umrah
+      umrah_package_id: pkgState?.id || pkgState?.package_id || pkgState?.umrah_package_id || null,  // Changed from umrah_package to umrah_package_id
       user_id: Number(userIdNum) || 0,  // Changed from user to user_id
       organization_id: Number(orgId) || 0,  // Changed from organization to organization_id
       branch_id: Number(branchIdNum) || 0,  // Changed from branch to branch_id
       agency_id: Number(agencyIdNum) || 0  // Changed from agency to agency_id
     };
+
   };
 
   const submitBooking = async () => {
@@ -656,7 +701,7 @@ const BookingReview = () => {
 
       // -------- API call - SEND AS JSON, NOT FormData! --------
       const response = await axios.post(
-        `https://api.saer.pk/api/bookings/`,
+        `http://127.0.0.1:8000/api/bookings/`,
         bookingData,  // Send as JSON object, not FormData
         {
           headers: {

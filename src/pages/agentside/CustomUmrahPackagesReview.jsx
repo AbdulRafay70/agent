@@ -68,7 +68,7 @@ const BookingReview = () => {
 
         console.log('Fetching riyal rate for org:', orgId);
         const response = await axios.get(
-          `https://api.saer.pk/api/riyal-rates/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/riyal-rates/?organization=${orgId}`,
           {
             headers: {
               Authorization: `Bearer ${token}`
@@ -304,12 +304,11 @@ const BookingReview = () => {
       // Calculate per-night rate (price field should be per-night, not total)
       const perNightRate = numberOfNights > 0 ? hotelTotalPrice / numberOfNights : hotelTotalPrice;
 
-      // Add per-night rate to total hotel amount
-      totalHotelAmount += perNightRate;
+      // Add TOTAL price to total hotel amount (not per-night rate!)
+      totalHotelAmount += hotelTotalPrice;
 
-      // Determine if hotel price is in PKR or SAR
-      // Assuming hotels are in SAR by default (can be updated based on hotel data)
-      const isHotelPKR = false; // Hotels are typically in SAR
+      // Determine if hotel price is in PKR or SAR from riyal rate settings
+      const isHotelPKR = riyalRate?.is_hotel_pkr || false;
 
       // Calculate SAR and PKR prices (using total price for calculations)
       const total_in_riyal_rate = isHotelPKR ? 0 : hotelTotalPrice; // SAR total
@@ -381,8 +380,8 @@ const BookingReview = () => {
         }];
       }
 
-      // Determine if transport is in PKR or SAR
-      const isTransportPKR = true; // Assuming transport is in PKR by default
+      // Determine if transport is in PKR or SAR from riyal rate settings
+      const isTransportPKR = riyalRate?.is_transport_pkr || false;
       const price_in_sar = isTransportPKR ? 0 : adultPrice;
       const price_in_pkr = isTransportPKR ? transportTotal : transportTotal * (riyalRate?.rate || 1);
 
@@ -463,6 +462,8 @@ const BookingReview = () => {
       const totalFoodPrice = (adultPrice * adultCount) + (childPrice * childCount) + (infantPrice * infantCount);
       totalFoodAmount += totalFoodPrice;
 
+      const isFoodPKR = riyalRate?.is_food_pkr || false;
+
       return {
         food: foodInfo.name || foodInfo.title || "",
         adult_price: adultPrice,
@@ -471,10 +472,10 @@ const BookingReview = () => {
         total_adults: adultCount,
         total_children: childCount,
         total_infants: infantCount,
-        is_price_pkr: false,
+        is_price_pkr: isFoodPKR,
         riyal_rate: riyalRate?.rate || 0,
-        total_price_pkr: totalFoodPrice * (riyalRate?.rate || 1),
-        total_price_sar: totalFoodPrice,
+        total_price_pkr: isFoodPKR ? totalFoodPrice : totalFoodPrice * (riyalRate?.rate || 1),
+        total_price_sar: isFoodPKR ? totalFoodPrice / (riyalRate?.rate || 1) : totalFoodPrice,
       };
     });
 
@@ -488,6 +489,8 @@ const BookingReview = () => {
       const totalZiaratPrice = (adultPrice * adultCount) + (childPrice * childCount) + (infantPrice * infantCount);
       totalZiaratAmount += totalZiaratPrice;
 
+      const isZiaratPKR = riyalRate?.is_ziarat_pkr || false;
+
       return {
         ziarat: ziaratInfo.name || ziaratInfo.title || "",
         city: ziaratInfo.city?.id || ziaratInfo.city || "",
@@ -497,10 +500,10 @@ const BookingReview = () => {
         total_adults: adultCount,
         total_children: childCount,
         total_infants: infantCount,
-        is_price_pkr: false,
+        is_price_pkr: isZiaratPKR,
         riyal_rate: riyalRate?.rate || 0,
-        total_price_pkr: totalZiaratPrice * (riyalRate?.rate || 1),
-        total_price_sar: totalZiaratPrice,
+        total_price_pkr: isZiaratPKR ? totalZiaratPrice : totalZiaratPrice * (riyalRate?.rate || 1),
+        total_price_sar: isZiaratPKR ? totalZiaratPrice / (riyalRate?.rate || 1) : totalZiaratPrice,
       };
     });
 
@@ -695,7 +698,7 @@ const BookingReview = () => {
 
       // Make API call to create booking (JSON only - passport images not included)
       const response = await axios.post(
-        "https://api.saer.pk/api/bookings/",
+        "http://127.0.0.1:8000/api/bookings/",
         bookingData,
         {
           headers: {
@@ -750,7 +753,7 @@ const BookingReview = () => {
 
             // Upload passport image via PATCH to update the booking
             const uploadPromise = axios.patch(
-              `https://api.saer.pk/api/bookings/${result.id}/`,
+              `http://127.0.0.1:8000/api/bookings/${result.id}/`,
               formData,
               {
                 headers: {

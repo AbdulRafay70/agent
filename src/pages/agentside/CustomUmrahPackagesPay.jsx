@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
 import AgentSidebar from "../../components/AgentSidebar";
 import AgentHeader from "../../components/AgentHeader";
+import BookingExpiryTimer from "../../components/BookingExpiryTimer";
 import logo from "../../assets/flightlogo.png";
 import { Bag } from "react-bootstrap-icons";
 import { Search, Utensils } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import axios from "axios";
 import { toast } from "react-toastify";
 
@@ -12,13 +13,30 @@ import { toast } from "react-toastify";
 const CustomUmrahPackagesPay = () => {
   const navigate = useNavigate();
   const { id } = useParams(); // Get booking ID from URL
+  const location = useLocation();
   const [selectedPayment, setSelectedPayment] = useState("bank-transfer");
   const [bookingId, setBookingId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [bookingExpiryTime, setBookingExpiryTime] = useState(null);
+  const [isBookingExpired, setIsBookingExpired] = useState(false);
+  const [bookingData, setBookingData] = useState(null);
 
-  // Load booking ID from sessionStorage or URL params
+  // Discount states
+  const [discountGroup, setDiscountGroup] = useState(null);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [discountNotes, setDiscountNotes] = useState(null);
+  const [computedTotal, setComputedTotal] = useState(0);
+  const [finalAmount, setFinalAmount] = useState(0);
+
+  // Load booking ID from query params, URL params, or sessionStorage
   useEffect(() => {
-    if (id) {
+    // Try to get from query parameter first (?bookingId=347)
+    const searchParams = new URLSearchParams(location.search);
+    const queryBookingId = searchParams.get('bookingId');
+
+    if (queryBookingId) {
+      setBookingId(queryBookingId);
+    } else if (id) {
       setBookingId(id);
     } else {
       // Try to get from sessionStorage if not in URL
@@ -27,7 +45,158 @@ const CustomUmrahPackagesPay = () => {
         setBookingId(bookingData);
       }
     }
-  }, [id]);
+  }, [id, location.search]);
+
+  // Fetch booking details including expiry time and discount group
+  useEffect(() => {
+    const fetchBookingDetails = async () => {
+      if (!bookingId) return;
+      try {
+        const token = localStorage.getItem('agentAccessToken');
+        const response = await axios.get(
+          `http://127.0.0.1:8000/api/bookings/${bookingId}/`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (response.data) {
+          setBookingData(response.data);
+
+          // Set computed total from booking
+          if (response.data.total_amount) {
+            setComputedTotal(response.data.total_amount);
+          }
+
+          if (response.data.status?.toLowerCase() === 'expired') {
+            setIsBookingExpired(true);
+            return;
+          }
+          if (response.data.expiry_time) {
+            const expiryTime = new Date(response.data.expiry_time);
+            if (expiryTime < new Date()) {
+              setIsBookingExpired(true);
+            } else {
+              setBookingExpiryTime(response.data.expiry_time);
+            }
+          }
+
+          // Fetch discount group if agency has one
+          if (response.data.agency && response.data.agency.discount_group) {
+            fetchDiscountGroup(response.data.agency.discount_group);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching booking details:', error);
+      }
+    };
+    fetchBookingDetails();
+  }, [bookingId]);
+
+  // Fetch discount group details
+  const fetchDiscountGroup = async (discountGroupId) => {
+    try {
+      const token = localStorage.getItem('agentAccessToken');
+      const response = await axios.get(
+        `http://127.0.0.1:8000/api/discount-groups/${discountGroupId}/`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (response.data) {
+        setDiscountGroup(response.data);
+        console.log('Discount group fetched:', response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching discount group:', error);
+    }
+  };
+
+  // Calculate hotel discounts when discount group or booking data changes
+  useEffect(() => {
+    if (discountGroup && bookingData && bookingData.hotel_details) {
+      // For Custom Umrah (Umrah Calculator), apply hotel discounts
+      let totalDiscountPKR = 0;
+      const discountDetails = [];
+
+      // Get hotel_night_discounts array from discount group
+      const hotelNightDiscounts = discountGroup.hotel_night_discounts || [];
+
+      // Check each hotel in the booking
+      bookingData.hotel_details.forEach(hotel => {
+        // Find matching discount for this hotel
+        const discount = hotelNightDiscounts.find(d =>
+          d.discounted_hotels && Array.isArray(d.discounted_hotels) && d.discounted_hotels.includes(hotel.hotel)
+        );
+
+        if (discount && hotel.room_type) {
+          // Get the discount amount based on room type
+          const roomType = hotel.room_type.toLowerCase();
+          let discountPerNight = 0;
+
+          // Map room type to discount field
+          if (roomType === 'double') {
+            discountPerNight = parseFloat(discount.double_per_night_discount) || 0;
+          } else if (roomType === 'sharing') {
+            discountPerNight = parseFloat(discount.sharing_per_night_discount) || 0;
+          } else if (roomType === 'triple') {
+            discountPerNight = parseFloat(discount.triple_per_night_discount) || 0;
+          } else if (roomType === 'quad') {
+            discountPerNight = parseFloat(discount.quad_per_night_discount) || 0;
+          } else if (roomType === 'quint') {
+            discountPerNight = parseFloat(discount.quint_per_night_discount) || 0;
+          } else {
+            discountPerNight = parseFloat(discount.other_per_night_discount) || 0;
+          }
+
+          if (discountPerNight > 0) {
+            const nights = hotel.number_of_nights || 0;
+            const quantity = hotel.quantity || 1;
+            const riyalRate = hotel.riyal_rate || 50;
+
+            // Check if hotel price is in SAR or PKR
+            const isPricePKR = hotel.is_price_pkr !== false; // Default to true if not specified
+
+            if (isPricePKR) {
+              // Hotel price is in PKR, discount is also in PKR
+              const hotelDiscountPKR = discountPerNight * nights * quantity;
+
+              totalDiscountPKR += hotelDiscountPKR;
+              discountDetails.push(
+                `${hotel.hotel_name || 'Hotel'} (${hotel.room_type}): Rs. ${discountPerNight}/night × ${nights} nights × ${quantity} room(s) = Rs. ${hotelDiscountPKR.toFixed(0)}`
+              );
+
+              console.log(`Hotel Discount Applied: ${hotel.hotel_name} - Rs. ${hotelDiscountPKR} (${hotel.room_type})`);
+            } else {
+              // Hotel price is in SAR, discount is also in SAR
+              const hotelDiscountSAR = discountPerNight * nights * quantity;
+              const hotelDiscountPKR = hotelDiscountSAR * riyalRate;
+
+              totalDiscountPKR += hotelDiscountPKR;
+              discountDetails.push(
+                `${hotel.hotel_name || 'Hotel'} (${hotel.room_type}): ${discountPerNight} SAR/night × ${nights} nights × ${quantity} room(s) = ${hotelDiscountSAR.toFixed(0)} SAR (Rs. ${hotelDiscountPKR.toFixed(0)})`
+              );
+
+              console.log(`Hotel Discount Applied: ${hotel.hotel_name} - ${hotelDiscountSAR} SAR = Rs. ${hotelDiscountPKR} (${hotel.room_type})`);
+            }
+          }
+        }
+      });
+
+      // Set discount amount and notes
+      setDiscountAmount(totalDiscountPKR);
+      setFinalAmount(computedTotal - totalDiscountPKR);
+
+      if (discountDetails.length > 0) {
+        const notes = `Hotel Discounts Applied:\n${discountDetails.map(d => `- ${d}`).join('\n')}\nTotal: Rs. ${totalDiscountPKR.toFixed(0)}`;
+        setDiscountNotes(notes);
+        console.log('Discount Notes:', notes);
+      } else {
+        setDiscountNotes(null);
+      }
+
+      console.log(`Total Hotel Discount: Rs. ${totalDiscountPKR}`);
+    } else {
+      setDiscountAmount(0);
+      setDiscountNotes(null);
+      setFinalAmount(computedTotal);
+    }
+  }, [discountGroup, bookingData, computedTotal]);
 
   const handlePaymentSelect = (method) => {
     setSelectedPayment(method);
@@ -68,10 +237,51 @@ const CustomUmrahPackagesPay = () => {
         return;
       }
 
-      // Update booking status to Confirmed
+      // Build discount fields if discount is applied
+      const discountFields = {};
+      if (discountAmount > 0 && discountGroup) {
+        discountFields.total_discount = discountAmount;
+        discountFields.discount_group = discountGroup.id;
+        discountFields.discount_notes = discountNotes || `${discountGroup.name} - Hotel Discount - Rs. ${discountAmount}`;
+        discountFields.total_amount = finalAmount;
+        discountFields.total_ticket_amount = finalAmount;
+      }
+
+      // CREDIT PAYMENT FLOW
+      if (selectedPayment === 'credit') {
+        console.log('💳 Processing credit payment with discount...');
+
+        const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+        const patchBody = {
+          status: 'Confirmed',
+          payment_method: 'credit',
+          is_paid: true,
+          ...discountFields // Include discount fields
+        };
+
+        console.log('PATCH body:', patchBody);
+        await axios.patch(`http://127.0.0.1:8000/api/bookings/${bookingId}/`, patchBody, { headers });
+        console.log('✅ Booking confirmed with credit payment and discount');
+
+        toast.success('Booking confirmed successfully with credit payment!');
+        navigate('/packages/booking');
+        return;
+      }
+
+      // REGULAR PAYMENT FLOW (Bank Transfer, Cash, Cheque)
+      const patchBody = {
+        status: 'Confirmed',
+        ...discountFields // Include discount fields
+      };
+
+      console.log('📤 PATCH Request:', {
+        url: `http://127.0.0.1:8000/api/bookings/${bookingId}/`,
+        body: patchBody
+      });
+
       const response = await axios.patch(
-        `https://api.saer.pk/api/bookings/${bookingId}/`,
-        { status: 'Confirmed' },
+        `http://127.0.0.1:8000/api/bookings/${bookingId}/`,
+        patchBody,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -81,11 +291,12 @@ const CustomUmrahPackagesPay = () => {
       );
 
       toast.success('Booking confirmed successfully!');
-      // Navigate to bookings list or details page
       navigate('/packages/booking');
     } catch (error) {
       console.error('Error confirming booking:', error);
-      toast.error(error.response?.data?.message || 'Failed to confirm booking. Please try again.');
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      toast.error(error.response?.data?.message || JSON.stringify(error.response?.data) || 'Failed to confirm booking. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -171,283 +382,382 @@ const CustomUmrahPackagesPay = () => {
                 </div>
               </div>
 
-              {/* Package Details Card */}
-              <div className="card mb-4">
-                <div className="card-body" style={{ background: "#F2F9FF" }}>
-                  <div className="row">
-                    <div className="col-md-8">
-                      <h4 className="mb-3 fw-bold">Custom Umrah Package</h4>
-                      <div className="mb-2">
-                        <strong>Hotels:</strong>
-                        <div className="small text-muted">
-                          4 Nights at maskan (Soul ul Magi) / 6nights At Medina
-                          (Rou Taiba) / 6nights At Medina (Rou Taiba)
-                        </div>
-                      </div>
-                      <div className="mb-2">
-                        <strong>Departure Visa:</strong>
-                        <div className="small text-muted">
-                          4Adult-2Child-Infant
-                        </div>
-                      </div>
-                      <div className="mb-2">
-                        <strong>Transport:</strong>
-                        <div className="small text-muted">
-                          4Adult-2Child-Infant
-                        </div>
-                      </div>
-                      <div className="mb-2">
-                        <strong>Flight:</strong>
-                        <div className="small text-muted">
-                          Travel Date: SV-234-14E-463-19-DEC-2024-23-20-01:00
-                        </div>
-                        <div className="small text-muted">
-                          Return Date: SV-234-14E-463-19-DEC-2024-23-20-01:20
-                        </div>
-                      </div>
-                    </div>
+              {/* Booking Expiry Timer */}
+              {bookingExpiryTime && !isBookingExpired && (
+                <BookingExpiryTimer
+                  expiryTime={bookingExpiryTime}
+                  onExpired={() => setIsBookingExpired(true)}
+                />
+              )}
 
-                    <div className="col-md-4">
-                      <h4 className="mb-3">Prices</h4>
-                      <div className="mb-2">
-                        <div className="small text-muted">
-                          Makkah Hotel (Soul ul Magi)/125R Medina Hotel (Rou
-                          Taiba)/125R
-                        </div>
-                        <div className="small text-muted">(Umrah)</div>
-                      </div>
-                      <div className="mb-2">
-                        <div className="small">
-                          47558/Adult-47558/Child-47558/Infant
-                        </div>
-                      </div>
-                      <div className="mb-2">
-                        <div className="small text-muted">Transport</div>
-                        <div className="small">
-                          2058/Adult-3058/Child-1558/Infant
-                        </div>
-                      </div>
-                      <div className="mb-2">
-                        <div className="small text-muted">Flight</div>
-                        <div className="small">
-                          RS 125,000/Adult-RS 120,000/Child-RS 15,000/Infant
-                        </div>
-                      </div>
-                      <div className="text-muted small">SAUDI RIYAL RATE</div>
-                      <div className="fw-bold">RS 78.55=1 SAR</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5">
-
-                {/* Payment Method Selection */}
-                <h5 className="mb-0 mt-5 fw-bold">Select Payment Method</h5>
-                <div className="card border-0">
-                  <div className="card-body">
-                    <div className="row g-3">
-                      {/* Payment Options in One Row */}
-                      <div className="col-md-4">
-                        <div
-                          className={`card h-100 ${selectedPayment === "bank-transfer"
-                            ? "border-primary bg-primary text-white"
-                            : "border-secondary"
-                            }`}
-                          style={{ cursor: "pointer" }}
-                          onClick={() => handlePaymentSelect("bank-transfer")}
-                        >
-                          <div className="card-body text-center position-relative">
-                            <div className="mb-2">
-                              <i className="bi bi-bank2 fs-2"></i>
-                              {selectedPayment === "bank-transfer" && (
-                                <span className="badge bg-warning text-dark position-absolute top-0 start-0 m-2">
-                                  <i className="bi bi-exclamation-triangle"></i>
-                                </span>
-                              )}
-                            </div>
-                            <h6 className="card-title">Bank Transfer</h6>
-                            <small>1 Bill - Bank Transfer</small>
-                            <br />
-                            <small>Save PKR 3,214 on Fees</small>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="col-md-4">
-                        <div
-                          className={`card h-100 ${selectedPayment === "bill-payment"
-                            ? "border-primary bg-primary text-white"
-                            : "border-secondary"
-                            }`}
-                          style={{ cursor: "pointer" }}
-                          onClick={() => handlePaymentSelect("bill-payment")}
-                        >
-                          <div className="card-body text-center">
-                            <div className="mb-2">
-                              <i className="bi bi-receipt fs-2"></i>
-                            </div>
-                            <h6 className="card-title">Bill Payment</h6>
-                            <small>1 Bill - Bank Transfer</small>
-                            <br />
-                            <small>Save PKR 3,214 on Fees</small>
-                            <br />
-                            <small className="text-muted">
-                              Agreement Process
-                            </small>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="col-md-4">
-                        <div
-                          className={`card h-100 ${selectedPayment === "card"
-                            ? "border-primary bg-primary text-white"
-                            : "border-secondary"
-                            }`}
-                          style={{ cursor: "pointer" }}
-                          onClick={() => handlePaymentSelect("card")}
-                        >
-                          <div className="card-body text-center">
-                            <div className="mb-2">
-                              <i className="bi bi-credit-card fs-2"></i>
-                            </div>
-                            <h6 className="card-title">Credit or Debit Card</h6>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Total Payment Section */}
-                <div className="card mt-5 mb-4 p-3">
-                  <h5 className="mb-0 fw-bold">Total Payment</h5>
-                  <div className="card-body">
-                    <div className="row">
-                      <div className="col-6">
-                        <div className=" fw-bold">Flight Ticket</div>
-                        <div>120,000/- x 2 Pax</div>
-                      </div>
-                      <div className="col-6">
-                        <div className=" fw-bold">Total Amount</div>
-                        <div className="">Rs.240,000/-</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="row g-3">
-                  {/* Beneficiary Account */}
-                  <div className="col-lg-3 col-md-6">
-                    <label className="form-label text-muted small mb-1">
-                      Beneficiary Account
-                    </label>
-                    <select
-                      className="form-select"
-                      name="beneficiaryAccount"
-                      value={formData.beneficiaryAccount}
-                      onChange={handleInputChange}
-                    >
-                      <option value="0ufgkJHG">0ufgkJHG</option>
-                      <option value="account2">Account 2</option>
-                      <option value="account3">Account 3</option>
-                    </select>
-                  </div>
-
-                  {/* Agent Account */}
-                  <div className="col-lg-3 col-md-6">
-                    <label className="form-label text-muted small mb-1">
-                      Agent Account
-                    </label>
-                    <select
-                      className="form-select"
-                      name="agentAccount"
-                      value={formData.agentAccount}
-                      onChange={handleInputChange}
-                    >
-                      <option value="1Bill">1Bill</option>
-                      <option value="2Bill">2Bill</option>
-                      <option value="3Bill">3Bill</option>
-                    </select>
-                  </div>
-
-                  {/* Amount */}
-                  <div className="col-lg-3 col-md-6">
-                    <label className="form-label text-muted small mb-1">
-                      Amount
-                    </label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      name="amount"
-                      value={formData.amount}
-                      onChange={handleInputChange}
-                      placeholder="Type Rs.120,222/."
-                    />
-                  </div>
-
-                  {/* Date */}
-                  <div className="col-lg-3 col-md-6">
-                    <label className="form-label text-muted small mb-1">
-                      Date
-                    </label>
-                    <div className="input-group">
-                      <input
-                        type="date"
-                        className="form-control"
-                        name="date"
-                        value={formData.date}
-                        onChange={handleInputChange}
-                      />
-                      <span className="input-group-text">
-                        <i className="bi bi-calendar3"></i>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="row mt-3 mb-4">
-                  {/* Note */}
-                  <div className="col-lg-4 col-md-4">
-                    <label className="form-label text-muted small mb-1">
-                      Note
-                    </label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      name="note"
-                      value={formData.note}
-                      onChange={handleInputChange}
-                      placeholder="Type Note"
-                    />
-                  </div>
-
-                  {/* SLIP SELECT Button */}
-                  <div className="col-lg-2 col-md-2 d-flex align-items-end">
+              {/* Booking Expired Message */}
+              {isBookingExpired && (
+                <div className="alert alert-danger d-flex align-items-center mb-4" role="alert">
+                  <div>
+                    <h5 className="alert-heading mb-2">⏰ Booking Expired!</h5>
+                    <p className="mb-0">This booking has expired. Please create a new booking.</p>
                     <button
-                      type="button"
-                      className="btn btn-primary px-4 py-2 fw-semibold"
-                      onClick={handleSlipSelect}
-                      style={{ backgroundColor: '#007bff', border: 'none' }}
+                      className="btn btn-primary mt-3"
+                      onClick={() => navigate('/booking-history')}
                     >
-                      SLIP SELECT
+                      Go to Booking History
                     </button>
                   </div>
                 </div>
+              )}
 
-                <div className="mt-2 d-flex justify-content-start gap-2">
-                  <button className="btn" id="btn">
-                    Hold Booking
-                  </button>
-                  <button
-                    className="btn"
-                    id="btn"
-                    onClick={handleConfirmOrder}
-                    disabled={isSubmitting || !bookingId}
-                  >
-                    {isSubmitting ? 'Confirming...' : 'Confirm Order'}
-                  </button>
+              {/* Payment form - hidden when expired */}
+              <div style={{ display: isBookingExpired ? 'none' : 'block' }}>
+
+                {/* Package Details Card */}
+                <div className="card mb-4">
+                  <div className="card-body" style={{ background: "#F2F9FF" }}>
+                    <div className="row">
+                      <div className="col-md-8">
+                        <h4 className="mb-3 fw-bold">Custom Umrah Package</h4>
+                        <div className="mb-2">
+                          <strong>Hotels:</strong>
+                          <div className="small text-muted">
+                            4 Nights at maskan (Soul ul Magi) / 6nights At Medina
+                            (Rou Taiba) / 6nights At Medina (Rou Taiba)
+                          </div>
+                        </div>
+                        <div className="mb-2">
+                          <strong>Departure Visa:</strong>
+                          <div className="small text-muted">
+                            4Adult-2Child-Infant
+                          </div>
+                        </div>
+                        <div className="mb-2">
+                          <strong>Transport:</strong>
+                          <div className="small text-muted">
+                            4Adult-2Child-Infant
+                          </div>
+                        </div>
+                        <div className="mb-2">
+                          <strong>Flight:</strong>
+                          <div className="small text-muted">
+                            Travel Date: SV-234-14E-463-19-DEC-2024-23-20-01:00
+                          </div>
+                          <div className="small text-muted">
+                            Return Date: SV-234-14E-463-19-DEC-2024-23-20-01:20
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="col-md-4">
+                        <h4 className="mb-3">Prices</h4>
+                        <div className="mb-2">
+                          <div className="small text-muted">
+                            Makkah Hotel (Soul ul Magi)/125R Medina Hotel (Rou
+                            Taiba)/125R
+                          </div>
+                          <div className="small text-muted">(Umrah)</div>
+                        </div>
+                        <div className="mb-2">
+                          <div className="small">
+                            47558/Adult-47558/Child-47558/Infant
+                          </div>
+                        </div>
+                        <div className="mb-2">
+                          <div className="small text-muted">Transport</div>
+                          <div className="small">
+                            2058/Adult-3058/Child-1558/Infant
+                          </div>
+                        </div>
+                        <div className="mb-2">
+                          <div className="small text-muted">Flight</div>
+                          <div className="small">
+                            RS 125,000/Adult-RS 120,000/Child-RS 15,000/Infant
+                          </div>
+                        </div>
+                        <div className="text-muted small">SAUDI RIYAL RATE</div>
+                        <div className="fw-bold">RS 78.55=1 SAR</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+
+                  {/* Payment Method Selection */}
+                  <h5 className="mb-0 mt-5 fw-bold">Select Payment Method</h5>
+                  <div className="card border-0">
+                    <div className="card-body">
+                      <div className="row g-3">
+                        {/* Payment Options in One Row */}
+                        <div className="col-md-3">
+                          <div
+                            className={`card h-100 ${selectedPayment === "bank-transfer"
+                              ? "border-primary bg-primary text-white"
+                              : "border-secondary"
+                              }`}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => handlePaymentSelect("bank-transfer")}
+                          >
+                            <div className="card-body text-center position-relative">
+                              <div className="mb-2">
+                                <i className="bi bi-bank2 fs-2"></i>
+                                {selectedPayment === "bank-transfer" && (
+                                  <span className="badge bg-warning text-dark position-absolute top-0 start-0 m-2">
+                                    <i className="bi bi-exclamation-triangle"></i>
+                                  </span>
+                                )}
+                              </div>
+                              <h6 className="card-title">Bank Transfer</h6>
+                              <small>1 Bill - Bank Transfer</small>
+                              <br />
+                              <small>Save PKR 3,214 on Fees</small>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="col-md-3">
+                          <div
+                            className={`card h-100 ${selectedPayment === "bill-payment"
+                              ? "border-primary bg-primary text-white"
+                              : "border-secondary"
+                              }`}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => handlePaymentSelect("bill-payment")}
+                          >
+                            <div className="card-body text-center">
+                              <div className="mb-2">
+                                <i className="bi bi-receipt fs-2"></i>
+                              </div>
+                              <h6 className="card-title">Bill Payment</h6>
+                              <small>1 Bill - Bank Transfer</small>
+                              <br />
+                              <small>Save PKR 3,214 on Fees</small>
+                              <br />
+                              <small className="text-muted">
+                                Agreement Process
+                              </small>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="col-md-3">
+                          <div
+                            className={`card h-100 ${selectedPayment === "card"
+                              ? "border-primary bg-primary text-white"
+                              : "border-secondary"
+                              }`}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => handlePaymentSelect("card")}
+                          >
+                            <div className="card-body text-center">
+                              <div className="mb-2">
+                                <i className="bi bi-credit-card fs-2"></i>
+                              </div>
+                              <h6 className="card-title">Credit or Debit Card</h6>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="col-md-3">
+                          <div
+                            className={`card h-100 ${selectedPayment === "credit"
+                              ? "border-primary bg-primary text-white"
+                              : "border-secondary"
+                              }`}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => handlePaymentSelect("credit")}
+                          >
+                            <div className="card-body text-center">
+                              <div className="mb-2">
+                                <i className="bi bi-credit-card-2-front fs-2"></i>
+                              </div>
+                              <h6 className="card-title">Pay with Credit</h6>
+                              <small>Use agency credit limit</small>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Total Payment Section */}
+                  <div className="card mt-5 mb-4 p-3">
+                    <h5 className="mb-0 fw-bold">Total Payment</h5>
+                    <div className="card-body">
+                      <div className="row">
+                        <div className="col-6">
+                          <div className=" fw-bold">Flight Ticket</div>
+                          <div>120,000/- x 2 Pax</div>
+                        </div>
+                        <div className="col-6">
+                          <div className=" fw-bold">Total Amount</div>
+                          <div className="">Rs.240,000/-</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment input fields - hide when credit is selected */}
+                  {selectedPayment !== 'credit' && (
+                    <>
+                      <div className="row g-3">
+                        {/* Beneficiary Account */}
+                        <div className="col-lg-3 col-md-6">
+                          <label className="form-label text-muted small mb-1">
+                            Beneficiary Account
+                          </label>
+                          <select
+                            className="form-select"
+                            name="beneficiaryAccount"
+                            value={formData.beneficiaryAccount}
+                            onChange={handleInputChange}
+                          >
+                            <option value="0ufgkJHG">0ufgkJHG</option>
+                            <option value="account2">Account 2</option>
+                            <option value="account3">Account 3</option>
+                          </select>
+                        </div>
+
+                        {/* Agent Account */}
+                        <div className="col-lg-3 col-md-6">
+                          <label className="form-label text-muted small mb-1">
+                            Agent Account
+                          </label>
+                          <select
+                            className="form-select"
+                            name="agentAccount"
+                            value={formData.agentAccount}
+                            onChange={handleInputChange}
+                          >
+                            <option value="1Bill">1Bill</option>
+                            <option value="2Bill">2Bill</option>
+                            <option value="3Bill">3Bill</option>
+                          </select>
+                        </div>
+
+                        {/* Amount */}
+                        <div className="col-lg-3 col-md-6">
+                          <label className="form-label text-muted small mb-1">
+                            Amount
+                          </label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            name="amount"
+                            value={formData.amount}
+                            onChange={handleInputChange}
+                            placeholder="Type Rs.120,222/."
+                          />
+                        </div>
+
+                        {/* Date */}
+                        <div className="col-lg-3 col-md-6">
+                          <label className="form-label text-muted small mb-1">
+                            Date
+                          </label>
+                          <div className="input-group">
+                            <input
+                              type="date"
+                              className="form-control"
+                              name="date"
+                              value={formData.date}
+                              onChange={handleInputChange}
+                            />
+                            <span className="input-group-text">
+                              <i className="bi bi-calendar3"></i>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="row mt-3 mb-4">
+                        {/* Note */}
+                        <div className="col-lg-4 col-md-4">
+                          <label className="form-label text-muted small mb-1">
+                            Note
+                          </label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            name="note"
+                            value={formData.note}
+                            onChange={handleInputChange}
+                            placeholder="Type Note"
+                          />
+                        </div>
+
+                        {/* SLIP SELECT Button */}
+                        <div className="col-lg-2 col-md-2 d-flex align-items-end">
+                          <button
+                            type="button"
+                            className="btn btn-primary px-4 py-2 fw-semibold"
+                            onClick={handleSlipSelect}
+                            style={{ backgroundColor: '#007bff', border: 'none' }}
+                          >
+                            SLIP SELECT
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Credit Payment Message */}
+                  {selectedPayment === 'credit' && (
+                    <div className="card border-info bg-light mt-4 mb-4">
+                      <div className="card-body">
+                        <h6 className="card-title text-info">
+                          <i className="bi bi-credit-card-2-front me-2"></i>
+                          💳 Credit Payment Selected
+                        </h6>
+                        <p className="card-text mb-0">
+                          Your booking will be confirmed and the amount will be deducted from your agency's credit limit.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Discount Breakdown Display */}
+                  {bookingData && (
+                    <div className="card border-success bg-light mt-4 mb-4">
+                      <div className="card-body">
+                        <h6 className="card-title text-success mb-3">
+                          💰 Payment Summary
+                        </h6>
+                        <div className="d-flex justify-content-between mb-2">
+                          <span>Original Amount:</span>
+                          <span className="fw-semibold">Rs. {computedTotal?.toLocaleString() || '0'}</span>
+                        </div>
+                        {discountAmount > 0 && (
+                          <>
+                            <div className="d-flex justify-content-between mb-2 text-success">
+                              <span>
+                                Discount Applied ({discountGroup?.name || 'Agency Discount'}):
+                              </span>
+                              <span className="fw-semibold">- Rs. {discountAmount?.toLocaleString()}</span>
+                            </div>
+                            <hr className="my-2" />
+                          </>
+                        )}
+                        <div className="d-flex justify-content-between">
+                          <span className="fw-bold">Total Amount to Pay:</span>
+                          <span className="fw-bold text-primary fs-5">
+                            Rs. {(discountAmount > 0 ? finalAmount : computedTotal)?.toLocaleString() || '0'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-2 d-flex justify-content-start gap-2">
+                    <button className="btn" id="btn">
+                      Hold Booking
+                    </button>
+                    <button
+                      className="btn"
+                      id="btn"
+                      onClick={handleConfirmOrder}
+                      disabled={isSubmitting || !bookingId}
+                    >
+                      {isSubmitting ? 'Confirming...' : 'Confirm Order'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

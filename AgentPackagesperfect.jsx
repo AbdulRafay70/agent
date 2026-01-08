@@ -142,7 +142,7 @@ const AgentPackages = () => {
 
         // Fetch packages and airlines for all organization IDs (agent may be linked to a parent org)
         const packagePromises = orgIds.map((id) =>
-          axios.get(`https://api.saer.pk/api/umrah-packages/?organization=${id}`, {
+          axios.get(`http://127.0.0.1:8000/api/umrah-packages/?organization=${id}`, {
             headers: {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
@@ -151,7 +151,7 @@ const AgentPackages = () => {
         );
 
         const airlinePromises = orgIds.map((id) =>
-          axios.get("https://api.saer.pk/api/airlines/", {
+          axios.get("http://127.0.0.1:8000/api/airlines/", {
             params: { organization: id },
             headers: {
               Authorization: `Bearer ${token}`,
@@ -223,68 +223,68 @@ const AgentPackages = () => {
 
   // Function to export packages as PDF
   const exportPackagesToPDF = async () => {
-  try {
-    toast.info("Generating PDF...", { autoClose: 2000 });
+    try {
+      toast.info("Generating PDF...", { autoClose: 2000 });
 
-    const packagesContainer = packagesRef.current;
-    if (!packagesContainer) {
-      toast.error("No packages found to export");
-      return;
-    }
-
-    const packageElements = packagesContainer.querySelectorAll('.package-card');
-    if (packageElements.length === 0) {
-      toast.error("No packages found to export");
-      return;
-    }
-
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 5;
-    const contentWidth = pageWidth - (margin * 2);
-
-    let currentY = margin;
-    let packagesPerPage = 0;
-
-    for (let i = 0; i < packageElements.length; i++) {
-      const packageElement = packageElements[i];
-
-      // Convert package element to canvas
-      const canvas = await html2canvas(packageElement, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-      });
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.9);
-
-      // Calculate height to maintain aspect ratio
-      const imgWidth = contentWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      // Add package to PDF
-      pdf.addImage(imgData, 'JPEG', margin, currentY, imgWidth, imgHeight);
-
-      // Update Y for next package
-      currentY += imgHeight + 5;
-      packagesPerPage++;
-
-      // If 3 packages added, start a new page
-      if (packagesPerPage === 3 && i < packageElements.length - 1) {
-        pdf.addPage();
-        currentY = margin;
-        packagesPerPage = 0;
+      const packagesContainer = packagesRef.current;
+      if (!packagesContainer) {
+        toast.error("No packages found to export");
+        return;
       }
-    }
 
-    pdf.save(`umrah-packages-${new Date().toISOString().split('T')[0]}.pdf`);
-    toast.success("PDF exported successfully!");
-  } catch (error) {
-    console.error("Error exporting PDF:", error);
-    toast.error("Failed to export PDF");
-  }
-};
+      const packageElements = packagesContainer.querySelectorAll('.package-card');
+      if (packageElements.length === 0) {
+        toast.error("No packages found to export");
+        return;
+      }
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 5;
+      const contentWidth = pageWidth - (margin * 2);
+
+      let currentY = margin;
+      let packagesPerPage = 0;
+
+      for (let i = 0; i < packageElements.length; i++) {
+        const packageElement = packageElements[i];
+
+        // Convert package element to canvas
+        const canvas = await html2canvas(packageElement, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+        });
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.9);
+
+        // Calculate height to maintain aspect ratio
+        const imgWidth = contentWidth;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        // Add package to PDF
+        pdf.addImage(imgData, 'JPEG', margin, currentY, imgWidth, imgHeight);
+
+        // Update Y for next package
+        currentY += imgHeight + 5;
+        packagesPerPage++;
+
+        // If 3 packages added, start a new page
+        if (packagesPerPage === 3 && i < packageElements.length - 1) {
+          pdf.addPage();
+          currentY = margin;
+          packagesPerPage = 0;
+        }
+      }
+
+      pdf.save(`umrah-packages-${new Date().toISOString().split('T')[0]}.pdf`);
+      toast.success("PDF exported successfully!");
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      toast.error("Failed to export PDF");
+    }
+  };
 
 
 
@@ -341,11 +341,10 @@ const AgentPackages = () => {
                           <NavLink
                             key={index}
                             to={tab.path}
-                            className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${
-                              tab.name === "Umrah Package"
-                                ? "text-primary fw-semibold"
-                                : "text-muted"
-                            }`}
+                            className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${tab.name === "Umrah Package"
+                              ? "text-primary fw-semibold"
+                              : "text-muted"
+                              }`}
                             style={{ backgroundColor: "transparent" }}
                           >
                             {tab.name}
@@ -392,11 +391,10 @@ const AgentPackages = () => {
                         <NavLink
                           key={index}
                           to={tab.path}
-                          className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${
-                            tab.name === "Umrah Package"
-                              ? "text-primary fw-semibold"
-                              : "text-muted"
-                          }`}
+                          className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${tab.name === "Umrah Package"
+                            ? "text-primary fw-semibold"
+                            : "text-muted"
+                            }`}
                           style={{ backgroundColor: "transparent" }}
                         >
                           {tab.name}
@@ -409,7 +407,7 @@ const AgentPackages = () => {
                       <div className="text-center py-5">
                         <div className="mb-4">
                           <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" fill="#dee2e6" viewBox="0 0 16 16">
-                            <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1h-7z"/>
+                            <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1h-7z" />
                           </svg>
                         </div>
                         <h4 className="text-muted mb-3">No Umrah Packages Found</h4>
@@ -540,11 +538,10 @@ const AgentPackages = () => {
                         <NavLink
                           key={index}
                           to={tab.path}
-                          className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${
-                            tab.name === "Umrah Package"
-                              ? "text-primary fw-semibold"
-                              : "text-muted"
-                          }`}
+                          className={`nav-link btn btn-link text-decoration-none px-0 me-3 border-0 ${tab.name === "Umrah Package"
+                            ? "text-primary fw-semibold"
+                            : "text-muted"
+                            }`}
                           style={{ backgroundColor: "transparent" }}
                         >
                           {tab.name}
@@ -575,56 +572,56 @@ const AgentPackages = () => {
                         const quadPrice = calculatePackagePrice(pkg, 'quad');
                         const triplePrice = calculatePackagePrice(pkg, 'triple');
                         const doublePrice = calculatePackagePrice(pkg, 'double');
-                        
+
                         const infantPrices = (ticketInfo?.infant_price || 0) + (pkg.infant_visa_price || 0);
                         const childPrices = (pkg?.adault_visa_price || 0) - (pkg?.child_visa_price || 0);
 
                         // (debug logs removed)
 
                         return (
-                           <div key={index} className="border rounded-3 mb-4 package-card" style={{padding: "24px", background: "white"}}>
+                          <div key={index} className="border rounded-3 mb-4 package-card" style={{ padding: "24px", background: "white" }}>
                             {/* Title, Package Type, Airline and Seats Row */}
                             <div className="d-flex justify-content-between align-items-start mb-3">
                               <div>
-                              {/* Child Discount */}
-                              
+                                {/* Child Discount */}
 
-                              {/* Hotel Prices summary moved to the bottom Pricing section to avoid duplicates */}
-                                <h4 className="fw-bold mb-0" style={{fontSize: "22px", color: "#333"}}>
+
+                                {/* Hotel Prices summary moved to the bottom Pricing section to avoid duplicates */}
+                                <h4 className="fw-bold mb-0" style={{ fontSize: "22px", color: "#333" }}>
                                   {pkg?.title || "Umrah Package"}
                                 </h4>
                               </div>
                               <div className="text-end">
-                                <h3 className="fw-bold mb-0" style={{color: "#dc3545", fontSize: "32px"}}>{pkg?.total_seats || "0"}</h3>
-                                <div className="text-danger fw-semibold" style={{fontSize: "14px"}}>Seats Left</div>
+                                <h3 className="fw-bold mb-0" style={{ color: "#dc3545", fontSize: "32px" }}>{pkg?.total_seats || "0"}</h3>
+                                <div className="text-danger fw-semibold" style={{ fontSize: "14px" }}>Seats Left</div>
                               </div>
                             </div>
 
                             {/* Hotel and Package Details */}
                             <div className="row mb-3 g-3">
                               <div className="col-6 col-md-2">
-                                <div className="text-uppercase fw-bold text-muted" style={{fontSize: "11px", marginBottom: "4px"}}>MAKKAH HOTEL:</div>
-                                <div style={{fontSize: "14px", color: "#333"}}>{pkg?.hotel_details?.[0]?.hotel_info?.name || "N/A"}</div>
+                                <div className="text-uppercase fw-bold text-muted" style={{ fontSize: "11px", marginBottom: "4px" }}>MAKKAH HOTEL:</div>
+                                <div style={{ fontSize: "14px", color: "#333" }}>{pkg?.hotel_details?.[0]?.hotel_info?.name || "N/A"}</div>
                               </div>
                               <div className="col-6 col-md-2">
-                                <div className="text-uppercase fw-bold text-muted" style={{fontSize: "11px", marginBottom: "4px"}}>MADINA HOTEL:</div>
-                                <div style={{fontSize: "14px", color: "#333"}}>{pkg?.hotel_details?.[1]?.hotel_info?.name || "N/A"}</div>
+                                <div className="text-uppercase fw-bold text-muted" style={{ fontSize: "11px", marginBottom: "4px" }}>MADINA HOTEL:</div>
+                                <div style={{ fontSize: "14px", color: "#333" }}>{pkg?.hotel_details?.[1]?.hotel_info?.name || "N/A"}</div>
                               </div>
                               <div className="col-4 col-md-2">
-                                <div className="text-uppercase fw-bold text-muted" style={{fontSize: "11px", marginBottom: "4px"}}>ZAYARAT:</div>
-                                <div style={{fontSize: "14px", color: "#333"}}>
+                                <div className="text-uppercase fw-bold text-muted" style={{ fontSize: "11px", marginBottom: "4px" }}>ZAYARAT:</div>
+                                <div style={{ fontSize: "14px", color: "#333" }}>
                                   {pkg?.makkah_ziyarat_price || pkg?.madinah_ziyarat_price ? "YES" : "N/A"}
                                 </div>
                               </div>
                               <div className="col-4 col-md-2">
-                                <div className="text-uppercase fw-bold text-muted" style={{fontSize: "11px", marginBottom: "4px"}}>FOOD:</div>
-                                <div style={{fontSize: "14px", color: "#333"}}>
+                                <div className="text-uppercase fw-bold text-muted" style={{ fontSize: "11px", marginBottom: "4px" }}>FOOD:</div>
+                                <div style={{ fontSize: "14px", color: "#333" }}>
                                   {pkg?.food_price > 0 ? "INCLUDED" : "N/A"}
                                 </div>
                               </div>
                               <div className="col-4 col-md-4">
-                                <div className="text-uppercase fw-bold text-muted" style={{fontSize: "11px", marginBottom: "4px"}}>RULES:</div>
-                                <div style={{fontSize: "13px", color: "#333", lineHeight: "1.4"}}>{pkg?.rules || "N/A"}</div>
+                                <div className="text-uppercase fw-bold text-muted" style={{ fontSize: "11px", marginBottom: "4px" }}>RULES:</div>
+                                <div style={{ fontSize: "13px", color: "#333", lineHeight: "1.4" }}>{pkg?.rules || "N/A"}</div>
                               </div>
                             </div>
                             {/* Hotel Prices - consolidated (restored and moved to bottom) */}
@@ -632,7 +629,7 @@ const AgentPackages = () => {
                               <h6 className="mb-2">Hotel Prices</h6>
                               <div className="row g-2 text-center">
                                 <div className="col-6 col-sm-4 col-lg-2">
-                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>SHARING</div>
+                                  <div className="text-uppercase fw-bold" style={{ fontSize: "12px" }}>SHARING</div>
                                   <div className={sharingPrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
                                     {sharingPrice > 0 ? `Rs. ${Number(sharingPrice || 0).toLocaleString()}/.` : "N/A"}
                                   </div>
@@ -640,7 +637,7 @@ const AgentPackages = () => {
                                 </div>
 
                                 <div className="col-6 col-sm-4 col-lg-2">
-                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>QUINT</div>
+                                  <div className="text-uppercase fw-bold" style={{ fontSize: "12px" }}>QUINT</div>
                                   <div className={quintPrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
                                     {quintPrice > 0 ? `Rs. ${Number(quintPrice || 0).toLocaleString()}/.` : "N/A"}
                                   </div>
@@ -648,7 +645,7 @@ const AgentPackages = () => {
                                 </div>
 
                                 <div className="col-6 col-sm-4 col-lg-2">
-                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>QUAD BED</div>
+                                  <div className="text-uppercase fw-bold" style={{ fontSize: "12px" }}>QUAD BED</div>
                                   <div className={quadPrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
                                     {quadPrice > 0 ? `Rs. ${Number(quadPrice || 0).toLocaleString()}/.` : "N/A"}
                                   </div>
@@ -656,7 +653,7 @@ const AgentPackages = () => {
                                 </div>
 
                                 <div className="col-6 col-sm-4 col-lg-2">
-                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>TRIPLE BED</div>
+                                  <div className="text-uppercase fw-bold" style={{ fontSize: "12px" }}>TRIPLE BED</div>
                                   <div className={triplePrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
                                     {triplePrice > 0 ? `Rs. ${Number(triplePrice || 0).toLocaleString()}/.` : "N/A"}
                                   </div>
@@ -664,7 +661,7 @@ const AgentPackages = () => {
                                 </div>
 
                                 <div className="col-6 col-sm-4 col-lg-2">
-                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px"}}>DOUBLE BED</div>
+                                  <div className="text-uppercase fw-bold" style={{ fontSize: "12px" }}>DOUBLE BED</div>
                                   <div className={doublePrice > 0 ? "fw-bold text-primary" : "fw-bold text-muted"}>
                                     {doublePrice > 0 ? `Rs. ${Number(doublePrice || 0).toLocaleString()}/.` : "N/A"}
                                   </div>
@@ -673,17 +670,17 @@ const AgentPackages = () => {
 
                                 {/* Single infant price (always shown) */}
                                 <div className="col-6 col-sm-4 col-lg-2">
-                                  <div className="text-uppercase fw-bold" style={{fontSize: "12px", marginBottom: "6px"}}>PER INFANT</div>
-                                  <div className="fw-bold text-primary" style={{fontSize: "18px"}}>
+                                  <div className="text-uppercase fw-bold" style={{ fontSize: "12px", marginBottom: "6px" }}>PER INFANT</div>
+                                  <div className="fw-bold text-primary" style={{ fontSize: "18px" }}>
                                     Rs. {Number(infantPrices ?? 0).toLocaleString()}/.
                                   </div>
-                                  <small className="text-muted" style={{fontSize: "11px"}}>per PEX</small>
+                                  <small className="text-muted" style={{ fontSize: "11px" }}>per PEX</small>
                                 </div>
                               </div>
                             </div>
 
                             {/* Child Discount */}
-                            <div className="mb-3" style={{fontSize: "13px"}}>
+                            <div className="mb-3" style={{ fontSize: "13px" }}>
                               Per Child <span className="text-primary fw-bold">Rs {childPrices}/.</span> discount.
                             </div>
 
@@ -692,7 +689,7 @@ const AgentPackages = () => {
                               className="btn text-white w-100"
                               id="btn"
                               data-html2canvas-ignore="true"
-                              style={{padding: "12px", fontSize: "16px", fontWeight: "600"}}
+                              style={{ padding: "12px", fontSize: "16px", fontWeight: "600" }}
                               onClick={() => {
                                 setSelectedPackage(pkg);
                                 setSelectedRooms({}); // reset previous selections
@@ -811,7 +808,7 @@ const AgentPackages = () => {
                                                     <div className="card-body text-center">
                                                       <h6 className="">QUAD BED</h6>
                                                       <div className="mb-2">
-                                                          <h6 className="text-primary">Rs. {Number(calculatePackagePrice(selectedPackage, 'quad') || 0).toLocaleString()}/.</h6>
+                                                        <h6 className="text-primary">Rs. {Number(calculatePackagePrice(selectedPackage, 'quad') || 0).toLocaleString()}/.</h6>
                                                         <small className="text-muted">per adult</small>
                                                       </div>
                                                       <div className="d-flex justify-content-center align-items-center gap-2">
@@ -831,7 +828,7 @@ const AgentPackages = () => {
                                                     <div className="card-body text-center">
                                                       <h6 className="">TRIPLE BED</h6>
                                                       <div className="mb-2">
-                                                          <h6 className="text-primary">Rs. {Number(calculatePackagePrice(selectedPackage, 'triple') || 0).toLocaleString()}/.</h6>
+                                                        <h6 className="text-primary">Rs. {Number(calculatePackagePrice(selectedPackage, 'triple') || 0).toLocaleString()}/.</h6>
                                                         <small className="text-muted">per adult</small>
                                                       </div>
                                                       <div className="d-flex justify-content-center align-items-center gap-2">
@@ -851,7 +848,7 @@ const AgentPackages = () => {
                                                     <div className="text-center card-body">
                                                       <h6 className="">DOUBLE BED</h6>
                                                       <div className="mb-2">
-                                                          <h6 className="text-primary">Rs. {Number(calculatePackagePrice(selectedPackage, 'double') || 0).toLocaleString()}/.</h6>
+                                                        <h6 className="text-primary">Rs. {Number(calculatePackagePrice(selectedPackage, 'double') || 0).toLocaleString()}/.</h6>
                                                         <small className="text-muted">per adult</small>
                                                       </div>
                                                       <div className="d-flex justify-content-center align-items-center gap-2">

@@ -27,15 +27,20 @@ export const AuthProvider = ({ children }) => {
       const decoded = jwtDecode(access);
       const userId = decoded.user_id;
 
-      const response = await fetch(`https://api.saer.pk/api/users/${userId}/`, {
+      const response = await fetch(`http://127.0.0.1:8000/api/users/${userId}/`, {
         headers: { Authorization: `Bearer ${access}` },
       });
 
       const userData = await response.json();
       const userType = userData.profile?.type;
 
-      if (!["agent", "subagent"].includes(userType)) {
-        throw new Error("Unauthorized agent access");
+      // Check if user can access agent panel:
+      // 1. Agents and subagents (branches) can always access
+      // 2. Employees with can_access_agent_panel permission can access
+      const canAccessAgentPanel = decoded?.can_access_agent_panel || false;
+
+      if (!["agent", "subagent"].includes(userType) && !canAccessAgentPanel) {
+        throw new Error("Unauthorized agent access - no permission");
       }
 
       localStorage.setItem("agentAccessToken", access);

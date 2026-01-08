@@ -69,18 +69,29 @@ const Sidebar = () => {
           return;
         }
 
-        // ✅ Step 3: fetch from API
-        const orgRes = await axios.get(
-          `https://api.saer.pk/api/organizations/${orgId}/`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
+        // ✅ Step 3: Try to fetch from API (may fail for branch users with 403)
+        try {
+          const orgRes = await axios.get(
+            `http://127.0.0.1:8000/api/organizations/${orgId}/`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+
+          setOrganization(orgRes.data);
+
+          // ✅ Step 4: store in localStorage
+          localStorage.setItem("organizationData", JSON.stringify(orgRes.data));
+        } catch (apiErr) {
+          // If 403, branch users don't have permission - just use basic org data
+          if (apiErr.response?.status === 403) {
+            console.warn("No permission to fetch organization details. Using basic data.");
+            // Set minimal organization data
+            setOrganization({ id: orgId, name: "Organization" });
+          } else {
+            throw apiErr;
           }
-        );
-
-        setOrganization(orgRes.data);
-
-        // ✅ Step 4: store in localStorage
-        localStorage.setItem("organizationData", JSON.stringify(orgRes.data));
+        }
 
       } catch (err) {
         console.error("Error fetching organization:", err);
@@ -110,17 +121,22 @@ const Sidebar = () => {
         }
 
         const orgData = JSON.parse(agentOrg);
+        console.log("📊 Organization data from localStorage:", orgData);
         const agencyId = orgData.agency_id;
+        console.log("📊 Agency ID extracted:", agencyId);
 
         if (!agencyId) {
           console.warn("No agency ID found.");
+          console.warn("💡 Organization data:", orgData);
           setBalanceLoading(false);
           return;
         }
 
+        console.log("✅ Fetching balance for agency ID:", agencyId);
+
         // Fetch balance from ledger API
         const response = await axios.get(
-          `https://api.saer.pk/api/ledger/agency/${agencyId}/`,
+          `http://127.0.0.1:8000/api/ledger/agency/${agencyId}/`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -281,16 +297,6 @@ const Sidebar = () => {
               </Nav.Item>
               <Nav.Item className="mb-3">
                 <NavLink
-                  to="/packages/booking"
-                  style={{ color: "black" }}
-                  className={getNavLinkClass}
-                >
-                  <Check size={20} />{" "}
-                  <span className="fs-6">Create Booking</span>
-                </NavLink>
-              </Nav.Item>
-              <Nav.Item className="mb-3">
-                <NavLink
                   to="/booking"
                   style={{ color: "black" }}
                   className={getNavLinkClass}
@@ -408,16 +414,6 @@ const Sidebar = () => {
                 >
                   <PackageIcon size={20} />{" "}
                   <span className="fs-6">Packages</span>
-                </NavLink>
-              </Nav.Item>
-              <Nav.Item className="mb-3">
-                <NavLink
-                  to="/packages/booking"
-                  style={{ color: "black" }}
-                  className={getNavLinkClass}
-                >
-                  <Check size={20} />{" "}
-                  <span className="fs-6">Create Booking</span>
                 </NavLink>
               </Nav.Item>
               <Nav.Item className="mb-3">

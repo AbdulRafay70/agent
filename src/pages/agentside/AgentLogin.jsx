@@ -45,7 +45,7 @@ const AgentLogin = () => {
     localStorage.removeItem("organization");
 
     try {
-      const response = await fetch("https://api.saer.pk/api/token/", {
+      const response = await fetch("http://127.0.0.1:8000/api/token/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -83,7 +83,7 @@ const AgentLogin = () => {
       // Fetch user profile using token
       console.log("📞 Fetching user profile from: /api/users/" + userId + "/");
       const userResponse = await fetch(
-        `https://api.saer.pk/api/users/${userId}/`,
+        `http://127.0.0.1:8000/api/users/${userId}/`,
         {
           headers: {
             Authorization: `Bearer ${data.access}`,
@@ -109,9 +109,17 @@ const AgentLogin = () => {
 
       const userType = userData?.profile?.type;
 
-      if (!["agent", "subagent"].includes(userType)) {
+      // Check if user can access agent panel:
+      // 1. Agents and subagents (branches) can always access
+      // 2. Employees with can_access_agent_panel permission can access
+      const canAccessAgentPanel = data?.user?.can_access_agent_panel || decoded?.can_access_agent_panel || false;
+
+      console.log("🔐 User Type:", userType);
+      console.log("🔐 Can Access Agent Panel:", canAccessAgentPanel);
+
+      if (!["agent", "subagent"].includes(userType) && !canAccessAgentPanel) {
         throw new Error(
-          "Only agents and subagents are allowed to log in here."
+          "You don't have permission to access the agent panel. Please contact your administrator."
         );
       }
 
@@ -136,6 +144,32 @@ const AgentLogin = () => {
       if (userData?.branch_details && Array.isArray(userData.branch_details) && userData.branch_details.length > 0) {
         branchId = userData.branch_details[0].id;
         console.log("✅ Found branch ID:", branchId);
+      }
+
+      // For branch users (subagents), fetch agencies and set the first one
+      if (userType === "subagent" && branchId && !agencyId) {
+        try {
+          console.log("🔍 Branch user detected - fetching agencies for branch:", branchId);
+          const agenciesRes = await fetch(
+            `http://127.0.0.1:8000/api/agencies/?organization=${organizationIds[0]}`,
+            {
+              headers: { Authorization: `Bearer ${data.access}` },
+            }
+          );
+          const agenciesData = await agenciesRes.json();
+
+          // Filter agencies by branch
+          const branchAgencies = agenciesData.filter(
+            (agency) => agency.branch === branchId
+          );
+
+          if (branchAgencies.length > 0) {
+            agencyId = branchAgencies[0].id;
+            console.log("✅ Set default agency for branch user:", agencyId);
+          }
+        } catch (err) {
+          console.error("❌ Error fetching agencies for branch user:", err);
+        }
       }
 
       if (organizationIds.length > 0) {

@@ -369,7 +369,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
       }
 
       const response = await axios.post(
-        "https://api.saer.pk/api/tickets/",
+        "http://127.0.0.1:8000/api/tickets/",
         payload,
         {
           headers: {
@@ -454,7 +454,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
       }
 
       const response = await axios.post(
-        "https://api.saer.pk/api/tickets/",
+        "http://127.0.0.1:8000/api/tickets/",
         payload,
         {
           headers: {
@@ -897,7 +897,7 @@ const AgentUmrahCalculator = () => {
         setLoadingCities(true);
         try {
           const token = localStorage.getItem('token') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzk1NTU4Nzk0LCJpYXQiOjE3NjQwMjI3OTQsImp0aSI6ImViNTQ0ZTk5ZTA5YTQyYjY4ODAyMDIwN2JlZTAyOWM3IiwidXNlcl9pZCI6MzV9.hTZqqJSK-EF6-pMEBr8lR7VTE81Z7E5RUvp_ShxHjmY';
-          const res = await fetch('https://api.saer.pk/api/cities/', {
+          const res = await fetch('http://127.0.0.1:8000/api/cities/', {
             headers: {
               accept: 'application/json',
               Authorization: `Bearer ${token}`,
@@ -1609,7 +1609,7 @@ const AgentUmrahCalculator = () => {
 
     try {
       const response = await axios.get(
-        `https://api.saer.pk/api/all-prices/?organization_id=${orgId}`,
+        `http://127.0.0.1:8000/api/all-prices/?organization_id=${orgId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -1772,10 +1772,10 @@ const AgentUmrahCalculator = () => {
   };
 
   // const fetchRiyalRate = () =>
-  //   fetchData("https://api.saer.pk/api/riyal-rates/", setRiyalRate, "riyalRate");
+  //   fetchData("http://127.0.0.1:8000/api/riyal-rates/", setRiyalRate, "riyalRate");
 
   const fetchTickets = () =>
-    fetchData("https://api.saer.pk/api/tickets/", setTicketsList, "flights");
+    fetchData("http://127.0.0.1:8000/api/tickets/", setTicketsList, "flights");
 
   const fetchTransportSectors = async () => {
     const endpoints = [
@@ -1793,7 +1793,7 @@ const AgentUmrahCalculator = () => {
     }
     for (const ep of endpoints) {
       try {
-        const url = `https://api.saer.pk${ep}`;
+        const url = `http://127.0.0.1:8000${ep}`;
         setLoading((prev) => ({ ...prev, transport: true }));
         const res = await axios.get(url, { params: { organization: safeOrg }, headers: { Authorization: `Bearer ${token}` } });
         // Backend may return paginated results or direct list
@@ -1893,12 +1893,12 @@ const AgentUmrahCalculator = () => {
   };
 
   const fetchHotels = () =>
-    fetchData("https://api.saer.pk/api/hotels/", setHotels, "hotels");
+    fetchData("http://127.0.0.1:8000/api/hotels/", setHotels, "hotels");
 
   const fetchVisaTypes = async () => {
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const url = "https://api.saer.pk/api/set-visa-type/";
+      const url = "http://127.0.0.1:8000/api/set-visa-type/";
       const safeOrg = getSafeOrgId();
       if (!safeOrg) {
         return;
@@ -1919,7 +1919,7 @@ const AgentUmrahCalculator = () => {
 
   const fetchVisaPricesOne = () =>
     fetchData(
-      "https://api.saer.pk/api/umrah-visa-prices/",
+      "http://127.0.0.1:8000/api/umrah-visa-prices/",
       setVisaPricesOne,
       "visaTypes"
     );
@@ -1932,7 +1932,7 @@ const AgentUmrahCalculator = () => {
         console.warn("⚠️ fetchVisaPricesTwo: invalid organization id, skipping");
         return;
       }
-      const response = await axios.get("https://api.saer.pk/api/umrah-visa-type-two/", {
+      const response = await axios.get("http://127.0.0.1:8000/api/umrah-visa-type-two/", {
         params: { organization: safeOrg },
         headers: headers,
       });
@@ -1943,10 +1943,10 @@ const AgentUmrahCalculator = () => {
   };
 
   const fetchFoodPrices = () =>
-    fetchData("https://api.saer.pk/api/food-prices/", setFoodPrices, "food");
+    fetchData("http://127.0.0.1:8000/api/food-prices/", setFoodPrices, "food");
 
   const fetchZiaratPrices = () =>
-    fetchData("https://api.saer.pk/api/ziarat-prices/", setZiaratPrices, "ziarat");
+    fetchData("http://127.0.0.1:8000/api/ziarat-prices/", setZiaratPrices, "ziarat");
 
   const fetchAirlines = async () => {
     try {
@@ -1955,7 +1955,7 @@ const AgentUmrahCalculator = () => {
         console.warn("⚠️ fetchAirlines: invalid organization id, skipping");
         return;
       }
-      const response = await axios.get("https://api.saer.pk/api/airlines/", {
+      const response = await axios.get("http://127.0.0.1:8000/api/airlines/", {
         params: { organization: safeOrg },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1977,7 +1977,7 @@ const AgentUmrahCalculator = () => {
         console.warn("⚠️ fetchCities: invalid organization id, skipping");
         return;
       }
-      const response = await axios.get("https://api.saer.pk/api/cities/", {
+      const response = await axios.get("http://127.0.0.1:8000/api/cities/", {
         params: { organization: safeOrg },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1994,7 +1994,7 @@ const AgentUmrahCalculator = () => {
   const fetchOnlyVisaPrices = async () => {
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const url = "https://api.saer.pk/api/only-visa-prices/";
+      const url = "http://127.0.0.1:8000/api/only-visa-prices/";
       const safeOrg = getSafeOrgId();
       if (!safeOrg) {
         console.warn("⚠️ fetchOnlyVisaPrices: invalid organization id, skipping request");
@@ -3475,7 +3475,7 @@ const AgentUmrahCalculator = () => {
 
     try {
       const response = await axios.post(
-        `https://api.saer.pk/api/umrah-packages/?organization=${orgId}`,
+        `http://127.0.0.1:8000/api/umrah-packages/?organization=${orgId}`,
         payload,
         {
           headers: {
@@ -4763,13 +4763,45 @@ const AgentUmrahCalculator = () => {
         }
       })();
 
+      // Transfer room types from Families section to hotelForms before saving
+      // This ensures the room types selected in the Families section are saved to sessionStorage
+      const enrichedHotelForms = hotelForms.map((hotel, hotelIndex) => {
+        // Find the room type selected for this hotel in the Families section
+        // familyRoomTypes uses keys like "0_0" (familyIndex_hotelIndex)
+        // We'll use the first family's selection as the default room type for the hotel
+        let roomTypeForHotel = hotel.roomType || ''; // Start with existing value
+
+        // Check if there are family room type selections
+        if (familyRoomTypes && Object.keys(familyRoomTypes).length > 0) {
+          // Look for room type selections for this hotel across all families
+          // Format: familyIndex_hotelIndex (e.g., "0_0", "1_0", "0_1")
+          const roomTypesForThisHotel = Object.keys(familyRoomTypes)
+            .filter(key => {
+              const parts = key.split('_');
+              return parts.length === 2 && parseInt(parts[1]) === hotelIndex;
+            })
+            .map(key => familyRoomTypes[key])
+            .filter(Boolean); // Remove empty values
+
+          // Use the first non-empty room type found for this hotel
+          if (roomTypesForThisHotel.length > 0) {
+            roomTypeForHotel = roomTypesForThisHotel[0];
+          }
+        }
+
+        return {
+          ...hotel,
+          roomType: roomTypeForHotel
+        };
+      });
+
       const payload = {
         __version: 1,
         __expiresAt: expiresAt,
         value: {
           formData,
           manualFamilies,
-          hotelForms,
+          hotelForms: enrichedHotelForms, // Use enriched hotel forms with room types from Families section
           familyRoomTypes,
           selectedFlight,
           costs: latestCosts || costs,
@@ -4799,7 +4831,7 @@ const AgentUmrahCalculator = () => {
   const handleEditCalculation = async (packageId) => {
     try {
       const response = await axios.get(
-        `https://api.saer.pk/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
+        `http://127.0.0.1:8000/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -4862,7 +4894,7 @@ const AgentUmrahCalculator = () => {
       if (packageData.ticket_details?.length > 0) {
         try {
           const flightResponse = await axios.get(
-            `https://api.saer.pk/api/tickets/${packageData.ticket_details[0].ticket}/?organization=${orgId}`,
+            `http://127.0.0.1:8000/api/tickets/${packageData.ticket_details[0].ticket}/?organization=${orgId}`,
             {
               headers: { Authorization: `Bearer ${token}` },
             }
@@ -5033,7 +5065,7 @@ const AgentUmrahCalculator = () => {
 
       // Make the PUT request
       const response = await axios.put(
-        `https://api.saer.pk/api/custom-umrah-packages/${costs.queryNumber}/`,
+        `http://127.0.0.1:8000/api/custom-umrah-packages/${costs.queryNumber}/`,
         payload,
         {
           headers: {
@@ -5074,7 +5106,7 @@ const AgentUmrahCalculator = () => {
       params.append('organization', orgId);
       if (agencyId && agencyId !== 'null') params.append('agency', agencyId);
 
-      const url = `https://api.saer.pk/api/custom-umrah-packages/?${params.toString()}`;
+      const url = `http://127.0.0.1:8000/api/custom-umrah-packages/?${params.toString()}`;
 
       const response = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
@@ -5099,7 +5131,7 @@ const AgentUmrahCalculator = () => {
     if (window.confirm("Are you sure you want to delete this package?")) {
       try {
         await axios.delete(
-          `https://api.saer.pk/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/custom-umrah-packages/${packageId}/?organization=${orgId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -5363,7 +5395,7 @@ const AgentUmrahCalculator = () => {
   // And update the fetchRiyalRate function:
   const fetchRiyalRate = async () => {
     try {
-      const response = await axios.get("https://api.saer.pk/api/riyal-rates/", {
+      const response = await axios.get("http://127.0.0.1:8000/api/riyal-rates/", {
         params: { organization: orgId },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -6389,160 +6421,8 @@ const AgentUmrahCalculator = () => {
                         {/* Options Section (visa controls moved to booking cards) */}
                         {renderVisaPriceInfo()}
                       </div>
-                      {/* Hotel Details */}
-                      {/* <div className="mb-4 mt-5">
-                        {hotelForms.map((form, index) => (
-                          <div key={form.id} className=" pb-3 mb-3">
-                            <div className="d-flex justify-content-between">
-                              <h5 className="mb-3 fw-semibold">Hotel Details{index + 1}</h5>
-                              <div className="">
-                                {index === hotelForms.length - 1 ? (
-                                  <button
-                                    id="btn" className="btn btn-sm w-100 py-2 px-3"
-                                    onClick={addHotelForm}
-                                  >
-                                    Add Another Hotel
-                                  </button>
-                                ) : (
-                                  <button
-                                    className="btn btn-danger btn-sm w-100 py-2 px-3"
-                                    onClick={() => removeHotelForm(index)}
-                                  >
-                                    Remove
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                            <div className="row">
-                              <div className="col-md-2 mb-3">
-                                <label htmlFor="" className="Control-label">Hotel Name</label>
-                                <Select
-                                  options={hotelOptions}
-                                  value={hotelOptions.find(o => o.value === String(form.hotelId)) || null}
-                                  onChange={(opt) => {
-                                    if (!opt) return updateHotelForm(index, 'hotelId', '');
-                                    if (opt.value === '__SELF__') {
-                                      updateHotelForm(index, 'hotelId', '');
-                                      updateHotelForm(index, 'isSelfHotel', true);
-                                    } else {
-                                      updateHotelForm(index, 'hotelId', opt.value);
-                                      updateHotelForm(index, 'isSelfHotel', false);
-                                    }
-                                  }}
-                                  isDisabled={loading.hotels}
-                                  isClearable
-                                  placeholder="Select Hotel"
-                                  classNamePrefix="react-select"
-                                />
-                              </div>
-                              <div className="col-md-2 mb-3">
-                                <label htmlFor="" className="Control-label">Quantity</label>
-                                <input
-                                  type="number"
-                                  className="form-control shadow-none"
-                                  placeholder="quantity"
-                                />
-                              </div>
-                              <div className="col-md-2 mb-3">
-                                <label htmlFor="" className="Control-label">Room Type</label>
-
-                                <select
-                                  className="form-select shadow-none"
-                                  value={form.roomType}
-                                  onChange={(e) => updateHotelForm(index, 'roomType', e.target.value)}
-                                >
-                                  <option value="">Select Room Type</option>
-                                  {form.hotelId && hotels.find(h => h.id.toString() === form.hotelId)?.prices
-                                    ?.filter(price => price.room_type !== "Only-Room")
-                                    .map((price, i) => (
-                                      <option key={i} value={price.room_type}>{price.room_type}</option>
-                                    ))}
-                                </select>
-                              </div>
-                              <div className="col-md-2 mb-3">
-                                <label htmlFor="" className="Control-label">Sharing Type</label>
-
-                                <select
-                                  className="form-select shadow-none"
-                                  value={form.sharingType}
-                                  onChange={(e) => updateHotelForm(index, 'sharingType', e.target.value)}
-                                >
-                                  <option value="Family Sharing">Family Sharing</option>
-                                  <option value="Gender Sharing">Gender Sharing</option>
-                                </select>
-                              </div>
-                              <div className="col-md-2 mb-3">
-                                <label htmlFor="" className="Control-label">Check In</label>
-
-                                <input
-                                  type="date"
-                                  className="form-control shadow-none"
-                                  value={form.checkIn}
-                                  onChange={(e) => {
-                                    updateHotelForm(index, 'checkIn', e.target.value);
-                                    if (e.target.value && form.noOfNights) {
-                                      const checkOut = new Date(e.target.value);
-                                      checkOut.setDate(checkOut.getDate() + parseInt(form.noOfNights));
-                                      updateHotelForm(index, 'checkOut', checkOut.toISOString().split('T')[0]);
-                                    }
-                                  }}
-                                />
-                              </div>
-                            </div>
-                            <div className="row">
-                              <div className="col-md-2 mb-3">
-                                <label htmlFor="" className="Control-label">No. of Night</label>
-
-                                <input
-                                  type="number"
-                                  className="form-control shadow-none"
-                                  value={form.noOfNights}
-                                  onChange={(e) => {
-                                    updateHotelForm(index, 'noOfNights', e.target.value);
-                                    if (e.target.value && form.checkIn) {
-                                      const checkOut = new Date(form.checkIn);
-                                      checkOut.setDate(checkOut.getDate() + parseInt(e.target.value));
-                                      updateHotelForm(index, 'checkOut', checkOut.toISOString().split('T')[0]);
-                                    }
-                                  }}
-                                />
-                              </div>
-                              <div className="col-md-2 mb-3">
-                                <label htmlFor="" className="Control-label">Check Out</label>
-
-                                <input
-                                  type="date"
-                                  className="form-control shadow-none"
-                                  value={form.checkOut}
-                                  onChange={(e) => {
-                                    updateHotelForm(index, 'checkOut', e.target.value);
-                                    if (e.target.value && form.checkIn) {
-                                      const checkIn = new Date(form.checkIn);
-                                      const checkOut = new Date(e.target.value);
-                                      const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
-                                      updateHotelForm(index, 'noOfNights', nights > 0 ? nights : 0);
-                                    }
-                                  }}
-                                />
-                              </div>
-                              <div className="col-md-2 mb-3">
-                                <label htmlFor="" className="Control-label">Special Request</label>
-
-                                <input
-                                  type="text"
-                                  className="form-control shadow-none"
-                                  placeholder="Haraam View"
-                                  value={form.specialRequest}
-                                  onChange={(e) => updateHotelForm(index, 'specialRequest', e.target.value)}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div> */}
-
-
-
+                      { }
+                      { }
                       {/* Transport Details */}
                       {(() => {
                         return null;
@@ -7204,6 +7084,10 @@ const AgentUmrahCalculator = () => {
                                                             }
 
                                                             setFamilyRoomTypes(prev => ({ ...prev, [`${idx}_${hi}`]: v }));
+                                                            // ALSO update hotelForms[hi].roomType so it's saved when clicking "Book Now"
+                                                            setHotelForms(prevHotels => prevHotels.map((hotel, hotelIdx) =>
+                                                              hotelIdx === hi ? { ...hotel, roomType: v } : hotel
+                                                            ));
                                                           }}
                                                           isClearable
                                                           placeholder="Room type"

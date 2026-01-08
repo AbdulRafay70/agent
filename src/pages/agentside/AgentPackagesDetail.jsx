@@ -951,6 +951,14 @@ const AgentPackagesDetail = () => {
         } catch (e) { /* ignore */ }
 
         // Save package selection to sessionStorage
+        console.log('💾 Saving to sessionStorage:', {
+          totalPrice,
+          childPrices,
+          infantPrices,
+          roomTypes,
+          passengersCount: passengersWithBase64.length
+        });
+
         const bookPayload = {
           __version: 1,
           __expiresAt: expiresAt,
@@ -1014,7 +1022,7 @@ const AgentPackagesDetail = () => {
   //     try {
   //       // Always fetch cities data
   //       const citiesResponse = await axios.get(
-  //         `https://api.saer.pk/api/cities/?organization=${orgId}`,
+  //         `http://127.0.0.1:8000/api/cities/?organization=${orgId}`,
   //         { headers: { Authorization: `Bearer ${token}` } }
   //       );
   //       setCities(citiesResponse.data);

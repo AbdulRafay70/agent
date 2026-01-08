@@ -821,9 +821,9 @@ const TicketBooking = () => {
         setError(null);
         setIsLoading(true);
 
-        const ticketUrls = uniqueOrgIds.map((id) => `https://api.saer.pk/api/tickets/?organization=${id}`);
-        const airlineUrls = uniqueOrgIds.map((id) => `https://api.saer.pk/api/airlines/?organization=${id}`);
-        const cityUrls = uniqueOrgIds.map((id) => `https://api.saer.pk/api/cities/?organization=${id}`);
+        const ticketUrls = uniqueOrgIds.map((id) => `http://127.0.0.1:8000/api/tickets/?organization=${id}`);
+        const airlineUrls = uniqueOrgIds.map((id) => `http://127.0.0.1:8000/api/airlines/?organization=${id}`);
+        const cityUrls = uniqueOrgIds.map((id) => `http://127.0.0.1:8000/api/cities/?organization=${id}`);
 
         const [ticketsResponses, airlinesResponses, citiesResponses] = await Promise.all([
           ticketUrls.length ? fetchUrlsInBatches(ticketUrls, 3) : [],
@@ -1340,7 +1340,7 @@ const TicketBooking = () => {
                               Retry
                             </button>
                             <a
-                              href={`https://api.saer.pk/api/tickets/?organization=${uniqueOrgIds && uniqueOrgIds.length ? uniqueOrgIds[0] : ''}`}
+                              href={`http://127.0.0.1:8000/api/tickets/?organization=${uniqueOrgIds && uniqueOrgIds.length ? uniqueOrgIds[0] : ''}`}
                               className="btn btn-sm btn-outline-primary"
                               target="_blank"
                               rel="noreferrer"

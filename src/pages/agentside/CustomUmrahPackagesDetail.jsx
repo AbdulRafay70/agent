@@ -316,7 +316,7 @@ const CustomUmrahPackagesDetail = () => {
 
         // Always fetch cities data
         const citiesResponse = await axios.get(
-          `https://api.saer.pk/api/cities/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/cities/?organization=${orgId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         setCities(citiesResponse.data);
@@ -354,7 +354,22 @@ const CustomUmrahPackagesDetail = () => {
               total_adaults: parseInt(draftData.formData?.totalAdults) || 0,
               total_children: parseInt(draftData.formData?.totalChilds) || 0,
               total_infants: parseInt(draftData.formData?.totalInfants) || 0,
-              hotel_details: draftData.hotelForms || [],
+              hotel_details: (draftData.hotelForms || []).map(form => ({
+                hotel: form.hotelId ? parseInt(form.hotelId) : form.hotel,
+                room_type: form.roomType || form.room_type || "",
+                sharing_type: form.sharingType || form.sharing_type || "Gender or Family",
+                check_in_time: form.checkIn || form.check_in_time || "",
+                check_out_time: form.checkOut || form.check_out_time || "",
+                number_of_nights: parseInt(form.noOfNights || form.number_of_nights || 0),
+                special_request: form.specialRequest || form.special_request || "",
+                price: form.price || 0,
+                quantity: form.quantity || 2,
+                quinty: form.quinty || null,
+                is_self_hotel: form.isSelfHotel || form.is_self_hotel || false,
+                self_hotel_name: form.selfHotelName || form.self_hotel_name || null,
+                assigned_families: form.assignedFamilies || form.assigned_families || [],
+                hotel_info: form.hotel_info || (form.hotelId ? { id: parseInt(form.hotelId), name: form.hotelName || "" } : null)
+              })),
               transport_details: draftData.transportForms || [],
               ticket_details: draftData.selectedFlight ? [{ ticket_info: draftData.selectedFlight }] : [],
               food_details: draftData.foodForms || [],
@@ -373,7 +388,7 @@ const CustomUmrahPackagesDetail = () => {
         } else if (id && !id.startsWith('draft-')) {
           // Only fetch from API if ID is not a draft ID
           const packageResponse = await axios.get(
-            `https://api.saer.pk/api/custom-umrah-packages/${id}/?organization=${orgId}`,
+            `http://127.0.0.1:8000/api/custom-umrah-packages/${id}/?organization=${orgId}`,
             { headers: { Authorization: `Bearer ${token}` } }
           );
 
@@ -421,7 +436,7 @@ const CustomUmrahPackagesDetail = () => {
 
         // Fetch all hotels to get names
         const hotelsResponse = await axios.get(
-          `https://api.saer.pk/api/hotels/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/hotels/?organization=${orgId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         const hotels = hotelsResponse.data;
@@ -546,7 +561,7 @@ const CustomUmrahPackagesDetail = () => {
     const fetchRiyalRates = async () => {
       try {
         const response = await axios.get(
-          `https://api.saer.pk/api/riyal-rates/?organization=${orgId}`,
+          `http://127.0.0.1:8000/api/riyal-rates/?organization=${orgId}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (response.data.length > 0) {
