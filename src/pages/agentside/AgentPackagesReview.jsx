@@ -273,9 +273,22 @@ const BookingReview = () => {
     return orgData.ids[0];
   };
 
-  const userId = localStorage.getItem("userId");
-  const agencyId = Number(localStorage.getItem("agencyId"));
-  const BranchId = Number(localStorage.getItem("branchId"));
+  // Read from agentOrganization JSON object (where login actually stores the data)
+  const getAgentOrgData = () => {
+    const agentOrg = localStorage.getItem("agentOrganization");
+    if (!agentOrg) return null;
+    try {
+      return JSON.parse(agentOrg);
+    } catch (e) {
+      console.error('Failed to parse agentOrganization:', e);
+      return null;
+    }
+  };
+
+  const agentOrgData = getAgentOrgData();
+  const userId = agentOrgData?.user_id;
+  const agencyId = agentOrgData?.agency_id;
+  const BranchId = agentOrgData?.branch_id;
 
   // const submitBooking = async () => {
   //   setIsSubmitting(true);
@@ -450,9 +463,9 @@ const BookingReview = () => {
       child_price: Number(pkgState.ticket_details?.[0]?.ticket_info?.child_price || pkgState.child_ticket_price) || 0,
       infant_price: Number(pkgState.ticket_details?.[0]?.ticket_info?.infant_price || pkgState.infant_ticket_price) || 0,
       adult_price: Number(pkgState.ticket_details?.[0]?.ticket_info?.adult_price || pkgState.adult_ticket_price) || 0,
-      weight: parseFloat(pkgState.ticket_details?.[0]?.ticket_info?.weight),
-      seats: parseInt(pkgState.total_seats),
-      pieces: parseInt(pkgState.ticket_details?.[0]?.ticket_info?.pieces),
+      weight: parseFloat(pkgState.ticket_details?.[0]?.ticket_info?.weight) || 0,
+      seats: parseInt(pkgState.total_seats) || 1,
+      pieces: parseInt(pkgState.ticket_details?.[0]?.ticket_info?.pieces) || 1,
       is_umrah_seat: true,
       // trip_type: pkg.ticket_details?.[0]?.ticket_info?.trip_type || "",
       // departure_stay_type: pkg.ticket_details?.[0]?.ticket_info?.departure_stay_type || "",
@@ -461,13 +474,11 @@ const BookingReview = () => {
       is_price_pkr: true,
       riyal_rate: parseFloat(riyalRate?.rate || 0),
       // ticket: parseInt(pkg.ticket_details?.[0]?.ticket_info?.id),
-      pnr: pkgState.ticket_details?.[0]?.ticket_info?.pnr || "TEMP-PNR",
-      trip_type: pkgState.ticket_details?.[0]?.ticket_info?.trip_type,   // ensure numeric ID
-      departure_stay_type: pkgState.ticket_details?.[0]?.ticket_info?.departure_stay_type,
-      return_stay_type: pkgState.ticket_details?.[0]?.ticket_info?.return_stay_type,
-      ticket: pkgState.ticket_details?.[0]?.ticket_info?.id
+      pnr: pkgState.ticket_details?.[0]?.ticket_info?.pnr || "TEMP-PNR"
 
     }];
+
+    console.log('🎫 Ticket Details being sent:', JSON.stringify(ticketDetails, null, 2));
 
     // Format person details - convert files to base64
     const personDetails = await Promise.all(passengersState.map(async (passenger, index) => {
@@ -589,10 +600,50 @@ const BookingReview = () => {
       finalTotalAmount
     });
 
-    const orgId = parseInt(getOrgId()) || 0;
-    const userIdNum = parseInt(userId) || 0;
-    const agencyIdNum = parseInt(agencyId) || 0;
-    const branchIdNum = parseInt(BranchId) || 0;
+    const orgId = parseInt(getOrgId());
+    const userIdNum = parseInt(userId);
+    const agencyIdNum = parseInt(agencyId);
+    const branchIdNum = parseInt(BranchId);
+
+    // Log the values for debugging
+    console.log('🔍 User/Agency/Branch IDs from localStorage:', {
+      userId,
+      agencyId,
+      BranchId,
+      orgId,
+      userIdNum,
+      agencyIdNum,
+      branchIdNum,
+      isValidUser: !isNaN(userIdNum) && userIdNum > 0,
+      isValidAgency: !isNaN(agencyIdNum) && agencyIdNum > 0,
+      isValidBranch: !isNaN(branchIdNum) && branchIdNum > 0,
+      isValidOrg: !isNaN(orgId) && orgId > 0
+    });
+
+    // Validate that we have valid IDs
+    if (!userIdNum || isNaN(userIdNum) || userIdNum <= 0) {
+      console.error('❌ Invalid user ID:', userIdNum);
+      alert('User ID is missing or invalid. Please log in again.');
+      return null;
+    }
+
+    if (!agencyIdNum || isNaN(agencyIdNum) || agencyIdNum <= 0) {
+      console.error('❌ Invalid agency ID:', agencyIdNum);
+      alert('Agency ID is missing or invalid. Please log in again.');
+      return null;
+    }
+
+    if (!branchIdNum || isNaN(branchIdNum) || branchIdNum <= 0) {
+      console.error('❌ Invalid branch ID:', branchIdNum);
+      alert('Branch ID is missing or invalid. Please log in again.');
+      return null;
+    }
+
+    if (!orgId || isNaN(orgId) || orgId <= 0) {
+      console.error('❌ Invalid organization ID:', orgId);
+      alert('Organization ID is missing or invalid. Please log in again.');
+      return null;
+    }
 
     console.log('🍽️ Food/Ziyarat Debug:', {
       food_selling_price: pkgState.food_selling_price,
@@ -692,6 +743,13 @@ const BookingReview = () => {
       const token = localStorage.getItem("agentAccessToken");
       const orgId = getOrgId();
       const bookingData = await formatBookingData();
+
+      // If formatBookingData returns null, it means validation failed
+      if (!bookingData) {
+        console.error('❌ Booking data validation failed');
+        setIsSubmitting(false);
+        return;
+      }
 
       console.log("BookingData Payload (stringified):", {
         ...bookingData
