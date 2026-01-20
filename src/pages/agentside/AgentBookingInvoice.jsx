@@ -35,7 +35,7 @@ const AgentBookingInvoice = () => {
 
         // Fetch booking data
         const bookingResponse = await axios.get(
-          `https://b2bapi.saer.pk/api/bookings/`,
+          `http://127.0.0.1:8000/api/bookings/`,
           {
             params: {
               booking_number: bookingNumber,
@@ -57,7 +57,7 @@ const AgentBookingInvoice = () => {
         // Fetch agency/organization data for helpline number
         try {
           const agencyResponse = await axios.get(
-            `https://b2bapi.saer.pk/api/agencies/${organizationId}/`,
+            `http://127.0.0.1:8000/api/agencies/${organizationId}/`,
             {
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -70,7 +70,7 @@ const AgentBookingInvoice = () => {
           setAgencyData(agencyResponse.data);
         } catch (agencyErr) {
           console.error("Error fetching agency data:", agencyErr);
-          console.log("Agency API URL:", `https://b2bapi.saer.pk/api/agencies/${organizationId}/`);
+          console.log("Agency API URL:", `http://127.0.0.1:8000/api/agencies/${organizationId}/`);
           // Continue even if agency fetch fails
         }
 

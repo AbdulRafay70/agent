@@ -17,7 +17,7 @@ const PublicHotelVoucher = () => {
     useEffect(() => {
         const fetchPublicBooking = async () => {
             try {
-                const apiUrl = `https://b2bapi.saer.pk/api/public/booking-status/${bookingNo}/?ref=${ref}`;
+                const apiUrl = `http://127.0.0.1:8000/api/public/booking-status/${bookingNo}/?ref=${ref}`;
                 console.log("Fetching public booking from:", apiUrl);
 
                 const response = await axios.get(apiUrl, {
