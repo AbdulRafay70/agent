@@ -7,6 +7,7 @@ import flightlogo from "../../assets/flightlogo.png";
 import { Bag } from "react-bootstrap-icons";
 import axios from "axios";
 import AdminFooter from "../../components/AdminFooter";
+import { usePermission } from "../../contexts/EnhancedPermissionContext";
 
 const getOrgIds = () => {
   const agentOrg = localStorage.getItem("agentOrganization");
@@ -19,7 +20,7 @@ const getOrgIds = () => {
   }
 };
 
-const FlightCard = ({ ticket, airlineMap, cityMap }) => {
+const FlightCard = ({ ticket, airlineMap, cityMap, hasBookPermission = true }) => {
   if (!ticket) return null;
 
   // Get airline info
@@ -441,18 +442,21 @@ const FlightCard = ({ ticket, airlineMap, cityMap }) => {
                 <span className="text-muted fw-normal">/per person</span>
               </div>
             </div>
-            <Link
-              to={`/booking/detail`}
-              state={{ ticket, cityMap, airlineMap }}
-              onClick={() => localStorage.removeItem('TicketPassengersDetails')}
-            >
-              <button
-                id="btn" className="btn btn-sm w-100 rounded"
-                style={{ padding: "0.5rem 1.5rem" }}
+            {/* Continue Button - only show if user has book permission */}
+            {hasBookPermission && (
+              <Link
+                to={`/booking/detail`}
+                state={{ ticket, cityMap, airlineMap }}
+                onClick={() => localStorage.removeItem('TicketPassengersDetails')}
               >
-                Continue
-              </button>
-            </Link>
+                <button
+                  id="btn" className="btn btn-sm w-100 rounded"
+                  style={{ padding: "0.5rem 1.5rem" }}
+                >
+                  Continue
+                </button>
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -624,6 +628,7 @@ const TicketBooking = () => {
   const token = localStorage.getItem("agentAccessToken");
   const orgIds = getOrgIds();
   const uniqueOrgIds = Array.from(new Set((orgIds || []).filter(Boolean).map(String)));
+  const { hasPermission } = usePermission();
 
   const [cityCodeMap, setCityCodeMap] = useState({});
   const [routeFilters, setRouteFilters] = useState({}); // Changed to empty object
@@ -1378,6 +1383,7 @@ const TicketBooking = () => {
                               ticket={ticket}
                               airlineMap={airlineMap}
                               cityMap={cityMap}
+                              hasBookPermission={hasPermission('book_ticket_agent')}
                             />
                           ))}
                         </div>

@@ -1459,13 +1459,6 @@ const AgentHotels = () => {
                 </h2>
                 <p className="text-muted mb-0">Manage hotels, rooms, pricing, and availability</p>
               </div>
-              <Button
-                style={{ backgroundColor: "#1B78CE", border: "none" }}
-                onClick={openAddModal}
-              >
-                <Plus size={20} className="me-2" />
-                Add New Hotel
-              </Button>
             </div>
 
             {/* Hotel Rules Section - Before Filters */}

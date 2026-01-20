@@ -7,6 +7,7 @@ import { toast } from "react-toastify";
 import axios from "axios";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { usePermission } from "../../contexts/EnhancedPermissionContext";
 
 // --- Utility Components for Shimmer Loading (Kept as is) ---
 const ShimmerCard = () => {
@@ -233,6 +234,7 @@ const AgentPackages = () => {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [detailsPackage, setDetailsPackage] = useState(null);
   const token = localStorage.getItem('agentAccessToken');
+  const { hasPermission } = usePermission();
 
   const getOrgIds = () => {
     const agentOrg = localStorage.getItem("agentOrganization");
@@ -1101,20 +1103,22 @@ const AgentPackages = () => {
                                   </div>
                                 </div>
 
-                                {/* Book Now Button */}
-                                <button
-                                  className="btn text-white w-100"
-                                  id="btn"
-                                  data-html2canvas-ignore="true"
-                                  style={{ padding: "12px", fontSize: "16px", fontWeight: "600" }}
-                                  onClick={() => {
-                                    setSelectedPackage(pkg);
-                                    setSelectedRooms({}); // reset previous selections
-                                    setShowBookingModal(true);
-                                  }}
-                                >
-                                  Book Now
-                                </button>
+                                {/* Book Now Button - only show if user has book permission */}
+                                {hasPermission('book_package_agent') && (
+                                  <button
+                                    className="btn text-white w-100"
+                                    id="btn"
+                                    data-html2canvas-ignore="true"
+                                    style={{ padding: "12px", fontSize: "16px", fontWeight: "600" }}
+                                    onClick={() => {
+                                      setSelectedPackage(pkg);
+                                      setSelectedRooms({}); // reset previous selections
+                                      setShowBookingModal(true);
+                                    }}
+                                  >
+                                    Book Now
+                                  </button>
+                                )}
                               </div>
 
                               {/* Right Section (Summary) */}

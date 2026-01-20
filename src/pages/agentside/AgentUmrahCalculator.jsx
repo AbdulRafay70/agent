@@ -15,6 +15,7 @@ import html2canvas from "html2canvas";
 import mockData from "../../mock/mockData";
 import InvoicePrint from "../../components/InvoicePrint";
 import * as jwtDecode from 'jwt-decode';
+import { usePermission } from "../../contexts/EnhancedPermissionContext";
 
 // Wrapper around react-select to render menus into document.body (portal)
 // and ensure the dropdown does not expand parent width or get clipped by overflow.
@@ -94,6 +95,33 @@ const ShimmerLoader = () => (
     }}
   ></div>
 );
+
+// Permission Wrapper Component - blocks sections when user lacks permission
+const PermissionWrapper = ({ permission, permissionName, children, hasPermission }) => {
+  const isAllowed = hasPermission(permission);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      {children}
+      {!isAllowed && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'transparent',
+            cursor: 'not-allowed',
+            zIndex: 10,
+            borderRadius: '8px',
+          }}
+          title={`You are not eligible to add ${permissionName}`}
+        />
+      )}
+    </div>
+  );
+};
 
 const FlightModal = ({
   show,
@@ -958,6 +986,9 @@ const AgentUmrahCalculator = () => {
     return tabs[0];
   };
   const [activeTab, setActiveTab] = useState(getActiveTab());
+
+  // Permission checks
+  const { hasPermission } = usePermission();
 
   const token = localStorage.getItem("agentAccessToken");
 
@@ -6427,670 +6458,701 @@ const AgentUmrahCalculator = () => {
                       {(() => {
                         return null;
                       })()}
-                      {selectedServices.has("transport") && (
-                        <div className="mb-4">
-                          <div className="card shadow-sm border p-3">
-                            <h5 className="mb-3 fw-bold">Transport Details</h5>
+                      <PermissionWrapper permission="add_transport_agent" permissionName="Transport" hasPermission={hasPermission}>
+                        {selectedServices.has("transport") && (
+                          <div className="mb-4">
+                            <div className="card shadow-sm border p-3">
+                              <h5 className="mb-3 fw-bold">Transport Details</h5>
 
-                            {transportForms.map((form, index) => (
-                              <div key={form.id} className="card mb-3 shadow-sm border p-3">
-                                <div className="d-flex justify-content-between align-items-start">
-                                  <h6 className="mb-2 fw-semibold">Route {index + 1}</h6>
-                                </div>
+                              {transportForms.map((form, index) => (
+                                <div key={form.id} className="card mb-3 shadow-sm border p-3">
+                                  <div className="d-flex justify-content-between align-items-start">
+                                    <h6 className="mb-2 fw-semibold">Route {index + 1}</h6>
+                                  </div>
 
-                                {/* Transport Info */}
-                                <div className="mb-3 border rounded p-3">
-                                  <small className="fw-semibold">Transport Info</small>
-                                  <div className="row g-3 mt-2">
-                                    {(() => {
-                                      const totalPersons = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0);
-                                      const sectorObj = transportSectors.find(s => s.id.toString() === form.transportSectorId);
-                                      const perPersonPrice = sectorObj ? (sectorObj.adault_price || 0) : 0;
-                                      const totalPrice = perPersonPrice * totalPersons;
+                                  {/* Transport Info */}
+                                  <div className="mb-3 border rounded p-3">
+                                    <small className="fw-semibold">Transport Info</small>
+                                    <div className="row g-3 mt-2">
+                                      {(() => {
+                                        const totalPersons = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0);
+                                        const sectorObj = transportSectors.find(s => s.id.toString() === form.transportSectorId);
+                                        const perPersonPrice = sectorObj ? (sectorObj.adault_price || 0) : 0;
+                                        const totalPrice = perPersonPrice * totalPersons;
+
+                                        return (
+                                          <>
+                                            <div className="col-12 col-md-6">
+                                              <label className="form-label small mb-1">Transport Type</label>
+                                              <Select
+                                                options={[...new Set(availableTransportSectors.map(s => s.vehicle_type))].map(type => ({ value: String(type), label: String(type) }))}
+                                                value={(([...new Set(availableTransportSectors.map(s => s.vehicle_type))].map(type => ({ value: String(type), label: String(type) })).find(o => o.value === String(form.transportType))) || null)}
+                                                onChange={(opt) => {
+                                                  const val = opt ? opt.value : '';
+                                                  updateTransportForm(index, 'transportType', val);
+                                                  updateTransportForm(index, 'transportSectorId', '');
+                                                }}
+                                                isDisabled={form.self || !selectedServices.has('transport')}
+                                                isClearable
+                                                placeholder="Select Transport Type"
+                                                classNamePrefix="react-select"
+                                              />
+                                            </div>
+
+                                            <div className="col-12 col-md-6">
+                                              <label className="form-label small mb-1">Transport Sector</label>
+                                              <Select
+                                                options={availableTransportSectors.filter(s => s.vehicle_type === form.transportType).map(sector => {
+                                                  // Helper function to format sector display
+                                                  const getSectorLabel = (sector) => {
+                                                    // If big_sector exists, show full route
+                                                    if (sector.big_sector && sector.big_sector.small_sectors && sector.big_sector.small_sectors.length > 0) {
+                                                      const cityCodes = [];
+                                                      const sortedSectors = sector.big_sector.small_sectors;
+
+                                                      // Add first departure city
+                                                      if (sortedSectors[0]) {
+                                                        cityCodes.push(sortedSectors[0].departure_city || sortedSectors[0].departure_city_code || '');
+                                                      }
+
+                                                      // Add all arrival cities
+                                                      sortedSectors.forEach(s => {
+                                                        cityCodes.push(s.arrival_city || s.arrival_city_code || '');
+                                                      });
+
+                                                      // Remove consecutive duplicates
+                                                      const uniqueCodes = cityCodes.filter((code, index, array) =>
+                                                        index === 0 || code !== array[index - 1]
+                                                      );
+
+                                                      return `${uniqueCodes.join('-')} (${sortedSectors.length} sectors)`;
+                                                    }
+
+                                                    // Otherwise show small sector route
+                                                    const departure = sector.small_sector?.departure_city_code || sector.small_sector?.departure_city || '';
+                                                    const arrival = sector.small_sector?.arrival_city_code || sector.small_sector?.arrival_city || '';
+                                                    const name = sector.name ? ` (${sector.name})` : '';
+                                                    return `${departure} → ${arrival}${name}`;
+                                                  };
+
+                                                  return {
+                                                    value: String(sector.id),
+                                                    label: getSectorLabel(sector)
+                                                  };
+                                                })}
+                                                value={(availableTransportSectors.filter(s => s.vehicle_type === form.transportType).map(sector => {
+                                                  const getSectorLabel = (sector) => {
+                                                    if (sector.big_sector && sector.big_sector.small_sectors && sector.big_sector.small_sectors.length > 0) {
+                                                      const cityCodes = [];
+                                                      const sortedSectors = sector.big_sector.small_sectors;
+                                                      if (sortedSectors[0]) {
+                                                        cityCodes.push(sortedSectors[0].departure_city || sortedSectors[0].departure_city_code || '');
+                                                      }
+                                                      sortedSectors.forEach(s => {
+                                                        cityCodes.push(s.arrival_city || s.arrival_city_code || '');
+                                                      });
+                                                      const uniqueCodes = cityCodes.filter((code, index, array) =>
+                                                        index === 0 || code !== array[index - 1]
+                                                      );
+                                                      return `${uniqueCodes.join('-')} (${sortedSectors.length} sectors)`;
+                                                    }
+                                                    const departure = sector.small_sector?.departure_city_code || sector.small_sector?.departure_city || '';
+                                                    const arrival = sector.small_sector?.arrival_city_code || sector.small_sector?.arrival_city || '';
+                                                    const name = sector.name ? ` (${sector.name})` : '';
+                                                    return `${departure} → ${arrival}${name}`;
+                                                  };
+                                                  return {
+                                                    value: String(sector.id),
+                                                    label: getSectorLabel(sector)
+                                                  };
+                                                })).find(o => o.value === String(form.transportSectorId)) || null}
+                                                onChange={(opt) => updateTransportForm(index, 'transportSectorId', opt ? opt.value : '')}
+                                                isDisabled={form.self || !form.transportType || !selectedServices.has('transport')}
+                                                isClearable
+                                                placeholder="Select Sector"
+                                                classNamePrefix="react-select"
+                                              />
+                                            </div>
+
+                                            <div className="col-12 col-md-4 d-flex align-items-center">
+                                              <div className="form-check d-flex align-items-center gap-2">
+                                                <input
+                                                  className="form-check-input border border-black"
+                                                  type="checkbox"
+                                                  checked={form.self}
+                                                  onChange={(e) => updateTransportForm(index, 'self', e.target.checked)}
+                                                  id={`transportSelf-${form.id}`}
+                                                />
+                                                <label htmlFor={`transportSelf-${form.id}`} className="form-label small mb-1">Self</label>
+                                              </div>
+                                            </div>
+
+
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  </div>
+
+                                  {/* Pricing */}
+                                  <div className="mb-3 border rounded p-3">
+                                    <small className="fw-semibold">Pricing</small>
+                                    {form.transportSectorId && !form.self && (() => {
+                                      const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
+                                      const adults = parseInt(formData.totalAdults || 0);
+                                      const childs = parseInt(formData.totalChilds || 0);
+                                      const infants = parseInt(formData.totalInfants || 0);
+                                      const adultPrice = sector?.adault_price || 0;
+                                      const childPrice = sector?.child_price || 0;
+                                      const infantPrice = sector?.infant_price || 0;
+                                      const totalTransportPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
 
                                       return (
                                         <>
-                                          <div className="col-12 col-md-6">
-                                            <label className="form-label small mb-1">Transport Type</label>
-                                            <Select
-                                              options={[...new Set(availableTransportSectors.map(s => s.vehicle_type))].map(type => ({ value: String(type), label: String(type) }))}
-                                              value={(([...new Set(availableTransportSectors.map(s => s.vehicle_type))].map(type => ({ value: String(type), label: String(type) })).find(o => o.value === String(form.transportType))) || null)}
-                                              onChange={(opt) => {
-                                                const val = opt ? opt.value : '';
-                                                updateTransportForm(index, 'transportType', val);
-                                                updateTransportForm(index, 'transportSectorId', '');
-                                              }}
-                                              isDisabled={form.self || !selectedServices.has('transport')}
-                                              isClearable
-                                              placeholder="Select Transport Type"
-                                              classNamePrefix="react-select"
-                                            />
-                                          </div>
-
-                                          <div className="col-12 col-md-6">
-                                            <label className="form-label small mb-1">Transport Sector</label>
-                                            <Select
-                                              options={availableTransportSectors.filter(s => s.vehicle_type === form.transportType).map(sector => {
-                                                // Helper function to format sector display
-                                                const getSectorLabel = (sector) => {
-                                                  // If big_sector exists, show full route
-                                                  if (sector.big_sector && sector.big_sector.small_sectors && sector.big_sector.small_sectors.length > 0) {
-                                                    const cityCodes = [];
-                                                    const sortedSectors = sector.big_sector.small_sectors;
-
-                                                    // Add first departure city
-                                                    if (sortedSectors[0]) {
-                                                      cityCodes.push(sortedSectors[0].departure_city || sortedSectors[0].departure_city_code || '');
-                                                    }
-
-                                                    // Add all arrival cities
-                                                    sortedSectors.forEach(s => {
-                                                      cityCodes.push(s.arrival_city || s.arrival_city_code || '');
-                                                    });
-
-                                                    // Remove consecutive duplicates
-                                                    const uniqueCodes = cityCodes.filter((code, index, array) =>
-                                                      index === 0 || code !== array[index - 1]
-                                                    );
-
-                                                    return `${uniqueCodes.join('-')} (${sortedSectors.length} sectors)`;
-                                                  }
-
-                                                  // Otherwise show small sector route
-                                                  const departure = sector.small_sector?.departure_city_code || sector.small_sector?.departure_city || '';
-                                                  const arrival = sector.small_sector?.arrival_city_code || sector.small_sector?.arrival_city || '';
-                                                  const name = sector.name ? ` (${sector.name})` : '';
-                                                  return `${departure} → ${arrival}${name}`;
-                                                };
-
-                                                return {
-                                                  value: String(sector.id),
-                                                  label: getSectorLabel(sector)
-                                                };
-                                              })}
-                                              value={(availableTransportSectors.filter(s => s.vehicle_type === form.transportType).map(sector => {
-                                                const getSectorLabel = (sector) => {
-                                                  if (sector.big_sector && sector.big_sector.small_sectors && sector.big_sector.small_sectors.length > 0) {
-                                                    const cityCodes = [];
-                                                    const sortedSectors = sector.big_sector.small_sectors;
-                                                    if (sortedSectors[0]) {
-                                                      cityCodes.push(sortedSectors[0].departure_city || sortedSectors[0].departure_city_code || '');
-                                                    }
-                                                    sortedSectors.forEach(s => {
-                                                      cityCodes.push(s.arrival_city || s.arrival_city_code || '');
-                                                    });
-                                                    const uniqueCodes = cityCodes.filter((code, index, array) =>
-                                                      index === 0 || code !== array[index - 1]
-                                                    );
-                                                    return `${uniqueCodes.join('-')} (${sortedSectors.length} sectors)`;
-                                                  }
-                                                  const departure = sector.small_sector?.departure_city_code || sector.small_sector?.departure_city || '';
-                                                  const arrival = sector.small_sector?.arrival_city_code || sector.small_sector?.arrival_city || '';
-                                                  const name = sector.name ? ` (${sector.name})` : '';
-                                                  return `${departure} → ${arrival}${name}`;
-                                                };
-                                                return {
-                                                  value: String(sector.id),
-                                                  label: getSectorLabel(sector)
-                                                };
-                                              })).find(o => o.value === String(form.transportSectorId)) || null}
-                                              onChange={(opt) => updateTransportForm(index, 'transportSectorId', opt ? opt.value : '')}
-                                              isDisabled={form.self || !form.transportType || !selectedServices.has('transport')}
-                                              isClearable
-                                              placeholder="Select Sector"
-                                              classNamePrefix="react-select"
-                                            />
-                                          </div>
-
-                                          <div className="col-12 col-md-4 d-flex align-items-center">
-                                            <div className="form-check d-flex align-items-center gap-2">
-                                              <input
-                                                className="form-check-input border border-black"
-                                                type="checkbox"
-                                                checked={form.self}
-                                                onChange={(e) => updateTransportForm(index, 'self', e.target.checked)}
-                                                id={`transportSelf-${form.id}`}
-                                              />
-                                              <label htmlFor={`transportSelf-${form.id}`} className="form-label small mb-1">Self</label>
+                                          <div className="row mt-2">
+                                            <div className="col-12 col-md-4 mb-2">
+                                              <div className="alert alert-info p-2 mb-0">
+                                                <small>
+                                                  Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'transport')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'transport')}
+                                                </small>
+                                              </div>
+                                            </div>
+                                            <div className="col-12 col-md-4 mb-2">
+                                              <div className="alert alert-info p-2 mb-0">
+                                                <small>
+                                                  Child: {formatPriceWithCurrencyDisplay(childPrice, 'transport')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'transport')}
+                                                </small>
+                                              </div>
+                                            </div>
+                                            <div className="col-12 col-md-4 mb-2">
+                                              <div className="alert alert-info p-2 mb-0">
+                                                <small>
+                                                  Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'transport')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'transport')}
+                                                </small>
+                                              </div>
                                             </div>
                                           </div>
-
-
+                                          <div className="row">
+                                            <div className="col-12">
+                                              <div className="alert alert-success p-2 mb-0">
+                                                <small className="fw-bold">
+                                                  Total Transport Price: {formatPriceWithCurrencyDisplay(totalTransportPrice, 'transport')}
+                                                </small>
+                                              </div>
+                                            </div>
+                                          </div>
                                         </>
                                       );
                                     })()}
+
+                                    {form.transportSectorId && !form.self && (() => {
+                                      const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
+                                      const note = sector?.note || sector?.description || sector?.transport_note || sector?.note_text || sector?.details;
+                                      if (!note) return null;
+                                      return (
+                                        <div className="row mt-2">
+                                          <div className="col-12">
+                                            <div className="alert alert-secondary p-2">
+                                              <small><strong>Note:</strong> {note}</small>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+
+                                  <div className="d-flex justify-content-end mt-3">
+                                    <button
+                                      className="btn btn-danger btn-sm"
+                                      onClick={() => removeTransportForm(index)}
+                                      disabled={transportForms.length <= 1}
+                                    >
+                                      Remove
+                                    </button>
                                   </div>
                                 </div>
+                              ))}
 
-                                {/* Pricing */}
-                                <div className="mb-3 border rounded p-3">
-                                  <small className="fw-semibold">Pricing</small>
-                                  {form.transportSectorId && !form.self && (() => {
-                                    const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
-                                    const adults = parseInt(formData.totalAdults || 0);
-                                    const childs = parseInt(formData.totalChilds || 0);
-                                    const infants = parseInt(formData.totalInfants || 0);
-                                    const adultPrice = sector?.adault_price || 0;
-                                    const childPrice = sector?.child_price || 0;
-                                    const infantPrice = sector?.infant_price || 0;
-                                    const totalTransportPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
-
-                                    return (
-                                      <>
-                                        <div className="row mt-2">
-                                          <div className="col-12 col-md-4 mb-2">
-                                            <div className="alert alert-info p-2 mb-0">
-                                              <small>
-                                                Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'transport')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'transport')}
-                                              </small>
-                                            </div>
-                                          </div>
-                                          <div className="col-12 col-md-4 mb-2">
-                                            <div className="alert alert-info p-2 mb-0">
-                                              <small>
-                                                Child: {formatPriceWithCurrencyDisplay(childPrice, 'transport')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'transport')}
-                                              </small>
-                                            </div>
-                                          </div>
-                                          <div className="col-12 col-md-4 mb-2">
-                                            <div className="alert alert-info p-2 mb-0">
-                                              <small>
-                                                Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'transport')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'transport')}
-                                              </small>
-                                            </div>
-                                          </div>
-                                        </div>
-                                        <div className="row">
-                                          <div className="col-12">
-                                            <div className="alert alert-success p-2 mb-0">
-                                              <small className="fw-bold">
-                                                Total Transport Price: {formatPriceWithCurrencyDisplay(totalTransportPrice, 'transport')}
-                                              </small>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </>
-                                    );
-                                  })()}
-
-                                  {form.transportSectorId && !form.self && (() => {
-                                    const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
-                                    const note = sector?.note || sector?.description || sector?.transport_note || sector?.note_text || sector?.details;
-                                    if (!note) return null;
-                                    return (
-                                      <div className="row mt-2">
-                                        <div className="col-12">
-                                          <div className="alert alert-secondary p-2">
-                                            <small><strong>Note:</strong> {note}</small>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-
-                                <div className="d-flex justify-content-end mt-3">
-                                  <button
-                                    className="btn btn-danger btn-sm"
-                                    onClick={() => removeTransportForm(index)}
-                                    disabled={transportForms.length <= 1}
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
+                              <div className="mt-3">
+                                <button
+                                  id="btn"
+                                  className="btn btn-primary btn-lg w-100 d-flex justify-content-center align-items-center"
+                                  onClick={addTransportForm}
+                                  disabled={!selectedServices.has('transport')}
+                                  style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
+                                >
+                                  <PlusCircle size={18} className="me-2" /> Add Another Route
+                                </button>
                               </div>
-                            ))}
-
-                            <div className="mt-3">
-                              <button
-                                id="btn"
-                                className="btn btn-primary btn-lg w-100 d-flex justify-content-center align-items-center"
-                                onClick={addTransportForm}
-                                disabled={!selectedServices.has('transport')}
-                                style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
-                              >
-                                <PlusCircle size={18} className="me-2" /> Add Another Route
-                              </button>
                             </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </PermissionWrapper>
 
                       {/* Family Divider editor moved inline; modal removed */}
                       {/* Flight Details Section */}
-                      <div className="">
-                        <div className="row">
-                          <div className="d-flex justify-content-between align-items-center mb-3">
-                            <h5 className="fw-semibold">Flight Details</h5>
-                            <div className="d-flex gap-3 align-items-center justify-content-between">
-                              <button
-                                id="btn"
-                                className="btn px-3 py-2"
-                                onClick={() => {
-                                  setShowFlightModal(true);
-                                  // reset no-pickup when user chooses to pick a flight
-                                  setNoAirportPickup(false);
-                                }}
-                              >
-                                Select from Available Umrah Flights
-                              </button>
+                      <PermissionWrapper permission="add_flight_agent" permissionName="Flight" hasPermission={hasPermission}>
+                        <div className="">
+                          <div className="row">
+                            <div className="d-flex justify-content-between align-items-center mb-3">
+                              <h5 className="fw-semibold">Flight Details</h5>
+                              <div className="d-flex gap-3 align-items-center justify-content-between">
+                                <button
+                                  id="btn"
+                                  className="btn px-3 py-2"
+                                  onClick={() => {
+                                    setShowFlightModal(true);
+                                    // reset no-pickup when user chooses to pick a flight
+                                    setNoAirportPickup(false);
+                                  }}
+                                >
+                                  Select from Available Umrah Flights
+                                </button>
 
-                              {/* Custom flight creation removed per client request */}
+                                {/* Custom flight creation removed per client request */}
 
-                              {/* If booking is transport-only (no visa), allow skipping airport pickup */}
-                              {selectedServices.has('transport') && !selectedServices.has('visa') && (
-                                <div className="form-check ms-2">
-                                  <input
-                                    className="form-check-input"
-                                    type="checkbox"
-                                    id="noAirportPickup"
-                                    checked={noAirportPickup}
-                                    onChange={(e) => setNoAirportPickup(e.target.checked)}
-                                  />
-                                  <label className="form-check-label ms-1" htmlFor="noAirportPickup">No airport pickup</label>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          {/* Flight details table matching client design */}
-                          <div className="table-responsive mb-3">
-                            <table className="table table-sm align-middle">
-                              <thead>
-                                <tr>
-                                  <th style={{ width: "90px" }}></th>
-                                  <th style={{ width: "140px" }}>PNR</th>
-                                  <th style={{ width: "160px" }}>Flight</th>
-                                  <th style={{ width: "90px" }}>No</th>
-                                  <th style={{ width: "120px" }}>FROM</th>
-                                  <th style={{ width: "120px" }}>TO</th>
-                                  <th style={{ width: "160px" }}>Departure Date & Time</th>
-                                  <th style={{ width: "160px" }}>Arrival Date & Time</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr>
-                                  <td><strong>Departure</strong></td>
-                                  <td>
+                                {/* If booking is transport-only (no visa), allow skipping airport pickup */}
+                                {selectedServices.has('transport') && !selectedServices.has('visa') && (
+                                  <div className="form-check ms-2">
                                     <input
-                                      type="text"
-                                      className="form-control form-control-sm"
-                                      placeholder="PNR"
-                                      value={pnr}
-                                      onChange={(e) => setPnr(e.target.value)}
-                                      disabled={isFullPackage}
+                                      className="form-check-input"
+                                      type="checkbox"
+                                      id="noAirportPickup"
+                                      checked={noAirportPickup}
+                                      onChange={(e) => setNoAirportPickup(e.target.checked)}
                                     />
-                                  </td>
-                                  <td>
-                                    <Select
-                                      options={airlines.map(a => ({
-                                        value: String(a.id),
-                                        label: a.code || a.name
-                                      }))}
-                                      value={airlines.map(a => ({
-                                        value: String(a.id),
-                                        label: a.code || a.name
-                                      })).find(o => o.value === String(selectedAirline)) || null}
-                                      onChange={(opt) => {
-                                        setSelectedAirline(opt ? opt.value : '');
-                                      }}
-                                      isClearable
-                                      isDisabled={isFullPackage}
-                                      placeholder="Select Airline"
-                                      classNamePrefix="react-select"
-                                    />
-                                  </td>
-                                  <td>
-                                    <input type="text" className="form-control form-control-sm" value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} disabled={isFullPackage} />
-                                  </td>
-                                  <td>
-                                    {ticketId ? (
-                                      <input type="text" className="form-control form-control-sm" value={fromSector} onChange={(e) => setFromSector(e.target.value)} disabled={isFullPackage} />
-                                    ) : (
-                                      <CitySelect
-                                        value={fromSector}
-                                        onChange={(v) => setFromSector(v)}
-                                        placeholder="FROM"
-                                        isDisabled={isFullPackage}
-                                      />
-                                    )}
-                                  </td>
-                                  <td>
-                                    {ticketId ? (
-                                      <input type="text" className="form-control form-control-sm" value={toSector} onChange={(e) => setToSector(e.target.value)} disabled={isFullPackage} />
-                                    ) : (
-                                      <CitySelect
-                                        value={toSector}
-                                        onChange={(v) => setToSector(v)}
-                                        placeholder="TO"
-                                        isDisabled={isFullPackage}
-                                      />
-                                    )}
-                                  </td>
-                                  <td>
-                                    <input type="datetime-local" className="form-control form-control-sm" value={departureDate || ""} onChange={(e) => setDepartureDate(e.target.value)} disabled={isFullPackage} />
-                                  </td>
-
-                                  <td>
-                                    <input type="datetime-local" className="form-control form-control-sm" value={returnDate || ""} onChange={(e) => setReturnDate(e.target.value)} disabled={isFullPackage} />
-                                  </td>
-                                </tr>
-
-                                <tr>
-                                  <td><strong>Return</strong></td>
-                                  <td>
-                                    <input
-                                      type="text"
-                                      className="form-control form-control-sm"
-                                      placeholder="PNR"
-                                      value={returnPnr}
-                                      onChange={(e) => setReturnPnr(e.target.value)}
-                                      disabled={isFullPackage}
-                                    />
-                                  </td>
-                                  <td>
-                                    <Select
-                                      options={airlines.map(a => ({
-                                        value: String(a.id),
-                                        label: a.code || a.name
-                                      }))}
-                                      value={airlines.map(a => ({
-                                        value: String(a.id),
-                                        label: a.code || a.name
-                                      })).find(o => o.value === String(selectedReturnAirline)) || null}
-                                      onChange={(opt) => {
-                                        setSelectedReturnAirline(opt ? opt.value : '');
-                                      }}
-                                      isClearable
-                                      isDisabled={isFullPackage}
-                                      placeholder="Select Airline"
-                                      classNamePrefix="react-select"
-                                    />
-                                  </td>
-                                  <td>
-                                    <input type="text" className="form-control form-control-sm" value={returnFlightNumber} onChange={(e) => setReturnFlightNumber(e.target.value)} disabled={isFullPackage} />
-                                  </td>
-                                  <td>
-                                    {ticketId ? (
-                                      <input type="text" className="form-control form-control-sm" value={returnFromSector} onChange={(e) => setReturnFromSector(e.target.value)} disabled={isFullPackage} />
-                                    ) : (
-                                      <CitySelect
-                                        value={returnFromSector}
-                                        onChange={(v) => setReturnFromSector(v)}
-                                        placeholder="FROM"
-                                        isDisabled={isFullPackage}
-                                      />
-                                    )}
-                                  </td>
-                                  <td>
-                                    {ticketId ? (
-                                      <input type="text" className="form-control form-control-sm" value={returnToSector} onChange={(e) => setReturnToSector(e.target.value)} disabled={isFullPackage} />
-                                    ) : (
-                                      <CitySelect
-                                        value={returnToSector}
-                                        onChange={(v) => setReturnToSector(v)}
-                                        placeholder="TO"
-                                        isDisabled={isFullPackage}
-                                      />
-                                    )}
-                                  </td>
-                                  <td>
-                                    <input type="datetime-local" className="form-control form-control-sm" value={returnDepartureDate || ""} onChange={(e) => setReturnDepartureDate(e.target.value)} disabled={isFullPackage} />
-                                  </td>
-
-                                  <td>
-                                    <input type="datetime-local" className="form-control form-control-sm" value={returnReturnDate || ""} onChange={(e) => setReturnReturnDate(e.target.value)} disabled={isFullPackage} />
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {/* Pricing */}
-                          {selectedFlight && (() => {
-                            const adults = parseInt(formData.totalAdults || 0);
-                            const childs = parseInt(formData.totalChilds || 0);
-                            const infants = parseInt(formData.totalInfants || 0);
-                            const adultPrice = selectedFlight.adult_price || selectedFlight.adult_fare || 0;
-                            const childPrice = selectedFlight.child_price || selectedFlight.child_fare || 0;
-                            const infantPrice = selectedFlight.infant_price || selectedFlight.infant_fare || 0;
-                            const totalFlightPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
-
-                            return (
-                              <div className="mt-3 border rounded p-3">
-                                <small className="fw-semibold">Pricing</small>
-                                <div className="row mt-2">
-                                  <div className="col-12 col-md-4 mb-2">
-                                    <div className="alert alert-info p-2 mb-0">
-                                      <small>
-                                        Adult: PKR {adultPrice.toLocaleString()} × {adults} = PKR {(adults * adultPrice).toLocaleString()}
-                                      </small>
-                                    </div>
+                                    <label className="form-check-label ms-1" htmlFor="noAirportPickup">No airport pickup</label>
                                   </div>
-                                  <div className="col-12 col-md-4 mb-2">
-                                    <div className="alert alert-info p-2 mb-0">
-                                      <small>
-                                        Child: PKR {childPrice.toLocaleString()} × {childs} = PKR {(childs * childPrice).toLocaleString()}
-                                      </small>
-                                    </div>
-                                  </div>
-                                  <div className="col-12 col-md-4 mb-2">
-                                    <div className="alert alert-info p-2 mb-0">
-                                      <small>
-                                        Infant: PKR {infantPrice.toLocaleString()} × {infants} = PKR {(infants * infantPrice).toLocaleString()}
-                                      </small>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="row">
-                                  <div className="col-12">
-                                    <div className="alert alert-success p-2 mb-0">
-                                      <small className="fw-bold">
-                                        Total Flight Price: PKR {totalFlightPrice.toLocaleString()}
-                                      </small>
-                                    </div>
-                                  </div>
-                                </div>
+                                )}
                               </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                      <FlightModal
-                        show={showFlightModal}
-                        onClose={() => setShowFlightModal(false)}
-                        flights={ticketsList}
-                        onSelect={handleFlightSelect}
-                        airlinesMap={airlinesMap}
-                        citiesMap={citiesMap}
-                      />
-                      <CustomTicketModal
-                        show={showCustomTicketModal}
-                        onClose={() => setShowCustomTicketModal(false)}
-                        onSubmit={(ticket) => {
-                          setTicketId(ticket.id);
-                          setSelectedFlight(ticket);
-                          setShowCustomTicketModal(false);
-                          toast.success("Custom ticket created successfully!");
-                        }}
-                      />
-
-                      <div className="mb-4 mt-5">
-                        {/* Hotels Section */}
-                        {hotelForms.map((form, index) => renderHotelForm(form, index))}
-                        <div className="mt-3">
-                          <button
-                            id="btn" className="btn btn-primary btn-lg w-100 d-flex justify-content-center align-items-center"
-                            onClick={addHotelForm}
-                            disabled={!selectedServices.has('hotel')}
-                            style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
-                          >
-                            <PlusCircle size={18} className="me-2" /> Add Another Hotel
-                          </button>
-                        </div>
-
-                        {/* Families Section (moved out of each hotel card) */}
-                        <div className="card mb-3 shadow-sm border p-3 mt-4">
-                          <div className="d-flex justify-content-between align-items-start mb-2">
-                            <h5 className="mb-0 fw-semibold">Families</h5>
-                            <div className="d-flex gap-2">
-                              <button className="btn btn-sm btn-outline-primary" onClick={() => {
-                                // Toggle manual families editor. Initialize manual families from existing groups/totals when enabling.
-                                if (!manualFamiliesEnabled) initManualFamiliesFromState();
-                                setManualFamiliesEnabled(prev => !prev);
-                              }}>
-                                {manualFamiliesEnabled ? 'Disable Manual Families' : 'Enable Manual Families'}
-                              </button>
                             </div>
+                            {/* Flight details table matching client design */}
+                            <div className="table-responsive mb-3">
+                              <table className="table table-sm align-middle">
+                                <thead>
+                                  <tr>
+                                    <th style={{ width: "90px" }}></th>
+                                    <th style={{ width: "140px" }}>PNR</th>
+                                    <th style={{ width: "160px" }}>Flight</th>
+                                    <th style={{ width: "90px" }}>No</th>
+                                    <th style={{ width: "120px" }}>FROM</th>
+                                    <th style={{ width: "120px" }}>TO</th>
+                                    <th style={{ width: "160px" }}>Departure Date & Time</th>
+                                    <th style={{ width: "160px" }}>Arrival Date & Time</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr>
+                                    <td><strong>Departure</strong></td>
+                                    <td>
+                                      <input
+                                        type="text"
+                                        className="form-control form-control-sm"
+                                        placeholder="PNR"
+                                        value={pnr}
+                                        onChange={(e) => setPnr(e.target.value)}
+                                        disabled={isFullPackage}
+                                      />
+                                    </td>
+                                    <td>
+                                      <Select
+                                        options={airlines.map(a => ({
+                                          value: String(a.id),
+                                          label: a.code || a.name
+                                        }))}
+                                        value={airlines.map(a => ({
+                                          value: String(a.id),
+                                          label: a.code || a.name
+                                        })).find(o => o.value === String(selectedAirline)) || null}
+                                        onChange={(opt) => {
+                                          setSelectedAirline(opt ? opt.value : '');
+                                        }}
+                                        isClearable
+                                        isDisabled={isFullPackage}
+                                        placeholder="Select Airline"
+                                        classNamePrefix="react-select"
+                                      />
+                                    </td>
+                                    <td>
+                                      <input type="text" className="form-control form-control-sm" value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} disabled={isFullPackage} />
+                                    </td>
+                                    <td>
+                                      {ticketId ? (
+                                        <input type="text" className="form-control form-control-sm" value={fromSector} onChange={(e) => setFromSector(e.target.value)} disabled={isFullPackage} />
+                                      ) : (
+                                        <CitySelect
+                                          value={fromSector}
+                                          onChange={(v) => setFromSector(v)}
+                                          placeholder="FROM"
+                                          isDisabled={isFullPackage}
+                                        />
+                                      )}
+                                    </td>
+                                    <td>
+                                      {ticketId ? (
+                                        <input type="text" className="form-control form-control-sm" value={toSector} onChange={(e) => setToSector(e.target.value)} disabled={isFullPackage} />
+                                      ) : (
+                                        <CitySelect
+                                          value={toSector}
+                                          onChange={(v) => setToSector(v)}
+                                          placeholder="TO"
+                                          isDisabled={isFullPackage}
+                                        />
+                                      )}
+                                    </td>
+                                    <td>
+                                      <input type="datetime-local" className="form-control form-control-sm" value={departureDate || ""} onChange={(e) => setDepartureDate(e.target.value)} disabled={isFullPackage} />
+                                    </td>
+
+                                    <td>
+                                      <input type="datetime-local" className="form-control form-control-sm" value={returnDate || ""} onChange={(e) => setReturnDate(e.target.value)} disabled={isFullPackage} />
+                                    </td>
+                                  </tr>
+
+                                  <tr>
+                                    <td><strong>Return</strong></td>
+                                    <td>
+                                      <input
+                                        type="text"
+                                        className="form-control form-control-sm"
+                                        placeholder="PNR"
+                                        value={returnPnr}
+                                        onChange={(e) => setReturnPnr(e.target.value)}
+                                        disabled={isFullPackage}
+                                      />
+                                    </td>
+                                    <td>
+                                      <Select
+                                        options={airlines.map(a => ({
+                                          value: String(a.id),
+                                          label: a.code || a.name
+                                        }))}
+                                        value={airlines.map(a => ({
+                                          value: String(a.id),
+                                          label: a.code || a.name
+                                        })).find(o => o.value === String(selectedReturnAirline)) || null}
+                                        onChange={(opt) => {
+                                          setSelectedReturnAirline(opt ? opt.value : '');
+                                        }}
+                                        isClearable
+                                        isDisabled={isFullPackage}
+                                        placeholder="Select Airline"
+                                        classNamePrefix="react-select"
+                                      />
+                                    </td>
+                                    <td>
+                                      <input type="text" className="form-control form-control-sm" value={returnFlightNumber} onChange={(e) => setReturnFlightNumber(e.target.value)} disabled={isFullPackage} />
+                                    </td>
+                                    <td>
+                                      {ticketId ? (
+                                        <input type="text" className="form-control form-control-sm" value={returnFromSector} onChange={(e) => setReturnFromSector(e.target.value)} disabled={isFullPackage} />
+                                      ) : (
+                                        <CitySelect
+                                          value={returnFromSector}
+                                          onChange={(v) => setReturnFromSector(v)}
+                                          placeholder="FROM"
+                                          isDisabled={isFullPackage}
+                                        />
+                                      )}
+                                    </td>
+                                    <td>
+                                      {ticketId ? (
+                                        <input type="text" className="form-control form-control-sm" value={returnToSector} onChange={(e) => setReturnToSector(e.target.value)} disabled={isFullPackage} />
+                                      ) : (
+                                        <CitySelect
+                                          value={returnToSector}
+                                          onChange={(v) => setReturnToSector(v)}
+                                          placeholder="TO"
+                                          isDisabled={isFullPackage}
+                                        />
+                                      )}
+                                    </td>
+                                    <td>
+                                      <input type="datetime-local" className="form-control form-control-sm" value={returnDepartureDate || ""} onChange={(e) => setReturnDepartureDate(e.target.value)} disabled={isFullPackage} />
+                                    </td>
+
+                                    <td>
+                                      <input type="datetime-local" className="form-control form-control-sm" value={returnReturnDate || ""} onChange={(e) => setReturnReturnDate(e.target.value)} disabled={isFullPackage} />
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Pricing */}
+                            {selectedFlight && (() => {
+                              const adults = parseInt(formData.totalAdults || 0);
+                              const childs = parseInt(formData.totalChilds || 0);
+                              const infants = parseInt(formData.totalInfants || 0);
+                              const adultPrice = selectedFlight.adult_price || selectedFlight.adult_fare || 0;
+                              const childPrice = selectedFlight.child_price || selectedFlight.child_fare || 0;
+                              const infantPrice = selectedFlight.infant_price || selectedFlight.infant_fare || 0;
+                              const totalFlightPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
+
+                              return (
+                                <div className="mt-3 border rounded p-3">
+                                  <small className="fw-semibold">Pricing</small>
+                                  <div className="row mt-2">
+                                    <div className="col-12 col-md-4 mb-2">
+                                      <div className="alert alert-info p-2 mb-0">
+                                        <small>
+                                          Adult: PKR {adultPrice.toLocaleString()} × {adults} = PKR {(adults * adultPrice).toLocaleString()}
+                                        </small>
+                                      </div>
+                                    </div>
+                                    <div className="col-12 col-md-4 mb-2">
+                                      <div className="alert alert-info p-2 mb-0">
+                                        <small>
+                                          Child: PKR {childPrice.toLocaleString()} × {childs} = PKR {(childs * childPrice).toLocaleString()}
+                                        </small>
+                                      </div>
+                                    </div>
+                                    <div className="col-12 col-md-4 mb-2">
+                                      <div className="alert alert-info p-2 mb-0">
+                                        <small>
+                                          Infant: PKR {infantPrice.toLocaleString()} × {infants} = PKR {(infants * infantPrice).toLocaleString()}
+                                        </small>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="row">
+                                    <div className="col-12">
+                                      <div className="alert alert-success p-2 mb-0">
+                                        <small className="fw-bold">
+                                          Total Flight Price: PKR {totalFlightPrice.toLocaleString()}
+                                        </small>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                        <FlightModal
+                          show={showFlightModal}
+                          onClose={() => setShowFlightModal(false)}
+                          flights={ticketsList}
+                          onSelect={handleFlightSelect}
+                          airlinesMap={airlinesMap}
+                          citiesMap={citiesMap}
+                        />
+                        <CustomTicketModal
+                          show={showCustomTicketModal}
+                          onClose={() => setShowCustomTicketModal(false)}
+                          onSubmit={(ticket) => {
+                            setTicketId(ticket.id);
+                            setSelectedFlight(ticket);
+                            setShowCustomTicketModal(false);
+                            toast.success("Custom ticket created successfully!");
+                          }}
+                        />
+
+                      </PermissionWrapper>
+
+                      <PermissionWrapper permission="add_hotel_agent" permissionName="Hotel" hasPermission={hasPermission}>
+                        <div className="mb-4 mt-5">
+                          {/* Hotels Section */}
+                          {hotelForms.map((form, index) => renderHotelForm(form, index))}
+                          <div className="mt-3">
+                            <button
+                              id="btn" className="btn btn-primary btn-lg w-100 d-flex justify-content-center align-items-center"
+                              onClick={addHotelForm}
+                              disabled={!selectedServices.has('hotel')}
+                              style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
+                            >
+                              <PlusCircle size={18} className="me-2" /> Add Another Hotel
+                            </button>
                           </div>
 
-                          <div className="mt-2">
-                            {manualFamiliesEnabled ? (
-                              <div>
-                                <p>Manual families: edit per-family pax counts. Names auto-generated as Family 1, Family 2, ...</p>
+                          {/* Families Section (moved out of each hotel card) */}
+                          <div className="card mb-3 shadow-sm border p-3 mt-4">
+                            <div className="d-flex justify-content-between align-items-start mb-2">
+                              <h5 className="mb-0 fw-semibold">Families</h5>
+                              <div className="d-flex gap-2">
+                                <button className="btn btn-sm btn-outline-primary" onClick={() => {
+                                  // Toggle manual families editor. Initialize manual families from existing groups/totals when enabling.
+                                  if (!manualFamiliesEnabled) initManualFamiliesFromState();
+                                  setManualFamiliesEnabled(prev => !prev);
+                                }}>
+                                  {manualFamiliesEnabled ? 'Disable Manual Families' : 'Enable Manual Families'}
+                                </button>
+                              </div>
+                            </div>
 
+                            <div className="mt-2">
+                              {manualFamiliesEnabled ? (
                                 <div>
-                                  {manualFamilies.map((f, idx) => {
-                                    const familySize = (parseInt(f.adults || 0) + parseInt(f.children || 0) + parseInt(f.infants || 0));
+                                  <p>Manual families: edit per-family pax counts. Names auto-generated as Family 1, Family 2, ...</p>
 
-                                    return (
-                                      <div className="mb-3 pb-3 border-bottom" key={idx}>
-                                        {/* Header row with labels for each family */}
-                                        <div className="d-flex align-items-center mb-2">
-                                          <div className="me-2 small fw-semibold" style={{ minWidth: 140 }}>Family Name</div>
-                                          <div className="me-2 small fw-semibold text-center" style={{ width: 120 }}>Adults</div>
-                                          <div className="me-2 small fw-semibold text-center" style={{ width: 120 }}>Children</div>
-                                          <div className="me-2 small fw-semibold text-center" style={{ width: 120 }}>Infants</div>
-                                          <div style={{ width: 100 }}></div>
-                                        </div>
+                                  <div>
+                                    {manualFamilies.map((f, idx) => {
+                                      const familySize = (parseInt(f.adults || 0) + parseInt(f.children || 0) + parseInt(f.infants || 0));
 
-                                        {/* Passenger counts row */}
-                                        <div className="d-flex align-items-center mb-2">
-                                          <div className="me-2" style={{ minWidth: 140 }}>{f.name}</div>
-                                          <input
-                                            type="number"
-                                            min={0}
-                                            className="form-control form-control-sm me-2"
-                                            style={{ width: 120 }}
-                                            placeholder="Adults"
-                                            value={f.adults}
-                                            onChange={(e) => {
-                                              const v = Math.max(0, parseInt(e.target.value || 0));
-                                              setManualFamilies(prev => prev.map((p, i) => i === idx ? { ...p, adults: v } : p));
-                                            }}
-                                          />
-                                          <input
-                                            type="number"
-                                            min={0}
-                                            className="form-control form-control-sm me-2"
-                                            style={{ width: 120 }}
-                                            placeholder="Children"
-                                            value={f.children}
-                                            onChange={(e) => {
-                                              const v = Math.max(0, parseInt(e.target.value || 0));
-                                              setManualFamilies(prev => prev.map((p, i) => i === idx ? { ...p, children: v } : p));
-                                            }}
-                                          />
-                                          <input
-                                            type="number"
-                                            min={0}
-                                            className="form-control form-control-sm me-2"
-                                            style={{ width: 120 }}
-                                            placeholder="Infants"
-                                            value={f.infants}
-                                            onChange={(e) => {
-                                              const v = Math.max(0, parseInt(e.target.value || 0));
-                                              setManualFamilies(prev => prev.map((p, i) => i === idx ? { ...p, infants: v } : p));
-                                            }}
-                                          />
-                                          <button className="btn btn-sm btn-outline-danger" style={{ width: 100 }} onClick={() => {
-                                            setManualFamilies(prev => {
-                                              const copy = [...prev];
-                                              copy.splice(idx, 1);
-                                              // rename remaining
-                                              return copy.map((c, i) => ({ ...c, name: `Family ${i + 1}` }));
-                                            });
-                                          }}>Remove</button>
-                                        </div>
+                                      return (
+                                        <div className="mb-3 pb-3 border-bottom" key={idx}>
+                                          {/* Header row with labels for each family */}
+                                          <div className="d-flex align-items-center mb-2">
+                                            <div className="me-2 small fw-semibold" style={{ minWidth: 140 }}>Family Name</div>
+                                            <div className="me-2 small fw-semibold text-center" style={{ width: 120 }}>Adults</div>
+                                            <div className="me-2 small fw-semibold text-center" style={{ width: 120 }}>Children</div>
+                                            <div className="me-2 small fw-semibold text-center" style={{ width: 120 }}>Infants</div>
+                                            <div style={{ width: 100 }}></div>
+                                          </div>
 
-                                        {/* Hotels for this family */}
-                                        {familySize > 0 && (
-                                          <div className="mt-2 ps-3">
-                                            <div className="small fw-semibold text-muted mb-2">Hotels:</div>
-                                            {(hotelForms || []).map((hf, hi) => {
-                                              if (!hf) return null;
-                                              if (!hf.hotelId && !hf.selfHotelName && !hf.hotelName) return null;
-                                              const hotelObj = hotels.find(h => h.id.toString() === hf.hotelId);
-                                              const name = hotelObj?.name || hf.selfHotelName || hf.hotelName || `Hotel ${hi + 1}`;
-                                              const checkIn = hf.checkIn || '—';
-                                              const checkOut = hf.checkOut || '—';
-                                              const nights = hf.noOfNights || '—';
+                                          {/* Passenger counts row */}
+                                          <div className="d-flex align-items-center mb-2">
+                                            <div className="me-2" style={{ minWidth: 140 }}>{f.name}</div>
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              className="form-control form-control-sm me-2"
+                                              style={{ width: 120 }}
+                                              placeholder="Adults"
+                                              value={f.adults}
+                                              onChange={(e) => {
+                                                const v = Math.max(0, parseInt(e.target.value || 0));
+                                                setManualFamilies(prev => prev.map((p, i) => i === idx ? { ...p, adults: v } : p));
+                                              }}
+                                            />
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              className="form-control form-control-sm me-2"
+                                              style={{ width: 120 }}
+                                              placeholder="Children"
+                                              value={f.children}
+                                              onChange={(e) => {
+                                                const v = Math.max(0, parseInt(e.target.value || 0));
+                                                setManualFamilies(prev => prev.map((p, i) => i === idx ? { ...p, children: v } : p));
+                                              }}
+                                            />
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              className="form-control form-control-sm me-2"
+                                              style={{ width: 120 }}
+                                              placeholder="Infants"
+                                              value={f.infants}
+                                              onChange={(e) => {
+                                                const v = Math.max(0, parseInt(e.target.value || 0));
+                                                setManualFamilies(prev => prev.map((p, i) => i === idx ? { ...p, infants: v } : p));
+                                              }}
+                                            />
+                                            <button className="btn btn-sm btn-outline-danger" style={{ width: 100 }} onClick={() => {
+                                              setManualFamilies(prev => {
+                                                const copy = [...prev];
+                                                copy.splice(idx, 1);
+                                                // rename remaining
+                                                return copy.map((c, i) => ({ ...c, name: `Family ${i + 1}` }));
+                                              });
+                                            }}>Remove</button>
+                                          </div>
 
-                                              // Get room type options for THIS specific hotel only
-                                              const thisHotelRoomOptions = hotelObj?.prices
-                                                ?.filter(p => {
-                                                  const n = (p.room_type || '').toLowerCase().replace(/[\s_-]/g, '');
-                                                  return n !== 'onlyroom' && n !== 'room';
-                                                })
-                                                .map(p => ({ value: p.room_type, label: p.room_type })) || [];
+                                          {/* Hotels for this family */}
+                                          {familySize > 0 && (
+                                            <div className="mt-2 ps-3">
+                                              <div className="small fw-semibold text-muted mb-2">Hotels:</div>
+                                              {(hotelForms || []).map((hf, hi) => {
+                                                if (!hf) return null;
+                                                if (!hf.hotelId && !hf.selfHotelName && !hf.hotelName) return null;
+                                                const hotelObj = hotels.find(h => h.id.toString() === hf.hotelId);
+                                                const name = hotelObj?.name || hf.selfHotelName || hf.hotelName || `Hotel ${hi + 1}`;
+                                                const checkIn = hf.checkIn || '—';
+                                                const checkOut = hf.checkOut || '—';
+                                                const nights = hf.noOfNights || '—';
 
-                                              return (
-                                                <div key={hi} className="border rounded p-2 mb-2 bg-light">
-                                                  <div className="row g-2 mb-2">
-                                                    <div className="col-md-3">
-                                                      <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{name}</div>
+                                                // Get room type options for THIS specific hotel only
+                                                const thisHotelRoomOptions = hotelObj?.prices
+                                                  ?.filter(p => {
+                                                    const n = (p.room_type || '').toLowerCase().replace(/[\s_-]/g, '');
+                                                    return n !== 'onlyroom' && n !== 'room';
+                                                  })
+                                                  .map(p => ({ value: p.room_type, label: p.room_type })) || [];
+
+                                                return (
+                                                  <div key={hi} className="border rounded p-2 mb-2 bg-light">
+                                                    <div className="row g-2 mb-2">
+                                                      <div className="col-md-3">
+                                                        <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{name}</div>
+                                                      </div>
+                                                      <div className="col-md-2">
+                                                        <div className="small text-muted">In: {checkIn}</div>
+                                                      </div>
+                                                      <div className="col-md-2">
+                                                        <div className="small text-muted">Out: {checkOut}</div>
+                                                      </div>
+                                                      <div className="col-md-2">
+                                                        <div className="small text-muted">Nights: {nights}</div>
+                                                      </div>
+                                                      <div className="col-md-3">
+                                                        <div className="small text-muted">Pax: {familySize}</div>
+                                                      </div>
                                                     </div>
-                                                    <div className="col-md-2">
-                                                      <div className="small text-muted">In: {checkIn}</div>
-                                                    </div>
-                                                    <div className="col-md-2">
-                                                      <div className="small text-muted">Out: {checkOut}</div>
-                                                    </div>
-                                                    <div className="col-md-2">
-                                                      <div className="small text-muted">Nights: {nights}</div>
-                                                    </div>
-                                                    <div className="col-md-3">
-                                                      <div className="small text-muted">Pax: {familySize}</div>
-                                                    </div>
-                                                  </div>
-                                                  <div className="row g-2">
-                                                    <div className="col-md-6">
-                                                      {thisHotelRoomOptions.length > 0 && (
+                                                    <div className="row g-2">
+                                                      <div className="col-md-6">
+                                                        {thisHotelRoomOptions.length > 0 && (
+                                                          <Select
+                                                            options={thisHotelRoomOptions}
+                                                            value={thisHotelRoomOptions.find(o => o.value === (familyRoomTypes[`${idx}_${hi}`] ?? '')) || null}
+                                                            onChange={(opt) => {
+                                                              const v = opt ? opt.value : '';
+                                                              const roomTypeLower = v.toLowerCase();
+
+                                                              // Validate room capacity vs family size
+                                                              let roomCapacity = 0;
+                                                              if (roomTypeLower === 'single') roomCapacity = 1;
+                                                              else if (roomTypeLower === 'double') roomCapacity = 2;
+                                                              else if (roomTypeLower === 'triple') roomCapacity = 3;
+                                                              else if (roomTypeLower === 'quad') roomCapacity = 4;
+                                                              else if (roomTypeLower === 'quint') roomCapacity = 5;
+                                                              else if (roomTypeLower === 'sharing') roomCapacity = 999;
+
+                                                              // Check if room capacity is sufficient
+                                                              if (roomCapacity > 0 && roomCapacity < familySize) {
+                                                                toast.error(`Room capacity (${roomCapacity}) is less than family size (${familySize}). Please select Sharing or adjust family counts.`);
+                                                                return;
+                                                              }
+
+                                                              // Special validation for Single room
+                                                              if (roomTypeLower === 'single' && familySize > 1) {
+                                                                toast.error(`Single room can only accommodate 1 person. Your family has ${familySize} members. Please select a larger room type or Sharing.`);
+                                                                return;
+                                                              }
+
+                                                              setFamilyRoomTypes(prev => ({ ...prev, [`${idx}_${hi}`]: v }));
+                                                              // ALSO update hotelForms[hi].roomType so it's saved when clicking "Book Now"
+                                                              setHotelForms(prevHotels => prevHotels.map((hotel, hotelIdx) =>
+                                                                hotelIdx === hi ? { ...hotel, roomType: v } : hotel
+                                                              ));
+                                                            }}
+                                                            isClearable
+                                                            placeholder="Room type"
+                                                            classNamePrefix="react-select"
+                                                            menuPortalTarget={document.body}
+                                                            menuPosition="fixed"
+                                                            styles={{
+                                                              menuPortal: base => ({ ...base, zIndex: 9999 }),
+                                                              control: base => ({ ...base, fontSize: '0.875rem', minHeight: '32px' })
+                                                            }}
+                                                          />
+                                                        )}
+                                                      </div>
+                                                      <div className="col-md-6">
                                                         <Select
-                                                          options={thisHotelRoomOptions}
-                                                          value={thisHotelRoomOptions.find(o => o.value === (familyRoomTypes[`${idx}_${hi}`] ?? '')) || null}
+                                                          options={[
+                                                            { value: 'Family Sharing', label: 'Family Sharing' },
+                                                            { value: 'Gender Sharing', label: 'Gender Sharing' }
+                                                          ]}
+                                                          value={{ value: hf.sharingType || 'Family Sharing', label: hf.sharingType || 'Family Sharing' }}
                                                           onChange={(opt) => {
-                                                            const v = opt ? opt.value : '';
-                                                            const roomTypeLower = v.toLowerCase();
-
-                                                            // Validate room capacity vs family size
-                                                            let roomCapacity = 0;
-                                                            if (roomTypeLower === 'single') roomCapacity = 1;
-                                                            else if (roomTypeLower === 'double') roomCapacity = 2;
-                                                            else if (roomTypeLower === 'triple') roomCapacity = 3;
-                                                            else if (roomTypeLower === 'quad') roomCapacity = 4;
-                                                            else if (roomTypeLower === 'quint') roomCapacity = 5;
-                                                            else if (roomTypeLower === 'sharing') roomCapacity = 999;
-
-                                                            // Check if room capacity is sufficient
-                                                            if (roomCapacity > 0 && roomCapacity < familySize) {
-                                                              toast.error(`Room capacity (${roomCapacity}) is less than family size (${familySize}). Please select Sharing or adjust family counts.`);
-                                                              return;
-                                                            }
-
-                                                            // Special validation for Single room
-                                                            if (roomTypeLower === 'single' && familySize > 1) {
-                                                              toast.error(`Single room can only accommodate 1 person. Your family has ${familySize} members. Please select a larger room type or Sharing.`);
-                                                              return;
-                                                            }
-
-                                                            setFamilyRoomTypes(prev => ({ ...prev, [`${idx}_${hi}`]: v }));
-                                                            // ALSO update hotelForms[hi].roomType so it's saved when clicking "Book Now"
-                                                            setHotelForms(prevHotels => prevHotels.map((hotel, hotelIdx) =>
-                                                              hotelIdx === hi ? { ...hotel, roomType: v } : hotel
+                                                            const v = opt ? opt.value : 'Family Sharing';
+                                                            setHotelForms(prev => prev.map((f, i) =>
+                                                              i === hi ? { ...f, sharingType: v } : f
                                                             ));
                                                           }}
-                                                          isClearable
-                                                          placeholder="Room type"
+                                                          isDisabled={String(familyRoomTypes[`${idx}_${hi}`] || '').toLowerCase().trim() !== 'sharing'}
+                                                          placeholder="Sharing Type"
                                                           classNamePrefix="react-select"
                                                           menuPortalTarget={document.body}
                                                           menuPosition="fixed"
@@ -7099,299 +7161,299 @@ const AgentUmrahCalculator = () => {
                                                             control: base => ({ ...base, fontSize: '0.875rem', minHeight: '32px' })
                                                           }}
                                                         />
-                                                      )}
-                                                    </div>
-                                                    <div className="col-md-6">
-                                                      <Select
-                                                        options={[
-                                                          { value: 'Family Sharing', label: 'Family Sharing' },
-                                                          { value: 'Gender Sharing', label: 'Gender Sharing' }
-                                                        ]}
-                                                        value={{ value: hf.sharingType || 'Family Sharing', label: hf.sharingType || 'Family Sharing' }}
-                                                        onChange={(opt) => {
-                                                          const v = opt ? opt.value : 'Family Sharing';
-                                                          setHotelForms(prev => prev.map((f, i) =>
-                                                            i === hi ? { ...f, sharingType: v } : f
-                                                          ));
-                                                        }}
-                                                        isDisabled={String(familyRoomTypes[`${idx}_${hi}`] || '').toLowerCase().trim() !== 'sharing'}
-                                                        placeholder="Sharing Type"
-                                                        classNamePrefix="react-select"
-                                                        menuPortalTarget={document.body}
-                                                        menuPosition="fixed"
-                                                        styles={{
-                                                          menuPortal: base => ({ ...base, zIndex: 9999 }),
-                                                          control: base => ({ ...base, fontSize: '0.875rem', minHeight: '32px' })
-                                                        }}
-                                                      />
+                                                      </div>
                                                     </div>
                                                   </div>
-                                                </div>
-                                              );
-                                            })}
-                                            {(hotelForms || []).filter(hf => hf && (hf.hotelId || hf.selfHotelName || hf.hotelName)).length === 0 && (
-                                              <div className="small text-muted">No hotels selected</div>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                  <div>
-                                    <button className="btn btn-sm btn-outline-primary" onClick={() => {
-                                      setManualFamilies(prev => {
-                                        const next = [...prev, { name: `Family ${prev.length + 1}`, adults: 0, children: 0, infants: 0 }];
-                                        return next;
-                                      });
-                                    }}>Add Family</button>
-                                  </div>
-                                </div>
-                                <div className="mt-3 d-flex justify-content-end gap-2">
-                                  <button className="btn btn-primary" onClick={() => {
-                                    // Validate totals match overall pax
-                                    const totalAdults = parseInt(formData.totalAdults || 0);
-                                    const totalChilds = parseInt(formData.totalChilds || 0);
-                                    const totalInfants = parseInt(formData.totalInfants || 0);
-                                    const sumAdults = manualFamilies.reduce((s, f) => s + (parseInt(f.adults || 0)), 0);
-                                    const sumChildren = manualFamilies.reduce((s, f) => s + (parseInt(f.children || 0)), 0);
-                                    const sumInfants = manualFamilies.reduce((s, f) => s + (parseInt(f.infants || 0)), 0);
-                                    if (sumAdults !== totalAdults || sumChildren !== totalChilds || sumInfants !== totalInfants) {
-                                      toast.error('Manual families totals must exactly match overall passenger counts. Please adjust counts.');
-                                      return;
-                                    }
-
-                                    // Persist familyGroups (sizes) and assign names to hotels
-                                    const groups = manualFamiliesToGroups(manualFamilies);
-                                    setFamilyGroups(groups);
-                                    const familyNames = groups.map((_, i) => `Family ${i + 1}`);
-                                    setHotelForms(prev => prev.map(h => ({ ...h, assignedFamilies: [...familyNames] })));
-
-                                    // Initialize familyRoomOverrides + familyRoomTypes for new groups
-                                    setFamilyRoomOverrides(prev => {
-                                      const copy = { ...prev };
-                                      for (let f = 1; f < groups.length; f++) {
-                                        for (let h = 0; h < hotelForms.length; h++) {
-                                          const key = `${f}_${h}`;
-                                          if (typeof copy[key] === 'undefined') copy[key] = hotelForms[h]?.roomType || '';
-                                        }
-                                      }
-                                      return copy;
-                                    });
-                                    setFamilyRoomTypes(() => {
-                                      const m = {};
-                                      for (let i = 0; i < groups.length; i++) m[i] = '';
-                                      return m;
-                                    });
-
-                                    toast.success('Manual families applied.');
-                                  }}>Apply</button>
-                                  <button className="btn btn-secondary" onClick={() => setManualFamiliesEnabled(false)}>Disable</button>
-                                </div>
-                              </div>
-                            ) : editingFamilies ? (
-                              <div>
-                                <p>Suggested groups (greedy allocation): edit sizes or add/remove groups.</p>
-                                <div>
-                                  {familyGroups.map((g, i) => (
-                                    <div className="d-flex align-items-center mb-2" key={i}>
-                                      <div className="me-2">Family {i + 1}</div>
-                                      <input
-                                        type="number"
-                                        className="form-control form-control-sm me-2"
-                                        style={{ width: 100 }}
-                                        value={newFamilyPlaceholderIndex === i ? '' : g}
-                                        placeholder={newFamilyPlaceholderIndex === i ? 'Enter pax' : undefined}
-                                        onChange={(e) => {
-                                          // Clear placeholder index when user starts editing
-                                          if (newFamilyPlaceholderIndex !== null) setNewFamilyPlaceholderIndex(null);
-                                          const parsed = parseInt(e.target.value);
-                                          const val = isNaN(parsed) ? 0 : parsed;
-                                          setFamilyGroups(prev => {
-                                            const totalPax = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
-                                            const adjusted = redistributeWithFixed(prev, i, val, totalPax);
-                                            return adjusted;
-                                          });
-                                        }}
-                                      />
-                                      <button className="btn btn-sm btn-outline-danger" onClick={() => {
-                                        // Remove family at index i and redistribute remaining pax across remaining families
-                                        setFamilyGroups(prev => {
-                                          const totalPax = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
-                                          const newCount = prev.length - 1;
-                                          if (newCount <= 0) return [totalPax];
-                                          const res = redistributeFamilies(totalPax, newCount, 4);
-                                          // Clear placeholder index if out of range
-                                          setNewFamilyPlaceholderIndex(idx => {
-                                            if (idx === null) return null;
-                                            if (idx >= res.length) return null;
-                                            return idx;
-                                          });
-                                          return res;
-                                        });
-                                      }}>Remove</button>
-                                    </div>
-                                  ))}
-                                  <div>
-                                    <button className="btn btn-sm btn-outline-primary" onClick={() => {
-                                      setFamilyGroups(prev => {
-                                        const totalPax = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
-                                        const sum = (prev || []).reduce((s, x) => s + (parseInt(x) || 0), 0);
-
-                                        // If families already fully allocate totalPax, append an empty family (placeholder)
-                                        if (sum === totalPax) {
-                                          const next = [...prev, 0];
-                                          setNewFamilyPlaceholderIndex(next.length - 1);
+                                                );
+                                              })}
+                                              {(hotelForms || []).filter(hf => hf && (hf.hotelId || hf.selfHotelName || hf.hotelName)).length === 0 && (
+                                                <div className="small text-muted">No hotels selected</div>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                    <div>
+                                      <button className="btn btn-sm btn-outline-primary" onClick={() => {
+                                        setManualFamilies(prev => {
+                                          const next = [...prev, { name: `Family ${prev.length + 1}`, adults: 0, children: 0, infants: 0 }];
                                           return next;
-                                        }
-
-                                        // otherwise fallback to redistributing across new count
-                                        const newCount = prev.length + 1;
-                                        const redistributed = redistributeFamilies(totalPax, newCount, 4);
-                                        setNewFamilyPlaceholderIndex(redistributed.length - 1);
-                                        return redistributed;
-                                      });
-                                    }}>Add Family</button>
+                                        });
+                                      }}>Add Family</button>
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="small text-muted mt-2">You can edit family sizes before applying. Apply will persist these groups and assign them to hotels (Family 1 becomes authoritative; other families inherit and can override room type).</div>
-                                <div className="mt-3 d-flex justify-content-end gap-2">
-                                  <button className="btn btn-primary" onClick={() => {
-                                    // Ensure familyGroups sum matches totalPax; if not, redistribute automatically
-                                    const totalPax = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
-                                    const currentSum = (familyGroups || []).reduce((s, x) => s + (parseInt(x) || 0), 0);
-                                    if (currentSum !== totalPax) {
-                                      const redistributed = redistributeFamilies(totalPax, Math.max(1, familyGroups.length), 4);
-                                      setFamilyGroups(redistributed);
-                                      toast.info('Family sizes adjusted to match total passengers.');
-                                    }
-
-                                    // Persist groups and assign them to hotels.
-                                    setHotelForms(prev => {
-                                      const updated = prev.map(h => ({ ...h }));
-                                      if (familyGroups.length === 0) return updated;
-
-                                      const familyNames = familyGroups.map((_, i) => `Family ${i + 1}`);
-                                      for (let i = 0; i < updated.length; i++) {
-                                        updated[i].assignedFamilies = [...familyNames];
+                                  <div className="mt-3 d-flex justify-content-end gap-2">
+                                    <button className="btn btn-primary" onClick={() => {
+                                      // Validate totals match overall pax
+                                      const totalAdults = parseInt(formData.totalAdults || 0);
+                                      const totalChilds = parseInt(formData.totalChilds || 0);
+                                      const totalInfants = parseInt(formData.totalInfants || 0);
+                                      const sumAdults = manualFamilies.reduce((s, f) => s + (parseInt(f.adults || 0)), 0);
+                                      const sumChildren = manualFamilies.reduce((s, f) => s + (parseInt(f.children || 0)), 0);
+                                      const sumInfants = manualFamilies.reduce((s, f) => s + (parseInt(f.infants || 0)), 0);
+                                      if (sumAdults !== totalAdults || sumChildren !== totalChilds || sumInfants !== totalInfants) {
+                                        toast.error('Manual families totals must exactly match overall passenger counts. Please adjust counts.');
+                                        return;
                                       }
 
-                                      return updated;
-                                    });
+                                      // Persist familyGroups (sizes) and assign names to hotels
+                                      const groups = manualFamiliesToGroups(manualFamilies);
+                                      setFamilyGroups(groups);
+                                      const familyNames = groups.map((_, i) => `Family ${i + 1}`);
+                                      setHotelForms(prev => prev.map(h => ({ ...h, assignedFamilies: [...familyNames] })));
 
-                                    // Initialize familyRoomOverrides for other families to match Family 1 room types
-                                    setFamilyRoomOverrides(prev => {
-                                      const copy = { ...prev };
-                                      for (let f = 1; f < familyGroups.length; f++) {
-                                        for (let h = 0; h < hotelForms.length; h++) {
-                                          const key = `${f}_${h}`;
-                                          if (typeof copy[key] === 'undefined') {
-                                            copy[key] = hotelForms[h]?.roomType || '';
+                                      // Initialize familyRoomOverrides + familyRoomTypes for new groups
+                                      setFamilyRoomOverrides(prev => {
+                                        const copy = { ...prev };
+                                        for (let f = 1; f < groups.length; f++) {
+                                          for (let h = 0; h < hotelForms.length; h++) {
+                                            const key = `${f}_${h}`;
+                                            if (typeof copy[key] === 'undefined') copy[key] = hotelForms[h]?.roomType || '';
                                           }
                                         }
-                                      }
-                                      return copy;
-                                    });
+                                        return copy;
+                                      });
+                                      setFamilyRoomTypes(() => {
+                                        const m = {};
+                                        for (let i = 0; i < groups.length; i++) m[i] = '';
+                                        return m;
+                                      });
 
-                                    // Initialize single room-type selection per family (empty by default)
-                                    setFamilyRoomTypes(() => {
-                                      const m = {};
-                                      for (let i = 0; i < familyGroups.length; i++) m[i] = '';
-                                      return m;
-                                    });
-
-                                    // Clear placeholder index now that groups are applied
-                                    setNewFamilyPlaceholderIndex(null);
-
-                                    setEditingFamilies(false);
-                                    toast.success('Family groups applied — Family 1 is authoritative; other families inherit details.');
-                                  }}>Apply</button>
-                                  <button className="btn btn-secondary" onClick={() => setEditingFamilies(false)}>Close</button>
+                                      toast.success('Manual families applied.');
+                                    }}>Apply</button>
+                                    <button className="btn btn-secondary" onClick={() => setManualFamiliesEnabled(false)}>Disable</button>
+                                  </div>
                                 </div>
-                              </div>
-                            ) : (familyGroups && familyGroups.length > 0) ? (
-                              <div>
-                                <div className="small text-muted mb-2">Defined: {familyGroups.map((g, i) => `Family ${i + 1} (${g})`).join(' • ')}</div>
+                              ) : editingFamilies ? (
+                                <div>
+                                  <p>Suggested groups (greedy allocation): edit sizes or add/remove groups.</p>
+                                  <div>
+                                    {familyGroups.map((g, i) => (
+                                      <div className="d-flex align-items-center mb-2" key={i}>
+                                        <div className="me-2">Family {i + 1}</div>
+                                        <input
+                                          type="number"
+                                          className="form-control form-control-sm me-2"
+                                          style={{ width: 100 }}
+                                          value={newFamilyPlaceholderIndex === i ? '' : g}
+                                          placeholder={newFamilyPlaceholderIndex === i ? 'Enter pax' : undefined}
+                                          onChange={(e) => {
+                                            // Clear placeholder index when user starts editing
+                                            if (newFamilyPlaceholderIndex !== null) setNewFamilyPlaceholderIndex(null);
+                                            const parsed = parseInt(e.target.value);
+                                            const val = isNaN(parsed) ? 0 : parsed;
+                                            setFamilyGroups(prev => {
+                                              const totalPax = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
+                                              const adjusted = redistributeWithFixed(prev, i, val, totalPax);
+                                              return adjusted;
+                                            });
+                                          }}
+                                        />
+                                        <button className="btn btn-sm btn-outline-danger" onClick={() => {
+                                          // Remove family at index i and redistribute remaining pax across remaining families
+                                          setFamilyGroups(prev => {
+                                            const totalPax = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
+                                            const newCount = prev.length - 1;
+                                            if (newCount <= 0) return [totalPax];
+                                            const res = redistributeFamilies(totalPax, newCount, 4);
+                                            // Clear placeholder index if out of range
+                                            setNewFamilyPlaceholderIndex(idx => {
+                                              if (idx === null) return null;
+                                              if (idx >= res.length) return null;
+                                              return idx;
+                                            });
+                                            return res;
+                                          });
+                                        }}>Remove</button>
+                                      </div>
+                                    ))}
+                                    <div>
+                                      <button className="btn btn-sm btn-outline-primary" onClick={() => {
+                                        setFamilyGroups(prev => {
+                                          const totalPax = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
+                                          const sum = (prev || []).reduce((s, x) => s + (parseInt(x) || 0), 0);
 
-                                {/* Per-family overrides */}
-                                {familyGroups.map((size, fIdx) => (
-                                  <div key={fIdx} className="mb-3 pb-3 border-bottom">
-                                    <div className="mb-2">
-                                      <div><strong>Family {fIdx + 1}</strong> <small className="text-muted">({size} pax)</small></div>
+                                          // If families already fully allocate totalPax, append an empty family (placeholder)
+                                          if (sum === totalPax) {
+                                            const next = [...prev, 0];
+                                            setNewFamilyPlaceholderIndex(next.length - 1);
+                                            return next;
+                                          }
+
+                                          // otherwise fallback to redistributing across new count
+                                          const newCount = prev.length + 1;
+                                          const redistributed = redistributeFamilies(totalPax, newCount, 4);
+                                          setNewFamilyPlaceholderIndex(redistributed.length - 1);
+                                          return redistributed;
+                                        });
+                                      }}>Add Family</button>
                                     </div>
+                                  </div>
+                                  <div className="small text-muted mt-2">You can edit family sizes before applying. Apply will persist these groups and assign them to hotels (Family 1 becomes authoritative; other families inherit and can override room type).</div>
+                                  <div className="mt-3 d-flex justify-content-end gap-2">
+                                    <button className="btn btn-primary" onClick={() => {
+                                      // Ensure familyGroups sum matches totalPax; if not, redistribute automatically
+                                      const totalPax = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
+                                      const currentSum = (familyGroups || []).reduce((s, x) => s + (parseInt(x) || 0), 0);
+                                      if (currentSum !== totalPax) {
+                                        const redistributed = redistributeFamilies(totalPax, Math.max(1, familyGroups.length), 4);
+                                        setFamilyGroups(redistributed);
+                                        toast.info('Family sizes adjusted to match total passengers.');
+                                      }
 
-                                    {/* Hotels for this family */}
-                                    <div className="mt-2 ps-3">
-                                      <div className="small fw-semibold text-muted mb-2">Hotels:</div>
-                                      {(hotelForms || []).map((hf, hi) => {
-                                        if (!hf) return null;
-                                        if (!hf.hotelId && !hf.selfHotelName && !hf.hotelName) return null;
-                                        const hotelObj = hotels.find(h => h.id.toString() === hf.hotelId);
-                                        const name = hotelObj?.name || hf.selfHotelName || hf.hotelName || `Hotel ${hi + 1}`;
-                                        const checkIn = hf.checkIn || '—';
-                                        const checkOut = hf.checkOut || '—';
-                                        const nights = hf.noOfNights || '—';
+                                      // Persist groups and assign them to hotels.
+                                      setHotelForms(prev => {
+                                        const updated = prev.map(h => ({ ...h }));
+                                        if (familyGroups.length === 0) return updated;
 
-                                        // Get room type options for THIS specific hotel only
-                                        // Exclude full-room entries (normalize and filter out 'onlyroom' and 'room')
-                                        const thisHotelRoomOptions = hotelObj?.prices
-                                          ?.filter(p => {
-                                            const n = (p.room_type || '').toLowerCase().replace(/[\s_-]/g, '');
-                                            return n !== 'onlyroom' && n !== 'room';
-                                          })
-                                          .map(p => ({ value: p.room_type, label: p.room_type })) || [];
+                                        const familyNames = familyGroups.map((_, i) => `Family ${i + 1}`);
+                                        for (let i = 0; i < updated.length; i++) {
+                                          updated[i].assignedFamilies = [...familyNames];
+                                        }
 
-                                        return (
-                                          <div key={hi} className="border rounded p-3 mb-2 bg-light">
-                                            <div className="row g-2 mb-2">
-                                              <div className="col-md-3">
-                                                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{name}</div>
+                                        return updated;
+                                      });
+
+                                      // Initialize familyRoomOverrides for other families to match Family 1 room types
+                                      setFamilyRoomOverrides(prev => {
+                                        const copy = { ...prev };
+                                        for (let f = 1; f < familyGroups.length; f++) {
+                                          for (let h = 0; h < hotelForms.length; h++) {
+                                            const key = `${f}_${h}`;
+                                            if (typeof copy[key] === 'undefined') {
+                                              copy[key] = hotelForms[h]?.roomType || '';
+                                            }
+                                          }
+                                        }
+                                        return copy;
+                                      });
+
+                                      // Initialize single room-type selection per family (empty by default)
+                                      setFamilyRoomTypes(() => {
+                                        const m = {};
+                                        for (let i = 0; i < familyGroups.length; i++) m[i] = '';
+                                        return m;
+                                      });
+
+                                      // Clear placeholder index now that groups are applied
+                                      setNewFamilyPlaceholderIndex(null);
+
+                                      setEditingFamilies(false);
+                                      toast.success('Family groups applied — Family 1 is authoritative; other families inherit details.');
+                                    }}>Apply</button>
+                                    <button className="btn btn-secondary" onClick={() => setEditingFamilies(false)}>Close</button>
+                                  </div>
+                                </div>
+                              ) : (familyGroups && familyGroups.length > 0) ? (
+                                <div>
+                                  <div className="small text-muted mb-2">Defined: {familyGroups.map((g, i) => `Family ${i + 1} (${g})`).join(' • ')}</div>
+
+                                  {/* Per-family overrides */}
+                                  {familyGroups.map((size, fIdx) => (
+                                    <div key={fIdx} className="mb-3 pb-3 border-bottom">
+                                      <div className="mb-2">
+                                        <div><strong>Family {fIdx + 1}</strong> <small className="text-muted">({size} pax)</small></div>
+                                      </div>
+
+                                      {/* Hotels for this family */}
+                                      <div className="mt-2 ps-3">
+                                        <div className="small fw-semibold text-muted mb-2">Hotels:</div>
+                                        {(hotelForms || []).map((hf, hi) => {
+                                          if (!hf) return null;
+                                          if (!hf.hotelId && !hf.selfHotelName && !hf.hotelName) return null;
+                                          const hotelObj = hotels.find(h => h.id.toString() === hf.hotelId);
+                                          const name = hotelObj?.name || hf.selfHotelName || hf.hotelName || `Hotel ${hi + 1}`;
+                                          const checkIn = hf.checkIn || '—';
+                                          const checkOut = hf.checkOut || '—';
+                                          const nights = hf.noOfNights || '—';
+
+                                          // Get room type options for THIS specific hotel only
+                                          // Exclude full-room entries (normalize and filter out 'onlyroom' and 'room')
+                                          const thisHotelRoomOptions = hotelObj?.prices
+                                            ?.filter(p => {
+                                              const n = (p.room_type || '').toLowerCase().replace(/[\s_-]/g, '');
+                                              return n !== 'onlyroom' && n !== 'room';
+                                            })
+                                            .map(p => ({ value: p.room_type, label: p.room_type })) || [];
+
+                                          return (
+                                            <div key={hi} className="border rounded p-3 mb-2 bg-light">
+                                              <div className="row g-2 mb-2">
+                                                <div className="col-md-3">
+                                                  <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{name}</div>
+                                                </div>
+                                                <div className="col-md-2">
+                                                  <div className="small text-muted">In: {checkIn}</div>
+                                                </div>
+                                                <div className="col-md-2">
+                                                  <div className="small text-muted">Out: {checkOut}</div>
+                                                </div>
+                                                <div className="col-md-2">
+                                                  <div className="small text-muted">Nights: {nights}</div>
+                                                </div>
                                               </div>
-                                              <div className="col-md-2">
-                                                <div className="small text-muted">In: {checkIn}</div>
-                                              </div>
-                                              <div className="col-md-2">
-                                                <div className="small text-muted">Out: {checkOut}</div>
-                                              </div>
-                                              <div className="col-md-2">
-                                                <div className="small text-muted">Nights: {nights}</div>
-                                              </div>
-                                            </div>
-                                            <div className="row g-2">
-                                              <div className="col-md-6">
-                                                {thisHotelRoomOptions.length > 0 && (
+                                              <div className="row g-2">
+                                                <div className="col-md-6">
+                                                  {thisHotelRoomOptions.length > 0 && (
+                                                    <Select
+                                                      options={thisHotelRoomOptions}
+                                                      value={thisHotelRoomOptions.find(o => o.value === (familyRoomTypes[`${fIdx}_${hi}`] ?? '')) || null}
+                                                      onChange={(opt) => {
+                                                        const v = opt ? opt.value : '';
+                                                        const familySize = familyGroups[fIdx];
+                                                        const roomTypeLower = v.toLowerCase();
+
+                                                        // Validate room capacity vs family size
+                                                        let roomCapacity = 0;
+                                                        if (roomTypeLower === 'single') roomCapacity = 1;
+                                                        else if (roomTypeLower === 'double') roomCapacity = 2;
+                                                        else if (roomTypeLower === 'triple') roomCapacity = 3;
+                                                        else if (roomTypeLower === 'quad') roomCapacity = 4;
+                                                        else if (roomTypeLower === 'quint') roomCapacity = 5;
+                                                        else if (roomTypeLower === 'sharing') roomCapacity = 999; // Unlimited for sharing
+
+                                                        // Check if room capacity is sufficient
+                                                        if (roomCapacity > 0 && roomCapacity < familySize) {
+                                                          toast.error(`Room capacity (${roomCapacity}) is less than family size (${familySize}). Please select Sharing or manage your family groups.`);
+                                                          return; // Don't update the selection
+                                                        }
+
+                                                        // Special validation for Single room (only for 1-person families)
+                                                        if (roomTypeLower === 'single' && familySize > 1) {
+                                                          toast.error(`Single room can only accommodate 1 person. Your family has ${familySize} members. Please select a larger room type or Sharing.`);
+                                                          return;
+                                                        }
+
+                                                        setFamilyRoomTypes(prev => ({ ...prev, [`${fIdx}_${hi}`]: v }));
+                                                      }}
+                                                      isClearable
+                                                      placeholder="Room type"
+                                                      classNamePrefix="react-select"
+                                                      menuPortalTarget={document.body}
+                                                      menuPosition="fixed"
+                                                      styles={{
+                                                        menuPortal: base => ({ ...base, zIndex: 9999 }),
+                                                        control: base => ({ ...base, fontSize: '0.875rem', minHeight: '32px' })
+                                                      }}
+                                                    />
+                                                  )}
+                                                </div>
+                                                <div className="col-md-6">
                                                   <Select
-                                                    options={thisHotelRoomOptions}
-                                                    value={thisHotelRoomOptions.find(o => o.value === (familyRoomTypes[`${fIdx}_${hi}`] ?? '')) || null}
+                                                    options={[
+                                                      { value: 'Family Sharing', label: 'Family Sharing' },
+                                                      { value: 'Gender Sharing', label: 'Gender Sharing' }
+                                                    ]}
+                                                    value={{ value: hf.sharingType || 'Family Sharing', label: hf.sharingType || 'Family Sharing' }}
                                                     onChange={(opt) => {
-                                                      const v = opt ? opt.value : '';
-                                                      const familySize = familyGroups[fIdx];
-                                                      const roomTypeLower = v.toLowerCase();
-
-                                                      // Validate room capacity vs family size
-                                                      let roomCapacity = 0;
-                                                      if (roomTypeLower === 'single') roomCapacity = 1;
-                                                      else if (roomTypeLower === 'double') roomCapacity = 2;
-                                                      else if (roomTypeLower === 'triple') roomCapacity = 3;
-                                                      else if (roomTypeLower === 'quad') roomCapacity = 4;
-                                                      else if (roomTypeLower === 'quint') roomCapacity = 5;
-                                                      else if (roomTypeLower === 'sharing') roomCapacity = 999; // Unlimited for sharing
-
-                                                      // Check if room capacity is sufficient
-                                                      if (roomCapacity > 0 && roomCapacity < familySize) {
-                                                        toast.error(`Room capacity (${roomCapacity}) is less than family size (${familySize}). Please select Sharing or manage your family groups.`);
-                                                        return; // Don't update the selection
-                                                      }
-
-                                                      // Special validation for Single room (only for 1-person families)
-                                                      if (roomTypeLower === 'single' && familySize > 1) {
-                                                        toast.error(`Single room can only accommodate 1 person. Your family has ${familySize} members. Please select a larger room type or Sharing.`);
-                                                        return;
-                                                      }
-
-                                                      setFamilyRoomTypes(prev => ({ ...prev, [`${fIdx}_${hi}`]: v }));
+                                                      const v = opt ? opt.value : 'Family Sharing';
+                                                      setHotelForms(prev => prev.map((f, i) =>
+                                                        i === hi ? { ...f, sharingType: v } : f
+                                                      ));
                                                     }}
-                                                    isClearable
-                                                    placeholder="Room type"
+                                                    isDisabled={String(familyRoomTypes[`${fIdx}_${hi}`] || '').toLowerCase().trim() !== 'sharing'}
+                                                    placeholder="Sharing Type"
                                                     classNamePrefix="react-select"
                                                     menuPortalTarget={document.body}
                                                     menuPosition="fixed"
@@ -7400,588 +7462,568 @@ const AgentUmrahCalculator = () => {
                                                       control: base => ({ ...base, fontSize: '0.875rem', minHeight: '32px' })
                                                     }}
                                                   />
-                                                )}
-                                              </div>
-                                              <div className="col-md-6">
-                                                <Select
-                                                  options={[
-                                                    { value: 'Family Sharing', label: 'Family Sharing' },
-                                                    { value: 'Gender Sharing', label: 'Gender Sharing' }
-                                                  ]}
-                                                  value={{ value: hf.sharingType || 'Family Sharing', label: hf.sharingType || 'Family Sharing' }}
-                                                  onChange={(opt) => {
-                                                    const v = opt ? opt.value : 'Family Sharing';
-                                                    setHotelForms(prev => prev.map((f, i) =>
-                                                      i === hi ? { ...f, sharingType: v } : f
-                                                    ));
-                                                  }}
-                                                  isDisabled={String(familyRoomTypes[`${fIdx}_${hi}`] || '').toLowerCase().trim() !== 'sharing'}
-                                                  placeholder="Sharing Type"
-                                                  classNamePrefix="react-select"
-                                                  menuPortalTarget={document.body}
-                                                  menuPosition="fixed"
-                                                  styles={{
-                                                    menuPortal: base => ({ ...base, zIndex: 9999 }),
-                                                    control: base => ({ ...base, fontSize: '0.875rem', minHeight: '32px' })
-                                                  }}
-                                                />
+                                                </div>
                                               </div>
                                             </div>
-                                          </div>
-                                        );
-                                      })}
-                                      {(hotelForms || []).filter(hf => hf && (hf.hotelId || hf.selfHotelName || hf.hotelName)).length === 0 && (
-                                        <div className="small text-muted">No hotels selected</div>
-                                      )}
+                                          );
+                                        })}
+                                        {(hotelForms || []).filter(hf => hf && (hf.hotelId || hf.selfHotelName || hf.hotelName)).length === 0 && (
+                                          <div className="small text-muted">No hotels selected</div>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="small text-muted">No families defined. Click Compute Families or Edit Families.</div>
-                            )}
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="small text-muted">No families defined. Click Compute Families or Edit Families.</div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      </PermissionWrapper>
 
                       {/* Food Details */}
-                      <div className="mb-3">
-                        <div className="d-flex justify-content-between align-items-center mb-3">
-                          <h5 className="fw-semibold">Food Details</h5>
-                        </div>
+                      <PermissionWrapper permission="add_food_agent" permissionName="Food" hasPermission={hasPermission}>
+                        <div className="mb-3">
+                          <div className="d-flex justify-content-between align-items-center mb-3">
+                            <h5 className="fw-semibold">Food Details</h5>
+                          </div>
 
-                        {foodForms.map((form, index) => {
-                          const selectedFoodItem = foodPrices.find(f => f.id.toString() === form.foodId);
-                          const adults = parseInt(formData.totalAdults || 0);
-                          const childs = parseInt(formData.totalChilds || 0);
-                          const infants = parseInt(formData.totalInfants || 0);
-                          const totalPersons = adults + childs;
-                          const adultPrice = selectedFoodItem ? (parseFloat(selectedFoodItem.adult_selling_price) || 0) : 0;
-                          const childPrice = selectedFoodItem ? (parseFloat(selectedFoodItem.child_selling_price) || 0) : 0;
-                          const infantPrice = selectedFoodItem ? (parseFloat(selectedFoodItem.infant_selling_price) || 0) : 0;
-                          const computedTotal = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
+                          {foodForms.map((form, index) => {
+                            const selectedFoodItem = foodPrices.find(f => f.id.toString() === form.foodId);
+                            const adults = parseInt(formData.totalAdults || 0);
+                            const childs = parseInt(formData.totalChilds || 0);
+                            const infants = parseInt(formData.totalInfants || 0);
+                            const totalPersons = adults + childs;
+                            const adultPrice = selectedFoodItem ? (parseFloat(selectedFoodItem.adult_selling_price) || 0) : 0;
+                            const childPrice = selectedFoodItem ? (parseFloat(selectedFoodItem.child_selling_price) || 0) : 0;
+                            const infantPrice = selectedFoodItem ? (parseFloat(selectedFoodItem.infant_selling_price) || 0) : 0;
+                            const computedTotal = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
 
-                          return (
-                            <div key={form.id} className="card mb-3 shadow-sm border p-3">
-                              {/* Food Info */}
-                              <div className="mb-3 pb-2 border-bottom">
-                                <h6 className="small text-muted mb-2">Food Info</h6>
+                            return (
+                              <div key={form.id} className="card mb-3 shadow-sm border p-3">
+                                {/* Food Info */}
+                                <div className="mb-3 pb-2 border-bottom">
+                                  <h6 className="small text-muted mb-2">Food Info</h6>
 
-                                <div className="row g-2 align-items-center">
-                                  <div className="col-md-3">
-                                    <label className="small">City</label>
-                                    <Select
-                                      options={foodCityOptions}
-                                      value={foodCityOptions.find(o => o.value === String(form.city)) || null}
-                                      onChange={(opt) => {
-                                        const updated = [...foodForms];
-                                        updated[index].city = opt ? opt.value : "";
-                                        // reset hotel and selected food when city changes
-                                        updated[index].hotel = "";
-                                        updated[index].foodId = "";
-                                        setFoodForms(updated);
-                                      }}
-                                      isDisabled={foodSelf || loading.food}
-                                      isClearable
-                                      isSearchable
-                                      placeholder={foodCityOptions.length ? 'Select City' : 'Select Food first'}
-                                      classNamePrefix="react-select"
-                                    />
-                                  </div>
-
-                                  <div className="col-md-2">
-                                    <label className="small">Hotel {(!foodSelf && !form.selfPickup) ? (<span style={{ color: '#d00' }}>*</span>) : null}</label>
-                                    <input
-                                      type="text"
-                                      className="form-control shadow-none"
-                                      placeholder={form.selfPickup || foodSelf ? "Hotel name (disabled)" : "Hotel name (required)"}
-                                      value={form.hotel || ""}
-                                      disabled={!!(foodSelf || form.selfPickup)}
-                                      onChange={(e) => {
-                                        const updated = [...foodForms];
-                                        updated[index].hotel = e.target.value;
-                                        setFoodForms(updated);
-                                      }}
-                                    />
-                                  </div>
-
-                                  <div className="col-md-5">
-                                    <label className="small">Food</label>
-                                    {
-                                      (() => {
-                                        const options = (foodPrices || [])
-                                          .filter(f => {
-                                            if (!f.active) return false;
-                                            // derive a city key similar to foodCityOptions generation
-                                            const cityId = f.city_id ?? (f.city && (typeof f.city === 'object' ? f.city.id : f.city)) ?? null;
-                                            const cityName = (cityId && (citiesMap?.[cityId]?.name)) || f.city_name || (f.city && (typeof f.city === 'object' ? f.city.name : null)) || null;
-                                            const key = cityId ?? cityName ?? (f.city || f.city_name || `unknown-${f.id}`);
-                                            if (form.city) {
-                                              return String(key) === String(form.city);
-                                            }
-                                            return true;
-                                          })
-                                          .map(f => ({ value: String(f.id), label: `${f.title} (Min ${f.min_pex} persons)` }));
-
-                                        const placeholderText = loading.food ? 'Loading food options...' : (form.city ? (options.length ? 'Select Food' : 'No food options for selected city') : (options.length ? 'Select Food' : 'No food options available'));
-
-                                        return (
-                                          <Select
-                                            options={options}
-                                            value={options.find(o => o.value === String(form.foodId)) || null}
-                                            onChange={(opt) => {
-                                              const updated = [...foodForms];
-                                              updated[index].foodId = opt ? opt.value : "";
-                                              setFoodForms(updated);
-                                              // Recalculate totals after selection
-                                              setTimeout(() => {
-                                                try {
-                                                  calculateCosts();
-                                                } catch (err) {
-                                                  // ignore
-                                                }
-                                              }, 0);
-                                            }}
-                                            isDisabled={foodSelf || loading.food}
-                                            isClearable
-                                            isSearchable
-                                            placeholder={placeholderText}
-                                            classNamePrefix="react-select"
-                                          />
-                                        );
-                                      })()
-                                    }
-                                  </div>
-
-                                  <div className="col-md-2 d-flex align-items-center">
-                                    <div className="form-check d-flex align-items-center gap-2">
-                                      <input
-                                        type="checkbox"
-                                        className="form-check-input border border-black"
-                                        id={`foodSelfPickup-${form.id}`}
-                                        checked={!!form.selfPickup}
-                                        onChange={() => {
+                                  <div className="row g-2 align-items-center">
+                                    <div className="col-md-3">
+                                      <label className="small">City</label>
+                                      <Select
+                                        options={foodCityOptions}
+                                        value={foodCityOptions.find(o => o.value === String(form.city)) || null}
+                                        onChange={(opt) => {
                                           const updated = [...foodForms];
-                                          const next = !updated[index].selfPickup;
-                                          updated[index].selfPickup = next;
-                                          // If enabling selfPickup, clear hotel field to avoid stale value
-                                          if (next) updated[index].hotel = "";
+                                          updated[index].city = opt ? opt.value : "";
+                                          // reset hotel and selected food when city changes
+                                          updated[index].hotel = "";
+                                          updated[index].foodId = "";
+                                          setFoodForms(updated);
+                                        }}
+                                        isDisabled={foodSelf || loading.food}
+                                        isClearable
+                                        isSearchable
+                                        placeholder={foodCityOptions.length ? 'Select City' : 'Select Food first'}
+                                        classNamePrefix="react-select"
+                                      />
+                                    </div>
+
+                                    <div className="col-md-2">
+                                      <label className="small">Hotel {(!foodSelf && !form.selfPickup) ? (<span style={{ color: '#d00' }}>*</span>) : null}</label>
+                                      <input
+                                        type="text"
+                                        className="form-control shadow-none"
+                                        placeholder={form.selfPickup || foodSelf ? "Hotel name (disabled)" : "Hotel name (required)"}
+                                        value={form.hotel || ""}
+                                        disabled={!!(foodSelf || form.selfPickup)}
+                                        onChange={(e) => {
+                                          const updated = [...foodForms];
+                                          updated[index].hotel = e.target.value;
                                           setFoodForms(updated);
                                         }}
                                       />
-                                      <label htmlFor={`foodSelfPickup-${form.id}`}>Self Pickup</label>
                                     </div>
-                                  </div>
 
-                                  <div className="col-12 mt-2">
-                                    <label className="small">Note</label>
-                                    <textarea
-                                      className="form-control shadow-none"
-                                      rows={2}
-                                      placeholder="Optional note"
-                                      value={form.note || ""}
-                                      onChange={(e) => {
-                                        const updated = [...foodForms];
-                                        updated[index].note = e.target.value;
-                                        setFoodForms(updated);
-                                      }}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
+                                    <div className="col-md-5">
+                                      <label className="small">Food</label>
+                                      {
+                                        (() => {
+                                          const options = (foodPrices || [])
+                                            .filter(f => {
+                                              if (!f.active) return false;
+                                              // derive a city key similar to foodCityOptions generation
+                                              const cityId = f.city_id ?? (f.city && (typeof f.city === 'object' ? f.city.id : f.city)) ?? null;
+                                              const cityName = (cityId && (citiesMap?.[cityId]?.name)) || f.city_name || (f.city && (typeof f.city === 'object' ? f.city.name : null)) || null;
+                                              const key = cityId ?? cityName ?? (f.city || f.city_name || `unknown-${f.id}`);
+                                              if (form.city) {
+                                                return String(key) === String(form.city);
+                                              }
+                                              return true;
+                                            })
+                                            .map(f => ({ value: String(f.id), label: `${f.title} (Min ${f.min_pex} persons)` }));
 
-                              {/* Dates */}
-                              <div className="mb-3 pb-2 border-bottom">
-                                <h6 className="small text-muted mb-2">Dates</h6>
-                                <div className="row g-2">
-                                  <div className="col-md-6">
-                                    <label className="small">Start Date</label>
-                                    <input
-                                      type="date"
-                                      className="form-control shadow-none"
-                                      value={form.startDate || ""}
-                                      min={departureDate ? String(departureDate).split('T')[0] : undefined}
-                                      max={(returnDepartureDate || returnDate) ? String((returnDepartureDate || returnDate)).split('T')[0] : undefined}
-                                      onChange={(e) => {
-                                        const updated = [...foodForms];
-                                        const newStart = e.target.value;
-                                        const flightStartDate = departureDate ? String(departureDate).split('T')[0] : null;
-                                        const flightReturnDate = (returnDepartureDate || returnDate) ? String((returnDepartureDate || returnDate)).split('T')[0] : null;
+                                          const placeholderText = loading.food ? 'Loading food options...' : (form.city ? (options.length ? 'Select Food' : 'No food options for selected city') : (options.length ? 'Select Food' : 'No food options available'));
 
-                                        // Allow user to pick any date, but set per-form errors if it falls outside flight window (date-only)
-                                        const startDateStr = newStart || '';
+                                          return (
+                                            <Select
+                                              options={options}
+                                              value={options.find(o => o.value === String(form.foodId)) || null}
+                                              onChange={(opt) => {
+                                                const updated = [...foodForms];
+                                                updated[index].foodId = opt ? opt.value : "";
+                                                setFoodForms(updated);
+                                                // Recalculate totals after selection
+                                                setTimeout(() => {
+                                                  try {
+                                                    calculateCosts();
+                                                  } catch (err) {
+                                                    // ignore
+                                                  }
+                                                }, 0);
+                                              }}
+                                              isDisabled={foodSelf || loading.food}
+                                              isClearable
+                                              isSearchable
+                                              placeholder={placeholderText}
+                                              classNamePrefix="react-select"
+                                            />
+                                          );
+                                        })()
+                                      }
+                                    </div>
 
-                                        if (flightStartDate && startDateStr && startDateStr < flightStartDate) {
-                                          updated[index].startDateError = 'Start date is before flight departure';
-                                          toast.error('Selected start date is before the ticket departure date');
-                                        } else {
-                                          updated[index].startDateError = '';
-                                        }
-
-                                        if (flightReturnDate && startDateStr && startDateStr > flightReturnDate) {
-                                          updated[index].startDateError = 'Start date is after flight return';
-                                          toast.error('Selected start date is after the ticket return date');
-                                        }
-
-                                        updated[index].startDate = newStart;
-
-                                        // If days are set, validate end date (date-only) against return date
-                                        const daysVal = parseInt(updated[index].noOfDays || 0, 10) || 0;
-                                        if (daysVal > 0 && startDateStr && flightReturnDate) {
-                                          const startDT = new Date(`${startDateStr}T00:00:00`);
-                                          const endDT = new Date(startDT);
-                                          endDT.setDate(startDT.getDate() + (daysVal - 1));
-                                          const endDateStr = endDT.toISOString().split('T')[0];
-                                          if (endDateStr > flightReturnDate) {
-                                            updated[index].noOfDaysError = 'End date after flight return';
-                                            toast.error('The selected Start Date + Days would end after the flight return date');
-                                          } else {
-                                            updated[index].noOfDaysError = '';
-                                          }
-                                        }
-
-                                        setFoodForms(updated);
-                                      }}
-                                    />
-                                  </div>
-
-                                  <div className="col-md-6">
-                                    <label className="small">Days / Meals</label>
-                                    <input
-                                      type="text"
-                                      className="form-control shadow-none"
-                                      placeholder="Enter days/meals"
-                                      value={form.noOfDays || ""}
-                                      onChange={(e) => {
-                                        const updated = [...foodForms];
-                                        updated[index].noOfDays = e.target.value;
-                                        setFoodForms(updated);
-                                      }}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Pricing */}
-                              <div className="mb-3 border rounded p-3">
-                                <small className="fw-semibold">Pricing</small>
-                                {form.foodId && (
-                                  <>
-                                    <div className="row mt-2">
-                                      <div className="col-12 col-md-4 mb-2">
-                                        <div className="alert alert-info p-2 mb-0">
-                                          <small>
-                                            Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'food')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'food')}
-                                          </small>
-                                        </div>
-                                      </div>
-                                      <div className="col-12 col-md-4 mb-2">
-                                        <div className="alert alert-info p-2 mb-0">
-                                          <small>
-                                            Child: {formatPriceWithCurrencyDisplay(childPrice, 'food')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'food')}
-                                          </small>
-                                        </div>
-                                      </div>
-                                      <div className="col-12 col-md-4 mb-2">
-                                        <div className="alert alert-info p-2 mb-0">
-                                          <small>
-                                            Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'food')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'food')}
-                                          </small>
-                                        </div>
+                                    <div className="col-md-2 d-flex align-items-center">
+                                      <div className="form-check d-flex align-items-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          className="form-check-input border border-black"
+                                          id={`foodSelfPickup-${form.id}`}
+                                          checked={!!form.selfPickup}
+                                          onChange={() => {
+                                            const updated = [...foodForms];
+                                            const next = !updated[index].selfPickup;
+                                            updated[index].selfPickup = next;
+                                            // If enabling selfPickup, clear hotel field to avoid stale value
+                                            if (next) updated[index].hotel = "";
+                                            setFoodForms(updated);
+                                          }}
+                                        />
+                                        <label htmlFor={`foodSelfPickup-${form.id}`}>Self Pickup</label>
                                       </div>
                                     </div>
-                                    <div className="row">
-                                      <div className="col-12">
-                                        <div className="alert alert-success p-2 mb-0">
-                                          <small className="fw-bold">
-                                            Total Food Price: {formatPriceWithCurrencyDisplay(computedTotal, 'food')}
-                                          </small>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </>
-                                )}
-                                {selectedFoodItem && (
-                                  <div className="row mt-2">
-                                    <div className="col-12">
-                                      <div className="alert alert-secondary p-2 mb-0">
-                                        <small><strong>Min Persons:</strong> {selectedFoodItem.min_pex || 0}</small>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>                              {/* Actions */}
-                              <div className="d-flex justify-content-end">
-                                <div className="me-auto align-self-center small text-muted">&nbsp;</div>
-                                <div className="d-flex gap-2">
-                                  <div className="form-check d-flex align-items-center gap-2">
-                                    <input
-                                      className="form-check-input border border-black"
-                                      type="checkbox"
-                                      checked={foodSelf}
-                                      onChange={() => setFoodSelf(!foodSelf)}
-                                      id={`foodSelf-${form.id}`}
-                                    />
-                                    <label htmlFor={`foodSelf-${form.id}`}>Self</label>
-                                  </div>
 
-                                  {index === foodForms.length - 1 && foodForms.length > 1 ? (
-                                    <div className="text-end">
-                                      <button
-                                        className="btn btn-outline-danger btn-sm d-flex align-items-center justify-content-center px-3"
-                                        onClick={() => {
-                                          const updated = foodForms.filter((_, i) => i !== index);
+                                    <div className="col-12 mt-2">
+                                      <label className="small">Note</label>
+                                      <textarea
+                                        className="form-control shadow-none"
+                                        rows={2}
+                                        placeholder="Optional note"
+                                        value={form.note || ""}
+                                        onChange={(e) => {
+                                          const updated = [...foodForms];
+                                          updated[index].note = e.target.value;
                                           setFoodForms(updated);
                                         }}
-                                      >
-                                        <span className="me-2"><Trash /></span>
-                                        Remove
-                                      </button>
+                                      />
                                     </div>
-                                  ) : null}
+                                  </div>
+                                </div>
+
+                                {/* Dates */}
+                                <div className="mb-3 pb-2 border-bottom">
+                                  <h6 className="small text-muted mb-2">Dates</h6>
+                                  <div className="row g-2">
+                                    <div className="col-md-6">
+                                      <label className="small">Start Date</label>
+                                      <input
+                                        type="date"
+                                        className="form-control shadow-none"
+                                        value={form.startDate || ""}
+                                        min={departureDate ? String(departureDate).split('T')[0] : undefined}
+                                        max={(returnDepartureDate || returnDate) ? String((returnDepartureDate || returnDate)).split('T')[0] : undefined}
+                                        onChange={(e) => {
+                                          const updated = [...foodForms];
+                                          const newStart = e.target.value;
+                                          const flightStartDate = departureDate ? String(departureDate).split('T')[0] : null;
+                                          const flightReturnDate = (returnDepartureDate || returnDate) ? String((returnDepartureDate || returnDate)).split('T')[0] : null;
+
+                                          // Allow user to pick any date, but set per-form errors if it falls outside flight window (date-only)
+                                          const startDateStr = newStart || '';
+
+                                          if (flightStartDate && startDateStr && startDateStr < flightStartDate) {
+                                            updated[index].startDateError = 'Start date is before flight departure';
+                                            toast.error('Selected start date is before the ticket departure date');
+                                          } else {
+                                            updated[index].startDateError = '';
+                                          }
+
+                                          if (flightReturnDate && startDateStr && startDateStr > flightReturnDate) {
+                                            updated[index].startDateError = 'Start date is after flight return';
+                                            toast.error('Selected start date is after the ticket return date');
+                                          }
+
+                                          updated[index].startDate = newStart;
+
+                                          // If days are set, validate end date (date-only) against return date
+                                          const daysVal = parseInt(updated[index].noOfDays || 0, 10) || 0;
+                                          if (daysVal > 0 && startDateStr && flightReturnDate) {
+                                            const startDT = new Date(`${startDateStr}T00:00:00`);
+                                            const endDT = new Date(startDT);
+                                            endDT.setDate(startDT.getDate() + (daysVal - 1));
+                                            const endDateStr = endDT.toISOString().split('T')[0];
+                                            if (endDateStr > flightReturnDate) {
+                                              updated[index].noOfDaysError = 'End date after flight return';
+                                              toast.error('The selected Start Date + Days would end after the flight return date');
+                                            } else {
+                                              updated[index].noOfDaysError = '';
+                                            }
+                                          }
+
+                                          setFoodForms(updated);
+                                        }}
+                                      />
+                                    </div>
+
+                                    <div className="col-md-6">
+                                      <label className="small">Days / Meals</label>
+                                      <input
+                                        type="text"
+                                        className="form-control shadow-none"
+                                        placeholder="Enter days/meals"
+                                        value={form.noOfDays || ""}
+                                        onChange={(e) => {
+                                          const updated = [...foodForms];
+                                          updated[index].noOfDays = e.target.value;
+                                          setFoodForms(updated);
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Pricing */}
+                                <div className="mb-3 border rounded p-3">
+                                  <small className="fw-semibold">Pricing</small>
+                                  {form.foodId && (
+                                    <>
+                                      <div className="row mt-2">
+                                        <div className="col-12 col-md-4 mb-2">
+                                          <div className="alert alert-info p-2 mb-0">
+                                            <small>
+                                              Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'food')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'food')}
+                                            </small>
+                                          </div>
+                                        </div>
+                                        <div className="col-12 col-md-4 mb-2">
+                                          <div className="alert alert-info p-2 mb-0">
+                                            <small>
+                                              Child: {formatPriceWithCurrencyDisplay(childPrice, 'food')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'food')}
+                                            </small>
+                                          </div>
+                                        </div>
+                                        <div className="col-12 col-md-4 mb-2">
+                                          <div className="alert alert-info p-2 mb-0">
+                                            <small>
+                                              Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'food')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'food')}
+                                            </small>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="row">
+                                        <div className="col-12">
+                                          <div className="alert alert-success p-2 mb-0">
+                                            <small className="fw-bold">
+                                              Total Food Price: {formatPriceWithCurrencyDisplay(computedTotal, 'food')}
+                                            </small>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                  {selectedFoodItem && (
+                                    <div className="row mt-2">
+                                      <div className="col-12">
+                                        <div className="alert alert-secondary p-2 mb-0">
+                                          <small><strong>Min Persons:</strong> {selectedFoodItem.min_pex || 0}</small>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>                              {/* Actions */}
+                                <div className="d-flex justify-content-end">
+                                  <div className="me-auto align-self-center small text-muted">&nbsp;</div>
+                                  <div className="d-flex gap-2">
+                                    <div className="form-check d-flex align-items-center gap-2">
+                                      <input
+                                        className="form-check-input border border-black"
+                                        type="checkbox"
+                                        checked={foodSelf}
+                                        onChange={() => setFoodSelf(!foodSelf)}
+                                        id={`foodSelf-${form.id}`}
+                                      />
+                                      <label htmlFor={`foodSelf-${form.id}`}>Self</label>
+                                    </div>
+
+                                    {index === foodForms.length - 1 && foodForms.length > 1 ? (
+                                      <div className="text-end">
+                                        <button
+                                          className="btn btn-outline-danger btn-sm d-flex align-items-center justify-content-center px-3"
+                                          onClick={() => {
+                                            const updated = foodForms.filter((_, i) => i !== index);
+                                            setFoodForms(updated);
+                                          }}
+                                        >
+                                          <span className="me-2"><Trash /></span>
+                                          Remove
+                                        </button>
+                                      </div>
+                                    ) : null}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
 
 
 
-                        {/* Add More Food button: use same filled primary style as Hotel (JSX-only) */}
-                        <div className="mt-3">
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-lg w-100 d-flex justify-content-center align-items-center"
-                            onClick={() => setFoodForms([...foodForms, { id: Date.now(), foodId: "", city: "", hotel: "", selfPickup: false, note: "", startDate: "", noOfDays: "", startDateError: '', noOfDaysError: '' }])}
-                            style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
-                          >
-                            <PlusCircle size={18} className="me-2" /> Add More Food
-                          </button>
+                          {/* Add More Food button: use same filled primary style as Hotel (JSX-only) */}
+                          <div className="mt-3">
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-lg w-100 d-flex justify-content-center align-items-center"
+                              onClick={() => setFoodForms([...foodForms, { id: Date.now(), foodId: "", city: "", hotel: "", selfPickup: false, note: "", startDate: "", noOfDays: "", startDateError: '', noOfDaysError: '' }])}
+                              style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
+                            >
+                              <PlusCircle size={18} className="me-2" /> Add More Food
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      </PermissionWrapper>
 
                       {/* Ziarat Details */}
-                      <div className="mb-3">
-                        <div className="d-flex justify-content-between align-items-center mb-3">
-                          <h5 className="fw-semibold">Ziarat Details</h5>
-                        </div>
+                      <PermissionWrapper permission="add_ziarat_agent" permissionName="Ziarat" hasPermission={hasPermission}>
+                        <div className="mb-3">
+                          <div className="d-flex justify-content-between align-items-center mb-3">
+                            <h5 className="fw-semibold">Ziarat Details</h5>
+                          </div>
 
-                        {ziaratForms.map((form, index) => {
-                          const ziaratItem = ziaratPrices.find(z => z.id.toString() === form.ziaratId);
-                          const adults = parseInt(formData.totalAdults || 0);
-                          const childs = parseInt(formData.totalChilds || 0);
-                          const infants = parseInt(formData.totalInfants || 0);
-                          const totalPersons = adults + childs;
-                          const adultPrice = ziaratItem ? (parseFloat(ziaratItem.adult_selling_price) || 0) : 0;
-                          const childPrice = ziaratItem ? (parseFloat(ziaratItem.child_selling_price) || 0) : 0;
-                          const infantPrice = ziaratItem ? (parseFloat(ziaratItem.infant_selling_price) || 0) : 0;
-                          const totalPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
+                          {ziaratForms.map((form, index) => {
+                            const ziaratItem = ziaratPrices.find(z => z.id.toString() === form.ziaratId);
+                            const adults = parseInt(formData.totalAdults || 0);
+                            const childs = parseInt(formData.totalChilds || 0);
+                            const infants = parseInt(formData.totalInfants || 0);
+                            const totalPersons = adults + childs;
+                            const adultPrice = ziaratItem ? (parseFloat(ziaratItem.adult_selling_price) || 0) : 0;
+                            const childPrice = ziaratItem ? (parseFloat(ziaratItem.child_selling_price) || 0) : 0;
+                            const infantPrice = ziaratItem ? (parseFloat(ziaratItem.infant_selling_price) || 0) : 0;
+                            const totalPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
 
-                          return (
-                            <div key={form.id} className="card mb-3 shadow-sm border p-3">
-                              {/* Ziyarat Info */}
-                              <div className="mb-3 pb-2 border-bottom">
-                                <div className="d-flex justify-content-between align-items-center">
-                                  <div className="fw-semibold small">Ziyarat Info</div>
-                                </div>
-
-                                <div className="row g-2 mt-2">
-                                  <div className="col-md-4">
-                                    <label className="form-label small">City</label>
-                                    <Select
-                                      options={ziaratCityOptions}
-                                      value={ziaratCityOptions.find(o => o.value === String(form.city)) || null}
-                                      onChange={(opt) => {
-                                        const updated = [...ziaratForms];
-                                        updated[index].city = opt ? opt.value : "";
-                                        // clear ziarat selection when city changes to avoid mismatches
-                                        updated[index].ziaratId = "";
-                                        setZiaratForms(updated);
-                                      }}
-                                      isDisabled={ziaratSelf || loading.ziarat}
-                                      isClearable
-                                      isSearchable
-                                      placeholder={ziaratCityOptions.length ? 'Select City' : 'No cities available'}
-                                      classNamePrefix="react-select"
-                                    />
+                            return (
+                              <div key={form.id} className="card mb-3 shadow-sm border p-3">
+                                {/* Ziyarat Info */}
+                                <div className="mb-3 pb-2 border-bottom">
+                                  <div className="d-flex justify-content-between align-items-center">
+                                    <div className="fw-semibold small">Ziyarat Info</div>
                                   </div>
 
-                                  <div className="col-md-8">
-                                    <label className="form-label small">Ziarat</label>
-                                    {
-                                      (() => {
-                                        const options = (ziaratPrices || []).filter(z => {
-                                          try {
-                                            const cityId = z.city_id ?? (z.city && (typeof z.city === 'object' ? z.city.id : z.city)) ?? null;
-                                            const cityName = (cityId && (citiesMap?.[cityId]?.name)) || z.city_name || (z.city && (typeof z.city === 'object' ? z.city.name : null)) || null;
-                                            const key = cityId ?? cityName ?? (z.city || z.city_name || `unknown-${z.id}`);
-                                            if (!form.city) return true;
-                                            return String(key) === String(form.city);
-                                          } catch (err) {
-                                            return true;
-                                          }
-                                        }).map(z => ({ value: String(z.id), label: (z.ziarat_title || z.title || z.name) }));
-
-                                        return (
-                                          <Select
-                                            options={options}
-                                            value={options.find(o => o.value === String(form.ziaratId)) || null}
-                                            onChange={(opt) => {
-                                              const updated = [...ziaratForms];
-                                              const selectedId = opt ? opt.value : "";
-                                              updated[index].ziaratId = selectedId;
-
-                                              // Try to auto-fill city from the selected ziarat entry
-                                              try {
-                                                const z = ziaratPrices.find(z => z.id?.toString() === selectedId?.toString());
-                                                const cityName = z ? (citiesMap[(z.city_id || z.city)?.toString?.()]?.name || z.city_name || z.city?.name || "") : "";
-                                                // prefer keeping the existing city key if present, otherwise set to the computed key
-                                                const cityKey = (z?.city_id ?? (z?.city && (typeof z.city === 'object' ? z.city.id : z.city)) ?? cityName) || "";
-                                                updated[index].city = updated[index].city || cityKey;
-                                              } catch (err) {
-                                                updated[index].city = updated[index].city || "";
-                                              }
-
-                                              setZiaratForms(updated);
-
-                                              // Recalculate visa and totals immediately after selection
-                                              setTimeout(() => {
-                                                try {
-                                                  const prices = calculateVisaPrices();
-                                                  setCalculatedVisaPrices(prices);
-                                                } catch (err) {
-                                                  // ignore if calculation not ready
-                                                }
-                                                try {
-                                                  calculateCosts();
-                                                } catch (err) {
-                                                  // ignore
-                                                }
-                                              }, 0);
-                                            }}
-                                            isDisabled={ziaratSelf || loading.ziarat}
-                                            isClearable
-                                            isSearchable
-                                            placeholder={loading.ziarat ? 'Loading ziarat options...' : (options.length ? 'Select Ziarat' : 'No ziarat options available for selected city')}
-                                            classNamePrefix="react-select"
-                                          />
-                                        );
-                                      })()
-                                    }
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Dates */}
-                              <div className="mb-3 pb-2 border-bottom">
-                                <div className="fw-semibold small mb-2">Dates</div>
-                                <div className="row g-2">
-                                  <div className="col-md-4">
-                                    <label className="form-label small">Visit Date</label>
-                                    <input
-                                      type="date"
-                                      className="form-control shadow-none"
-                                      value={form.visitDate || ""}
-                                      min={departureDate ? String(departureDate).split('T')[0] : undefined}
-                                      max={(returnDepartureDate || returnDate) ? String((returnDepartureDate || returnDate)).split('T')[0] : undefined}
-                                      onChange={(e) => {
-                                        const updated = [...ziaratForms];
-                                        updated[index].visitDate = e.target.value;
-                                        setZiaratForms(updated);
-                                      }}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Pricing */}
-                              <div className="mb-3 border rounded p-3">
-                                <small className="fw-semibold">Pricing</small>
-                                {form.ziaratId && (
-                                  <>
-                                    <div className="row mt-2">
-                                      <div className="col-12 col-md-4 mb-2">
-                                        <div className="alert alert-info p-2 mb-0">
-                                          <small>
-                                            Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'ziarat')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'ziarat')}
-                                          </small>
-                                        </div>
-                                      </div>
-                                      <div className="col-12 col-md-4 mb-2">
-                                        <div className="alert alert-info p-2 mb-0">
-                                          <small>
-                                            Child: {formatPriceWithCurrencyDisplay(childPrice, 'ziarat')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'ziarat')}
-                                          </small>
-                                        </div>
-                                      </div>
-                                      <div className="col-12 col-md-4 mb-2">
-                                        <div className="alert alert-info p-2 mb-0">
-                                          <small>
-                                            Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'ziarat')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'ziarat')}
-                                          </small>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="row">
-                                      <div className="col-12">
-                                        <div className="alert alert-success p-2 mb-0">
-                                          <small className="fw-bold">
-                                            Total Ziarat Price: {formatPriceWithCurrencyDisplay(totalPrice, 'ziarat')}
-                                          </small>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </>
-                                )}
-                              </div>                              {/* Actions */}
-                              <div className="d-flex justify-content-end">
-                                <div className="me-auto align-self-center small text-muted">&nbsp;</div>
-                                <div className="d-flex gap-2">
-                                  <div className="form-check d-flex align-items-center gap-2">
-                                    <input
-                                      className="form-check-input border border-black"
-                                      type="checkbox"
-                                      checked={ziaratSelf}
-                                      onChange={() => setZiaratSelf(!ziaratSelf)}
-                                      id={`ziaratSelf-${form.id}`}
-                                    />
-                                    <label htmlFor={`ziaratSelf-${form.id}`}>Self</label>
-                                  </div>
-
-                                  {index === ziaratForms.length - 1 && ziaratForms.length > 1 ? (
-                                    <div className="text-end">
-                                      <button
-                                        className="btn btn-outline-danger btn-sm d-flex align-items-center justify-content-center px-3"
-                                        onClick={() => {
-                                          const updated = ziaratForms.filter((_, i) => i !== index);
+                                  <div className="row g-2 mt-2">
+                                    <div className="col-md-4">
+                                      <label className="form-label small">City</label>
+                                      <Select
+                                        options={ziaratCityOptions}
+                                        value={ziaratCityOptions.find(o => o.value === String(form.city)) || null}
+                                        onChange={(opt) => {
+                                          const updated = [...ziaratForms];
+                                          updated[index].city = opt ? opt.value : "";
+                                          // clear ziarat selection when city changes to avoid mismatches
+                                          updated[index].ziaratId = "";
                                           setZiaratForms(updated);
                                         }}
-                                      >
-                                        <span className="me-2"><Trash /></span>
-                                        Remove
-                                      </button>
+                                        isDisabled={ziaratSelf || loading.ziarat}
+                                        isClearable
+                                        isSearchable
+                                        placeholder={ziaratCityOptions.length ? 'Select City' : 'No cities available'}
+                                        classNamePrefix="react-select"
+                                      />
                                     </div>
-                                  ) : null}
+
+                                    <div className="col-md-8">
+                                      <label className="form-label small">Ziarat</label>
+                                      {
+                                        (() => {
+                                          const options = (ziaratPrices || []).filter(z => {
+                                            try {
+                                              const cityId = z.city_id ?? (z.city && (typeof z.city === 'object' ? z.city.id : z.city)) ?? null;
+                                              const cityName = (cityId && (citiesMap?.[cityId]?.name)) || z.city_name || (z.city && (typeof z.city === 'object' ? z.city.name : null)) || null;
+                                              const key = cityId ?? cityName ?? (z.city || z.city_name || `unknown-${z.id}`);
+                                              if (!form.city) return true;
+                                              return String(key) === String(form.city);
+                                            } catch (err) {
+                                              return true;
+                                            }
+                                          }).map(z => ({ value: String(z.id), label: (z.ziarat_title || z.title || z.name) }));
+
+                                          return (
+                                            <Select
+                                              options={options}
+                                              value={options.find(o => o.value === String(form.ziaratId)) || null}
+                                              onChange={(opt) => {
+                                                const updated = [...ziaratForms];
+                                                const selectedId = opt ? opt.value : "";
+                                                updated[index].ziaratId = selectedId;
+
+                                                // Try to auto-fill city from the selected ziarat entry
+                                                try {
+                                                  const z = ziaratPrices.find(z => z.id?.toString() === selectedId?.toString());
+                                                  const cityName = z ? (citiesMap[(z.city_id || z.city)?.toString?.()]?.name || z.city_name || z.city?.name || "") : "";
+                                                  // prefer keeping the existing city key if present, otherwise set to the computed key
+                                                  const cityKey = (z?.city_id ?? (z?.city && (typeof z.city === 'object' ? z.city.id : z.city)) ?? cityName) || "";
+                                                  updated[index].city = updated[index].city || cityKey;
+                                                } catch (err) {
+                                                  updated[index].city = updated[index].city || "";
+                                                }
+
+                                                setZiaratForms(updated);
+
+                                                // Recalculate visa and totals immediately after selection
+                                                setTimeout(() => {
+                                                  try {
+                                                    const prices = calculateVisaPrices();
+                                                    setCalculatedVisaPrices(prices);
+                                                  } catch (err) {
+                                                    // ignore if calculation not ready
+                                                  }
+                                                  try {
+                                                    calculateCosts();
+                                                  } catch (err) {
+                                                    // ignore
+                                                  }
+                                                }, 0);
+                                              }}
+                                              isDisabled={ziaratSelf || loading.ziarat}
+                                              isClearable
+                                              isSearchable
+                                              placeholder={loading.ziarat ? 'Loading ziarat options...' : (options.length ? 'Select Ziarat' : 'No ziarat options available for selected city')}
+                                              classNamePrefix="react-select"
+                                            />
+                                          );
+                                        })()
+                                      }
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Dates */}
+                                <div className="mb-3 pb-2 border-bottom">
+                                  <div className="fw-semibold small mb-2">Dates</div>
+                                  <div className="row g-2">
+                                    <div className="col-md-4">
+                                      <label className="form-label small">Visit Date</label>
+                                      <input
+                                        type="date"
+                                        className="form-control shadow-none"
+                                        value={form.visitDate || ""}
+                                        min={departureDate ? String(departureDate).split('T')[0] : undefined}
+                                        max={(returnDepartureDate || returnDate) ? String((returnDepartureDate || returnDate)).split('T')[0] : undefined}
+                                        onChange={(e) => {
+                                          const updated = [...ziaratForms];
+                                          updated[index].visitDate = e.target.value;
+                                          setZiaratForms(updated);
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Pricing */}
+                                <div className="mb-3 border rounded p-3">
+                                  <small className="fw-semibold">Pricing</small>
+                                  {form.ziaratId && (
+                                    <>
+                                      <div className="row mt-2">
+                                        <div className="col-12 col-md-4 mb-2">
+                                          <div className="alert alert-info p-2 mb-0">
+                                            <small>
+                                              Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'ziarat')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'ziarat')}
+                                            </small>
+                                          </div>
+                                        </div>
+                                        <div className="col-12 col-md-4 mb-2">
+                                          <div className="alert alert-info p-2 mb-0">
+                                            <small>
+                                              Child: {formatPriceWithCurrencyDisplay(childPrice, 'ziarat')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'ziarat')}
+                                            </small>
+                                          </div>
+                                        </div>
+                                        <div className="col-12 col-md-4 mb-2">
+                                          <div className="alert alert-info p-2 mb-0">
+                                            <small>
+                                              Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'ziarat')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'ziarat')}
+                                            </small>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="row">
+                                        <div className="col-12">
+                                          <div className="alert alert-success p-2 mb-0">
+                                            <small className="fw-bold">
+                                              Total Ziarat Price: {formatPriceWithCurrencyDisplay(totalPrice, 'ziarat')}
+                                            </small>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>                              {/* Actions */}
+                                <div className="d-flex justify-content-end">
+                                  <div className="me-auto align-self-center small text-muted">&nbsp;</div>
+                                  <div className="d-flex gap-2">
+                                    <div className="form-check d-flex align-items-center gap-2">
+                                      <input
+                                        className="form-check-input border border-black"
+                                        type="checkbox"
+                                        checked={ziaratSelf}
+                                        onChange={() => setZiaratSelf(!ziaratSelf)}
+                                        id={`ziaratSelf-${form.id}`}
+                                      />
+                                      <label htmlFor={`ziaratSelf-${form.id}`}>Self</label>
+                                    </div>
+
+                                    {index === ziaratForms.length - 1 && ziaratForms.length > 1 ? (
+                                      <div className="text-end">
+                                        <button
+                                          className="btn btn-outline-danger btn-sm d-flex align-items-center justify-content-center px-3"
+                                          onClick={() => {
+                                            const updated = ziaratForms.filter((_, i) => i !== index);
+                                            setZiaratForms(updated);
+                                          }}
+                                        >
+                                          <span className="me-2"><Trash /></span>
+                                          Remove
+                                        </button>
+                                      </div>
+                                    ) : null}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
 
-                        {/* Add More Ziyarat button: use same filled primary style as Hotel (JSX-only) */}
-                        <div className="mt-3">
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-lg w-100 d-flex align-items-center justify-content-between"
-                            onClick={() => setZiaratForms([...ziaratForms, { id: Date.now(), ziaratId: "", city: "", visitDate: "" }])}
-                            style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
-                          >
-                            <span style={{ width: 24 }} />
-                            <span className="mx-auto">Add More Ziyarat</span>
-                            <PlusCircle size={18} />
-                          </button>
+                          {/* Add More Ziyarat button: use same filled primary style as Hotel (JSX-only) */}
+                          <div className="mt-3">
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-lg w-100 d-flex align-items-center justify-content-between"
+                              onClick={() => setZiaratForms([...ziaratForms, { id: Date.now(), ziaratId: "", city: "", visitDate: "" }])}
+                              style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}
+                            >
+                              <span style={{ width: 24 }} />
+                              <span className="mx-auto">Add More Ziyarat</span>
+                              <PlusCircle size={18} />
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      </PermissionWrapper>
 
                       <div className="row">
                         <div className="col-md-3 mb-3 mt-3">
@@ -8258,7 +8300,7 @@ const AgentUmrahCalculator = () => {
             </div>
           </div>
         </div >
-      </div>
+      </div >
     </>
   );
 };

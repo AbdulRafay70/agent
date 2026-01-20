@@ -7,21 +7,30 @@ import { Gear } from "react-bootstrap-icons";
 import { toast } from 'react-toastify';
 import { Button } from "react-bootstrap";
 import axios from 'axios';
+import { usePermission } from "../../contexts/EnhancedPermissionContext";
 
 const AgentBankAccounts = () => {
-  const tabs = [
-    { name: "Ledger", path: "/payment", isActive: true },
+  const { hasPermission } = usePermission();
+
+  // Define all tabs with their required permissions
+  const allTabs = [
+    { name: "Ledger", path: "/payment", isActive: true, permission: "view_ledger_agent" },
     {
       name: "Add Deposit",
       path: "/payment/add-deposit",
       isActive: false,
+      permission: "add_deposit_payment_agent"
     },
     {
       name: "Bank Accounts",
       path: "/payment/bank-accounts",
       isActive: false,
+      permission: "view_bank_account_agent"
     },
   ];
+
+  // Filter tabs based on user permissions
+  const tabs = allTabs.filter(tab => hasPermission(tab.permission));
 
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -378,19 +387,25 @@ const AgentBankAccounts = () => {
                                               zIndex: 1000,
                                             }}
                                           >
-                                            <button
-                                              className="dropdown-item py-2 px-3 border-0 bg-transparent w-100 text-start"
-                                              onClick={() => handleAction("edit", account.id)}
-                                              style={{ color: "#1B78CE" }}
-                                            >
-                                              Edit
-                                            </button>
-                                            <button
-                                              className="dropdown-item py-2 px-3 border-0 bg-transparent w-100 text-start text-danger"
-                                              onClick={() => handleAction("remove", account.id)}
-                                            >
-                                              Remove
-                                            </button>
+                                            {/* Edit button - only show if user has edit permission */}
+                                            {hasPermission('edit_bank_account_agent') && (
+                                              <button
+                                                className="dropdown-item py-2 px-3 border-0 bg-transparent w-100 text-start"
+                                                onClick={() => handleAction("edit", account.id)}
+                                                style={{ color: "#1B78CE" }}
+                                              >
+                                                Edit
+                                              </button>
+                                            )}
+                                            {/* Remove button - only show if user has delete permission */}
+                                            {hasPermission('delete_bank_account_agent') && (
+                                              <button
+                                                className="dropdown-item py-2 px-3 border-0 bg-transparent w-100 text-start text-danger"
+                                                onClick={() => handleAction("remove", account.id)}
+                                              >
+                                                Remove
+                                              </button>
+                                            )}
                                             <button
                                               className="dropdown-item py-2 px-3 border-0 bg-transparent w-100 text-start text-secondary"
                                               onClick={() => setDropdownOpen(null)}
@@ -406,15 +421,18 @@ const AgentBankAccounts = () => {
                               </tbody>
                             </table>
                           </div>
-                          <div className="d-flex justify-content-end mt-4">
-                            <button
-                              className="btn px-4 py-2"
-                              id="btn"
-                              onClick={() => { setShowModal(true); setEditingAccountId(null); }}
-                            >
-                              Add Bank Account
-                            </button>
-                          </div>
+                          {/* Add Bank Account button - only show if user has add permission */}
+                          {hasPermission('add_bank_account_agent') && (
+                            <div className="d-flex justify-content-end mt-4">
+                              <button
+                                className="btn px-4 py-2"
+                                id="btn"
+                                onClick={() => { setShowModal(true); setEditingAccountId(null); }}
+                              >
+                                Add Bank Account
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

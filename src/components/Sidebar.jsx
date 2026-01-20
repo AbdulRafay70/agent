@@ -14,9 +14,11 @@ import {
 } from "lucide-react";
 import { Bag, Cash } from "react-bootstrap-icons";
 import { useAuth } from "../context/AuthContext";
+import { usePermission } from "../contexts/EnhancedPermissionContext";
 
 const Sidebar = () => {
   const { logout } = useAuth();
+  const { hasAnyPermission } = usePermission();
 
   const [show, setShow] = useState(false);
 
@@ -53,58 +55,75 @@ const Sidebar = () => {
           <Offcanvas.Body>
             <div className="d-flex flex-column h-100">
               <Nav className="flex-column flex-grow-1">
-                {/* All NavLinks with active styling */}
+                {/* All NavLinks with active styling and permission checks */}
                 <Nav.Item className="mb-3 mt-5">
                   <NavLink to="/admin/dashboard" className={getNavLinkClass}>
                     <LayoutDashboard size={20} />{" "}
                     <span className="fs-6">Dashboard</span>
                   </NavLink>
                 </Nav.Item>
-                <Nav.Item className="mb-3">
-                  <NavLink to="/admin/packages" className={getNavLinkClass}>
-                    <PackageIcon size={20} />{" "}
-                    <span className="fs-6">Packages</span>
-                  </NavLink>
-                </Nav.Item>
-                <Nav.Item className="mb-3">
-                  <NavLink
-                    to="/admin/ticket-Booking"
-                    className={getNavLinkClass}
-                  >
-                    <Check size={20} />{" "}
-                    <span className="fs-6">Ticket Booking</span>
-                  </NavLink>
-                </Nav.Item>
-                <Nav.Item className="mb-3">
-                  <NavLink to="/admin/partners" className={getNavLinkClass}>
-                    <Bag size={20} /> <span className="fs-6">Partner's</span>
-                  </NavLink>
-                </Nav.Item>
-                <Nav.Item className="mb-3">
-                  <NavLink to="/admin/hotels" className={getNavLinkClass}>
-                    <Hotel size={20} /> <span className="fs-6">Hotels</span>
-                  </NavLink>
-                </Nav.Item>
-                <Nav.Item className="mb-3">
-                  <NavLink to="/admin/payment" className={getNavLinkClass}>
-                    <Cash size={20} /> <span className="fs-6">Payment</span>
-                  </NavLink>
-                </Nav.Item>
-                <Nav.Item className="mb-3">
-                  <NavLink
-                    to="/admin/order-delivery"
-                    className={getNavLinkClass}
-                  >
-                    <FileAxis3DIcon size={20} />{" "}
-                    <span className="fs-6">Order Delivery</span>
-                  </NavLink>
-                </Nav.Item>
-                <Nav.Item className="mb-3">
-                  <NavLink to="/admin/intimation" className={getNavLinkClass}>
-                    <HelpCircle size={20} />{" "}
-                    <span className="fs-6">Intimation</span>
-                  </NavLink>
-                </Nav.Item>
+
+                {/* Packages - show if user has view or book permission */}
+                {hasAnyPermission(['view_package_agent', 'book_package_agent']) && (
+                  <Nav.Item className="mb-3">
+                    <NavLink to="/admin/packages" className={getNavLinkClass}>
+                      <PackageIcon size={20} />{" "}
+                      <span className="fs-6">Packages</span>
+                    </NavLink>
+                  </Nav.Item>
+                )}
+
+                {/* Ticket Booking - show if user has view permission */}
+                {hasAnyPermission(['view_ticket_agent']) && (
+                  <Nav.Item className="mb-3">
+                    <NavLink
+                      to="/admin/ticket-Booking"
+                      className={getNavLinkClass}
+                    >
+                      <Check size={20} />{" "}
+                      <span className="fs-6">Ticket Booking</span>
+                    </NavLink>
+                  </Nav.Item>
+                )}
+
+                {/* Booking History - show if user has view permission */}
+                {hasAnyPermission(['view_booking_history_agent']) && (
+                  <Nav.Item className="mb-3">
+                    <NavLink to="/booking-history" className={getNavLinkClass}>
+                      <Bag size={20} /> <span className="fs-6">Booking History</span>
+                    </NavLink>
+                  </Nav.Item>
+                )}
+
+                {/* Hotels - show if user has view permission */}
+                {hasAnyPermission(['view_hotel_agent']) && (
+                  <Nav.Item className="mb-3">
+                    <NavLink to="/admin/hotels" className={getNavLinkClass}>
+                      <Hotel size={20} /> <span className="fs-6">Hotels</span>
+                    </NavLink>
+                  </Nav.Item>
+                )}
+
+                {/* Payment - show if user has any payment-related permission */}
+                {hasAnyPermission(['view_ledger_agent', 'view_bank_account_agent', 'add_deposit_payment_agent', 'add_bank_account_agent', 'edit_bank_account_agent', 'delete_bank_account_agent']) && (
+                  <Nav.Item className="mb-3">
+                    <NavLink to="/admin/payment" className={getNavLinkClass}>
+                      <Cash size={20} /> <span className="fs-6">Payment</span>
+                    </NavLink>
+                  </Nav.Item>
+                )}
+
+
+
+                {/* Intimation (Pax Movement) - show if user has permission */}
+                {hasAnyPermission(['view_pax_movement_agent']) && (
+                  <Nav.Item className="mb-3">
+                    <NavLink to="/admin/intimation" className={getNavLinkClass}>
+                      <HelpCircle size={20} />{" "}
+                      <span className="fs-6">Intimation</span>
+                    </NavLink>
+                  </Nav.Item>
+                )}
               </Nav>
               <Nav.Item className="mt-auto">
                 <button
@@ -125,7 +144,7 @@ const Sidebar = () => {
           </div>
           <div className="d-flex flex-column">
             <Nav className="flex-column flex-grow-1">
-              {/* All NavLinks with active styling */}
+              {/* All NavLinks with active styling and permission checks */}
               <Nav.Item className="mb-3 mt-5">
                 <NavLink
                   to="/admin/dashboard"
@@ -136,73 +155,89 @@ const Sidebar = () => {
                   <span className="fs-6">Dashboard</span>
                 </NavLink>
               </Nav.Item>
-              <Nav.Item className="mb-3">
-                <NavLink
-                  to="/admin/packages"
-                  style={{ color: "black" }}
-                  className={getNavLinkClass}
-                >
-                  <PackageIcon size={20} />{" "}
-                  <span className="fs-6">Packages</span>
-                </NavLink>
-              </Nav.Item>
-              <Nav.Item className="mb-3">
-                <NavLink
-                  to="/admin/ticket-booking"
-                  style={{ color: "black" }}
-                  className={getNavLinkClass}
-                >
-                  <Check size={20} />{" "}
-                  <span className="fs-6">Ticket Booking</span>
-                </NavLink>
-              </Nav.Item>
-              <Nav.Item className="mb-3">
-                <NavLink
-                  to="/admin/partners"
-                  style={{ color: "black" }}
-                  className={getNavLinkClass}
-                >
-                  <Bag size={20} /> <span className="fs-6">Partner's</span>
-                </NavLink>
-              </Nav.Item>
-              <Nav.Item className="mb-3">
-                <NavLink
-                  to="/admin/hotels"
-                  style={{ color: "black" }}
-                  className={getNavLinkClass}
-                >
-                  <Hotel size={20} /> <span className="fs-6">Hotels</span>
-                </NavLink>
-              </Nav.Item>
-              <Nav.Item className="mb-3">
-                <NavLink
-                  to="/admin/payment"
-                  style={{ color: "black" }}
-                  className={getNavLinkClass}
-                >
-                  <Cash size={20} /> <span className="fs-6">Payment</span>
-                </NavLink>
-              </Nav.Item>
-              <Nav.Item className="mb-3">
-                <NavLink
-                  to="/admin/order-delivery"
-                  style={{ color: "black" }}
-                  className={getNavLinkClass}
-                >
-                  <FileAxis3DIcon size={20} />{" "}
-                  <span className="fs-6">Order Delivery</span>
-                </NavLink>
-              </Nav.Item>
-              <Nav.Item className="mb-3">
-                <NavLink
-                  to="/admin/intimation"
-                  style={{ color: "black" }}
-                  className={getNavLinkClass}
-                >
-                  <HelpCircle size={20} />{" "}
-                  <span className="fs-6">Intimation</span>
-                </NavLink>
-              </Nav.Item>
+
+              {/* Packages - show if user has view or book permission */}
+              {hasAnyPermission(['view_package_agent', 'book_package_agent']) && (
+                <Nav.Item className="mb-3">
+                  <NavLink
+                    to="/admin/packages"
+                    style={{ color: "black" }}
+                    className={getNavLinkClass}
+                  >
+                    <PackageIcon size={20} />{" "}
+                    <span className="fs-6">Packages</span>
+                  </NavLink>
+                </Nav.Item>
+              )}
+
+              {/* Ticket Booking - show if user has view permission */}
+              {hasAnyPermission(['view_ticket_agent']) && (
+                <Nav.Item className="mb-3">
+                  <NavLink
+                    to="/admin/ticket-booking"
+                    style={{ color: "black" }}
+                    className={getNavLinkClass}
+                  >
+                    <Check size={20} />{" "}
+                    <span className="fs-6">Ticket Booking</span>
+                  </NavLink>
+                </Nav.Item>
+              )}
+
+              {/* Booking History - show if user has view permission */}
+              {hasAnyPermission(['view_booking_history_agent']) && (
+                <Nav.Item className="mb-3">
+                  <NavLink
+                    to="/booking-history"
+                    style={{ color: "black" }}
+                    className={getNavLinkClass}
+                  >
+                    <Bag size={20} /> <span className="fs-6">Booking History</span>
+                  </NavLink>
+                </Nav.Item>
+              )}
+
+              {/* Hotels - show if user has view permission */}
+              {hasAnyPermission(['view_hotel_agent']) && (
+                <Nav.Item className="mb-3">
+                  <NavLink
+                    to="/admin/hotels"
+                    style={{ color: "black" }}
+                    className={getNavLinkClass}
+                  >
+                    <Hotel size={20} /> <span className="fs-6">Hotels</span>
+                  </NavLink>
+                </Nav.Item>
+              )}
+
+              {/* Payment - show if user has any payment-related permission */}
+              {hasAnyPermission(['view_ledger_agent', 'view_bank_account_agent', 'add_deposit_payment_agent', 'add_bank_account_agent', 'edit_bank_account_agent', 'delete_bank_account_agent']) && (
+                <Nav.Item className="mb-3">
+                  <NavLink
+                    to="/admin/payment"
+                    style={{ color: "black" }}
+                    className={getNavLinkClass}
+                  >
+                    <Cash size={20} /> <span className="fs-6">Payment</span>
+                  </NavLink>
+                </Nav.Item>
+              )}
+
+
+
+              {/* Intimation (Pax Movement) - show if user has permission */}
+              {hasAnyPermission(['view_pax_movement_agent']) && (
+                <Nav.Item className="mb-3">
+                  <NavLink
+                    to="/admin/intimation"
+                    style={{ color: "black" }}
+                    className={getNavLinkClass}
+                  >
+                    <HelpCircle size={20} />{" "}
+                    <span className="fs-6">Intimation</span>
+                  </NavLink>
+                </Nav.Item>
+              )}
             </Nav>
             <Nav.Item className="ms-3 mt-5">
               <button

@@ -5,21 +5,30 @@ import { Link, NavLink } from "react-router-dom";
 import { Search } from "lucide-react";
 import axios from 'axios';
 import { toast, ToastContainer } from 'react-toastify';
+import { usePermission } from "../../contexts/EnhancedPermissionContext";
 
 const AddDepositForm = () => {
-  const tabs = [
-    { name: "Ledger", path: "/payment", isActive: true },
+  const { hasPermission } = usePermission();
+
+  // Define all tabs with their required permissions
+  const allTabs = [
+    { name: "Ledger", path: "/payment", isActive: true, permission: "view_ledger_agent" },
     {
       name: "Add Deposit",
       path: "/payment/add-deposit",
       isActive: false,
+      permission: "add_deposit_payment_agent"
     },
     {
       name: "Bank Accounts",
       path: "/payment/bank-accounts",
       isActive: false,
+      permission: "view_bank_account_agent"
     },
   ];
+
+  // Filter tabs based on user permissions
+  const tabs = allTabs.filter(tab => hasPermission(tab.permission));
 
   const [formData, setFormData] = useState({
     modeOfPayment: "Bank Transfer",

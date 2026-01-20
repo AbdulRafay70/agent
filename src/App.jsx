@@ -38,259 +38,263 @@ import AgentRegister from "./pages/agentside/AgentRegister";
 import PrivateRoute from "./components/PrivateRoute";
 
 import AgentProtectedRoute from "./components/AgentProtectedRoute";
+import { PermissionProvider } from "./contexts/EnhancedPermissionContext";
+
 function App() {
   return (
-    <div className="d-flex">
-      <Container fluid className="p-0">
-        <Routes>
-          {/* AgentSide */}
-          <Route path="/login" element={<AgentLogin />} />
-          <Route path="/register" element={<AgentRegister />} />
+    <PermissionProvider>
+      <div className="d-flex">
+        <Container fluid className="p-0">
+          <Routes>
+            {/* AgentSide */}
+            <Route path="/login" element={<AgentLogin />} />
+            <Route path="/register" element={<AgentRegister />} />
 
-          <Route
-            path="/"
-            element={<Navigate to="/profile" replace />}
-          />
+            <Route
+              path="/"
+              element={<Navigate to="/profile" replace />}
+            />
 
-          <Route
-            path="/profile"
-            element={
-              <AgentProtectedRoute>
-                <Profile />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/booking"
-            element={
-              <AgentProtectedRoute>
-                <Booking />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/booking/detail"
-            element={
-              <AgentProtectedRoute>
-                <FlightBookingForm />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/booking/review"
-            element={
-              <AgentProtectedRoute>
-                <BookingReview />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/booking/pay"
-            element={
-              <AgentProtectedRoute>
-                <BookingPay />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/booking/:id"
-            element={
-              <AgentProtectedRoute>
-                <AgentHotelVoucher />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/payment"
-            element={
-              <AgentProtectedRoute>
-                <AgentPayment />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/payment/add-deposit"
-            element={
-              <AgentProtectedRoute>
-                <AgentAddDeposit />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/payment/bank-accounts"
-            element={
-              <AgentProtectedRoute>
-                <AgentBankAccounts />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/kuickpay"
-            element={
-              <AgentProtectedRoute>
-                <AgentKuickpay />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/hotels"
-            element={
-              <AgentProtectedRoute>
-                <AgentHotels />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/packages"
-            element={
-              <AgentProtectedRoute>
-                <AgentPackages />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/packages/detail"
-            element={
-              <AgentProtectedRoute>
-                <AgentPackagesDetail />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/packages/booking"
-            element={
-              <AgentProtectedRoute>
-                <AgentBookingForm />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/packages/summary"
-            element={
-              <AgentProtectedRoute>
-                <BookingSummary />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/packages/review"
-            element={
-              <AgentProtectedRoute>
-                <AgentPackagesReview />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/packages/pay"
-            element={
-              <AgentProtectedRoute>
-                <AgentPackagesPay />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/packages/umrah-calculater"
-            element={
-              <AgentProtectedRoute>
-                <AgentUmrahCalculator />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/packages/custom-umrah"
-            element={
-              <AgentProtectedRoute>
-                <AgentCustomPackage />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/packages/custom-umrah/detail/:id"
-            element={
-              <AgentProtectedRoute>
-                <CustomUmrahPackagesDetail />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/packages/custom-umrah/review"
-            element={
-              <AgentProtectedRoute>
-                <CustomUmrahPackagesReview />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/packages/custom-umrah/pay"
-            element={
-              <AgentProtectedRoute>
-                <CustomUmrahPackagesPay />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/booking-history"
-            element={
-              <AgentProtectedRoute>
-                <AgentBookingHistory />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/booking-history/hotel-voucher"
-            element={
-              <AgentProtectedRoute>
-                <AgentHotelVoucher />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/booking-history/invoice"
-            element={
-              <AgentProtectedRoute>
-                <AgentBookingInvoice />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/booking-history/group-tickets"
-            element={
-              <AgentProtectedRoute>
-                <AgentBookingGroupTicket />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/booking-history/group-invoice"
-            element={
-              <AgentProtectedRoute>
-                <AgentGroupTicketInvoice />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/pax-movement"
-            element={
-              <AgentProtectedRoute>
-                <PaxMovement />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/agent-pax-movement"
-            element={
-              <AgentProtectedRoute>
-                <AgentPaxMovement />
-              </AgentProtectedRoute>
-            }
-          />
-          <Route
-            path="/public-voucher/:bookingNo"
-            element={<PublicHotelVoucher />}
-          />
-        </Routes>
-      </Container>
-    </div>
+            <Route
+              path="/profile"
+              element={
+                <AgentProtectedRoute>
+                  <Profile />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking"
+              element={
+                <AgentProtectedRoute>
+                  <Booking />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking/detail"
+              element={
+                <AgentProtectedRoute>
+                  <FlightBookingForm />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking/review"
+              element={
+                <AgentProtectedRoute>
+                  <BookingReview />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking/pay"
+              element={
+                <AgentProtectedRoute>
+                  <BookingPay />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking/:id"
+              element={
+                <AgentProtectedRoute>
+                  <AgentHotelVoucher />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/payment"
+              element={
+                <AgentProtectedRoute>
+                  <AgentPayment />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/payment/add-deposit"
+              element={
+                <AgentProtectedRoute>
+                  <AgentAddDeposit />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/payment/bank-accounts"
+              element={
+                <AgentProtectedRoute>
+                  <AgentBankAccounts />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/kuickpay"
+              element={
+                <AgentProtectedRoute>
+                  <AgentKuickpay />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/hotels"
+              element={
+                <AgentProtectedRoute>
+                  <AgentHotels />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/packages"
+              element={
+                <AgentProtectedRoute>
+                  <AgentPackages />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/packages/detail"
+              element={
+                <AgentProtectedRoute>
+                  <AgentPackagesDetail />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/packages/booking"
+              element={
+                <AgentProtectedRoute>
+                  <AgentBookingForm />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/packages/summary"
+              element={
+                <AgentProtectedRoute>
+                  <BookingSummary />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/packages/review"
+              element={
+                <AgentProtectedRoute>
+                  <AgentPackagesReview />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/packages/pay"
+              element={
+                <AgentProtectedRoute>
+                  <AgentPackagesPay />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/packages/umrah-calculater"
+              element={
+                <AgentProtectedRoute>
+                  <AgentUmrahCalculator />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/packages/custom-umrah"
+              element={
+                <AgentProtectedRoute>
+                  <AgentCustomPackage />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/packages/custom-umrah/detail/:id"
+              element={
+                <AgentProtectedRoute>
+                  <CustomUmrahPackagesDetail />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/packages/custom-umrah/review"
+              element={
+                <AgentProtectedRoute>
+                  <CustomUmrahPackagesReview />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/packages/custom-umrah/pay"
+              element={
+                <AgentProtectedRoute>
+                  <CustomUmrahPackagesPay />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking-history"
+              element={
+                <AgentProtectedRoute>
+                  <AgentBookingHistory />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking-history/hotel-voucher"
+              element={
+                <AgentProtectedRoute>
+                  <AgentHotelVoucher />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking-history/invoice"
+              element={
+                <AgentProtectedRoute>
+                  <AgentBookingInvoice />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking-history/group-tickets"
+              element={
+                <AgentProtectedRoute>
+                  <AgentBookingGroupTicket />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking-history/group-invoice"
+              element={
+                <AgentProtectedRoute>
+                  <AgentGroupTicketInvoice />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/pax-movement"
+              element={
+                <AgentProtectedRoute>
+                  <PaxMovement />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/agent-pax-movement"
+              element={
+                <AgentProtectedRoute>
+                  <AgentPaxMovement />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/public-voucher/:bookingNo"
+              element={<PublicHotelVoucher />}
+            />
+          </Routes>
+        </Container>
+      </div>
+    </PermissionProvider>
   );
 }
 
