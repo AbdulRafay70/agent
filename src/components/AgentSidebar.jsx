@@ -15,6 +15,7 @@ import {
   User,
   Plane,
   CreditCard,
+  DollarSign,
 } from "lucide-react";
 import { Cash } from "react-bootstrap-icons";
 import { useAuth } from "../context/AuthContext";
@@ -426,6 +427,18 @@ const Sidebar = () => {
                   </h6>
                 </div>
               </div>
+
+              {/* My Commissions */}
+              <Nav.Item className="mb-3 mt-3">
+                <NavLink
+                  to="/my-commissions"
+                  style={{ color: "black" }}
+                  className={getNavLinkClass}
+                >
+                  <DollarSign size={20} /> <span className="fs-6">My Commissions</span>
+                </NavLink>
+              </Nav.Item>
+
               {/* Packages - show if user has view or book permission */}
               {hasAnyPermission(['view_package_agent', 'book_package_agent']) && (
                 <Nav.Item className="mb-3 mt-3">

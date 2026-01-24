@@ -67,6 +67,7 @@ const Profile = () => {
     address: "",
     branch: 0,
     logo: null,
+    agencyType: "", // NEW: Area Agency or Full Agency
   });
 
   const [flightIssueData, setFlightIssueData] = useState({
@@ -89,6 +90,18 @@ const Profile = () => {
     userName: "",
     userEmail: "",
   });
+
+  // NEW: State for agent's organizational hierarchy
+  const [agentHierarchy, setAgentHierarchy] = useState({
+    agencyName: "",
+    agencyCode: "",
+    agencyType: "",
+    branchName: "",
+    branchCode: "",
+    organizationName: "",
+    organizationCode: "",
+  });
+
   const isInitialLoad = React.useRef(true);
 
   const getOrgId = () => {
@@ -136,25 +149,13 @@ const Profile = () => {
             userEmail: userData.email || "",
           });
 
-          if (branchId) {
-            const agenciesRes = await axios.get(
-              `http://127.0.0.1:8000/api/agencies/?organization=${orgId}`,
-              {
-                headers: { Authorization: `Bearer ${token}` },
-              }
-            );
-            // Filter agencies by branch
-            const branchAgencies = agenciesRes.data.filter(
-              (agency) => agency.branch === branchId
-            );
-            setAvailableAgencies(branchAgencies);
+          // Clear any existing agency data from localStorage for employees
+          localStorage.removeItem("agencyId");
+          localStorage.removeItem("agencyName");
+          localStorage.removeItem("selectedAgencyId");
 
-            // Set first agency as default if not already selected
-            if (branchAgencies.length > 0) {
-              setSelectedAgencyId(branchAgencies[0].id);
-              setAgencyId(branchAgencies[0].id);
-            }
-          }
+          // Employees don't need agency data - they work independently
+          // Do NOT set selectedAgencyId or agencyId for employees
         } else if (currentUserType === "subagent") {
           // For branch users (subagents), fetch all agencies for their branch
           const branchId = userData.branch_details?.[0]?.id;
@@ -200,6 +201,8 @@ const Profile = () => {
 
   // Fetch agency details when selected agency changes
   useEffect(() => {
+    // Skip agency fetch for employees - they don't have agencies
+    if (userType === "employee") return;
     if (!selectedAgencyId) return;
 
     const fetchAgencyDetails = async () => {
@@ -235,11 +238,35 @@ const Profile = () => {
           contactNo: agencyData.phone_number || "",
           address: agencyData.address || "",
           branch: agencyData.branch,
+          agencyType: agencyData.agency_type || "", // NEW: Set agency type
           logo:
             agencyData.files && agencyData.files.length > 0
               ? agencyData.files[0].file
               : null,
         });
+
+        // NEW: Fetch branch and organization details for hierarchy display
+        if (agencyData.branch) {
+          try {
+            const branchRes = await axios.get(
+              `http://127.0.0.1:8000/api/branches/${agencyData.branch}/`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            const branchData = branchRes.data;
+
+            setAgentHierarchy({
+              agencyName: agencyData.ageny_name || "",
+              agencyCode: agencyData.agency_code || "",
+              agencyType: agencyData.agency_type || "",
+              branchName: branchData.name || "",
+              branchCode: branchData.branch_code || "",
+              organizationName: branchData.organization_name || "",
+              organizationCode: "", // Will be fetched if needed
+            });
+          } catch (err) {
+            console.error("Error fetching branch details:", err);
+          }
+        }
 
         // If contacts exist, overwrite agent fields
         if (agencyData.contacts && agencyData.contacts.length > 0) {
@@ -444,29 +471,176 @@ const Profile = () => {
                     <div className="card-body">
                       <h2 className="text-center mb-4 mt-5">Profile Page</h2>
 
-                      {/* Agent Selector for Employees and Branch Users */}
-                      {(userType === "employee" || userType === "subagent") && availableAgencies.length > 0 && (
+
+                      {/* NEW: Agent Organizational Hierarchy Section - Using Public Profile UI Style */}
+                      {userType !== "employee" && agentHierarchy.agencyName && (
                         <div className="row mb-4">
                           <div className="col-md-12">
-                            <div className="alert alert-info">
-                              <label htmlFor="agentSelector" className="form-label fw-bold">
-                                Select Agent to Manage
-                              </label>
-                              <select
-                                id="agentSelector"
-                                className="form-select"
-                                value={selectedAgencyId || ""}
-                                onChange={(e) => setSelectedAgencyId(parseInt(e.target.value))}
-                              >
-                                {availableAgencies.map((agency) => (
-                                  <option key={agency.id} value={agency.id}>
-                                    {agency.ageny_name} - {agency.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <small className="text-muted">
-                                You can switch between agents in your branch
-                              </small>
+                            <div className="profile-card" style={{
+                              background: "white",
+                              borderRadius: "20px",
+                              padding: "2rem",
+                              boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+                            }}>
+                              <div style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "15px",
+                                marginBottom: "1.5rem",
+                                paddingBottom: "1rem",
+                                borderBottom: "2px solid #e2e8f0"
+                              }}>
+                                <div style={{
+                                  width: "45px",
+                                  height: "45px",
+                                  borderRadius: "12px",
+                                  background: "linear-gradient(135deg, #1B78CE 0%, #1557a0 100%)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  color: "white",
+                                  boxShadow: "0 4px 15px rgba(27, 120, 206, 0.3)"
+                                }}>
+                                  <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" />
+                                  </svg>
+                                </div>
+                                <h5 style={{
+                                  fontSize: "1.5rem",
+                                  fontWeight: "700",
+                                  color: "#2d3748",
+                                  margin: 0,
+                                  flex: 1
+                                }}>{userType === "employee" ? "Employee Hierarchy" : "Organizational Hierarchy"}</h5>
+                              </div>
+
+                              <div style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                                gap: "1.5rem"
+                              }}>
+                                {/* Employee/Agency Info */}
+                                <div style={{
+                                  background: "#f7fafc",
+                                  padding: "1.25rem",
+                                  borderLeft: "4px solid #1B78CE",
+                                  borderRadius: "4px"
+                                }}>
+                                  <div style={{
+                                    fontSize: "0.85rem",
+                                    fontWeight: "600",
+                                    color: "#718096",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.5px",
+                                    marginBottom: "0.5rem"
+                                  }}>{userType === "employee" ? "Employee" : "Agency"}</div>
+                                  <div style={{
+                                    fontSize: "1.05rem",
+                                    color: "#2d3748",
+                                    fontWeight: "500"
+                                  }}>
+                                    {userType === "employee" ? employeeDetails.userName : agentHierarchy.agencyName}
+                                    {userType !== "employee" && agentHierarchy.agencyCode && (
+                                      <span style={{ color: "#718096", fontSize: "0.9rem" }}>
+                                        {" "}({agentHierarchy.agencyCode})
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Agency Type - Only show for non-employees */}
+                                {userType !== "employee" && (
+                                  <div style={{
+                                    background: "#f7fafc",
+                                    padding: "1.25rem",
+                                    borderLeft: "4px solid #10B981",
+                                    borderRadius: "4px"
+                                  }}>
+                                    <div style={{
+                                      fontSize: "0.85rem",
+                                      fontWeight: "600",
+                                      color: "#718096",
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.5px",
+                                      marginBottom: "0.5rem"
+                                    }}>Agency Type</div>
+                                    <div style={{
+                                      fontSize: "1.05rem",
+                                      color: "#2d3748",
+                                      fontWeight: "500"
+                                    }}>
+                                      <span style={{
+                                        background: agentHierarchy.agencyType === "Area Agency" ? "#DBEAFE" : "#FEF3C7",
+                                        color: agentHierarchy.agencyType === "Area Agency" ? "#1E40AF" : "#92400E",
+                                        padding: "0.25rem 0.75rem",
+                                        borderRadius: "9999px",
+                                        fontSize: "0.875rem",
+                                        fontWeight: "600"
+                                      }}>
+                                        {agentHierarchy.agencyType || "Not Set"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Branch Info */}
+                                <div style={{
+                                  background: "#f7fafc",
+                                  padding: "1.25rem",
+                                  borderLeft: "4px solid #F59E0B",
+                                  borderRadius: "4px"
+                                }}>
+                                  <div style={{
+                                    fontSize: "0.85rem",
+                                    fontWeight: "600",
+                                    color: "#718096",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.5px",
+                                    marginBottom: "0.5rem"
+                                  }}>Branch</div>
+                                  <div style={{
+                                    fontSize: "1.05rem",
+                                    color: "#2d3748",
+                                    fontWeight: "500"
+                                  }}>
+                                    {userType === "employee" ? employeeDetails.branchName : agentHierarchy.branchName || "N/A"}
+                                    {userType === "employee" && employeeDetails.branchCode && (
+                                      <span style={{ color: "#718096", fontSize: "0.9rem" }}>
+                                        {" "}({employeeDetails.branchCode})
+                                      </span>
+                                    )}
+                                    {userType !== "employee" && agentHierarchy.branchCode && (
+                                      <span style={{ color: "#718096", fontSize: "0.9rem" }}>
+                                        {" "}({agentHierarchy.branchCode})
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Organization Info */}
+                                <div style={{
+                                  background: "#f7fafc",
+                                  padding: "1.25rem",
+                                  borderLeft: "4px solid #8B5CF6",
+                                  borderRadius: "4px"
+                                }}>
+                                  <div style={{
+                                    fontSize: "0.85rem",
+                                    fontWeight: "600",
+                                    color: "#718096",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.5px",
+                                    marginBottom: "0.5rem"
+                                  }}>Organization</div>
+                                  <div style={{
+                                    fontSize: "1.05rem",
+                                    color: "#2d3748",
+                                    fontWeight: "500"
+                                  }}>
+                                    {userType === "employee" ? employeeDetails.organizationName : agentHierarchy.organizationName || "N/A"}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -507,142 +681,90 @@ const Profile = () => {
                                     </p>
                                   </div>
                                 </div>
-                                <div className="row">
-                                  <div className="col-md-12">
-                                    <label className="fw-bold">Agencies in Your Branch ({availableAgencies.length}):</label>
-                                    {availableAgencies.length > 0 ? (
-                                      <ul className="list-group mt-2">
-                                        {availableAgencies.map((agency) => (
-                                          <li key={agency.id} className="list-group-item d-flex justify-content-between align-items-center">
-                                            <div>
-                                              <strong>{agency.ageny_name}</strong>
-                                              <br />
-                                              <small className="text-muted">{agency.name} - {agency.agency_code}</small>
-                                            </div>
-                                            <span className="badge bg-primary rounded-pill">{agency.id}</span>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    ) : (
-                                      <p className="text-muted mt-2">No agencies found in your branch</p>
-                                    )}
-                                  </div>
-                                </div>
                               </div>
                             </div>
                           </div>
                         </div>
                       )}
 
-                      <div className="row mb-3">
-                        <div className="col-md-4">
-                          <label htmlFor="" className="">
-                            Travel Agency Name
-                          </label>
-                          <input
-                            type="text"
-                            name="travelAgencyName"
-                            value={profileData.travelAgencyName}
-                            onChange={handleProfileChange}
-                            className="form-control rounded shadow-none px-1 py-2"
-                            placeholder="Type"
-                          />
-                        </div>
-                        <div className="col-md-4">
-                          <label htmlFor="" className="">
-                            Agent Name
-                          </label>
-                          <input
-                            type="text"
-                            name="agentName"
-                            value={profileData.agentName}
-                            onChange={handleProfileChange}
-                            className="form-control rounded shadow-none px-1 py-2"
-                            placeholder="Type"
-                          />
-                        </div>
-                        <div className="col-md-4">
-                          <label htmlFor="" className="">
-                            Email
-                          </label>
-                          <input
-                            type="email"
-                            name="email"
-                            value={profileData.email}
-                            onChange={handleProfileChange}
-                            className="form-control rounded shadow-none px-1 py-2"
-                            placeholder="Type"
-                          />
-                        </div>
-                      </div>
-
+                      {/* Agent/Employee Information Section */}
                       <div className="row mb-4">
-                        <div className="col-md-4">
-                          <label htmlFor="" className="">
-                            Contact No.
-                          </label>
-                          <input
-                            type="text"
-                            name="contactNo"
-                            value={profileData.contactNo}
-                            onChange={handleProfileChange}
-                            className="form-control rounded shadow-none px-1 py-2"
-                            placeholder="Type"
-                          />
-                        </div>
-                        <div className="col-md-4">
-                          <label htmlFor="" className="">
-                            Address
-                          </label>
-                          <input
-                            type="text"
-                            name="address"
-                            value={profileData.address}
-                            onChange={handleProfileChange}
-                            className="form-control rounded shadow-none px-1 py-2"
-                            placeholder="Type"
-                          />
-                        </div>
-                        <div className="col-md-4 d-flex align-items-end">
-                          <div className="w-100">
-                            <input
-                              type="file"
-                              className="d-none"
-                              id="logoUpload"
-                              accept="image/*"
-                              onChange={handleLogoUpload}
-                            />
-                            <label
-                              htmlFor="logoUpload"
-                              className="btn btn-primary w-100"
-                            >
-                              Upload Logo
-                            </label>
-                            {profileData.logo && (
-                              <div className="mt-2 text-center">
-                                <img
-                                  src={
-                                    typeof profileData.logo === "string"
-                                      ? `http://127.0.0.1:8000/${profileData.logo}`
-                                      : URL.createObjectURL(profileData.logo)
-                                  }
-                                  alt="Logo Preview"
-                                  className="img-thumbnail"
-                                  style={{ maxHeight: "100px" }}
-                                />
+                        <div className="col-md-12">
+                          <div style={{ background: "white", borderRadius: "20px", padding: "2rem", boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "15px", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "2px solid #e2e8f0" }}>
+                              <div style={{ width: "45px", height: "45px", borderRadius: "12px", background: "linear-gradient(135deg, #1B78CE 0%, #1557a0 100%)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", boxShadow: "0 4px 15px rgba(27, 120, 206, 0.3)" }}>
+                                <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" /></svg>
+                              </div>
+                              <h5 style={{ fontSize: "1.5rem", fontWeight: "700", color: "#2d3748", margin: 0, flex: 1 }}>
+                                {userType === "employee" ? "Employee Information" : "Agent Information"}
+                              </h5>
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.5rem", marginBottom: "1.5rem" }}>
+                              {userType === "employee" ? (
+                                <>
+                                  <div style={{ background: "#f7fafc", padding: "1.25rem", borderLeft: "4px solid #1B78CE", borderRadius: "4px" }}>
+                                    <div style={{ fontSize: "0.85rem", fontWeight: "600", color: "#718096", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "0.5rem" }}>Employee Name</div>
+                                    <div style={{ fontSize: "1.05rem", color: "#2d3748", fontWeight: "500" }}>{employeeDetails.userName || "N/A"}</div>
+                                  </div>
+                                  <div style={{ background: "#f7fafc", padding: "1.25rem", borderLeft: "4px solid #1B78CE", borderRadius: "4px" }}>
+                                    <div style={{ fontSize: "0.85rem", fontWeight: "600", color: "#718096", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "0.5rem" }}>Email</div>
+                                    <div style={{ fontSize: "1.05rem", color: "#2d3748", fontWeight: "500" }}>{employeeDetails.userEmail || "N/A"}</div>
+                                  </div>
+                                  <div style={{ background: "#f7fafc", padding: "1.25rem", borderLeft: "4px solid #1B78CE", borderRadius: "4px" }}>
+                                    <div style={{ fontSize: "0.85rem", fontWeight: "600", color: "#718096", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "0.5rem" }}>Organization</div>
+                                    <div style={{ fontSize: "1.05rem", color: "#2d3748", fontWeight: "500" }}>
+                                      {employeeDetails.organizationName || "N/A"}
+                                      {employeeDetails.organizationCode && ` (${employeeDetails.organizationCode})`}
+                                    </div>
+                                  </div>
+                                  <div style={{ background: "#f7fafc", padding: "1.25rem", borderLeft: "4px solid #1B78CE", borderRadius: "4px" }}>
+                                    <div style={{ fontSize: "0.85rem", fontWeight: "600", color: "#718096", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "0.5rem" }}>Branch</div>
+                                    <div style={{ fontSize: "1.05rem", color: "#2d3748", fontWeight: "500" }}>
+                                      {employeeDetails.branchName || "N/A"}
+                                      {employeeDetails.branchCode && ` (${employeeDetails.branchCode})`}
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div style={{ background: "#f7fafc", padding: "1.25rem", borderLeft: "4px solid #1B78CE", borderRadius: "4px" }}>
+                                    <div style={{ fontSize: "0.85rem", fontWeight: "600", color: "#718096", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "0.5rem" }}>Travel Agency Name</div>
+                                    <div style={{ fontSize: "1.05rem", color: "#2d3748", fontWeight: "500" }}>{profileData.travelAgencyName || "N/A"}</div>
+                                  </div>
+                                  <div style={{ background: "#f7fafc", padding: "1.25rem", borderLeft: "4px solid #1B78CE", borderRadius: "4px" }}>
+                                    <div style={{ fontSize: "0.85rem", fontWeight: "600", color: "#718096", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "0.5rem" }}>Agent Name</div>
+                                    <div style={{ fontSize: "1.05rem", color: "#2d3748", fontWeight: "500" }}>{profileData.agentName || "N/A"}</div>
+                                  </div>
+                                  <div style={{ background: "#f7fafc", padding: "1.25rem", borderLeft: "4px solid #1B78CE", borderRadius: "4px" }}>
+                                    <div style={{ fontSize: "0.85rem", fontWeight: "600", color: "#718096", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "0.5rem" }}>Email</div>
+                                    <div style={{ fontSize: "1.05rem", color: "#2d3748", fontWeight: "500" }}>{profileData.email || "N/A"}</div>
+                                  </div>
+                                  <div style={{ background: "#f7fafc", padding: "1.25rem", borderLeft: "4px solid #1B78CE", borderRadius: "4px" }}>
+                                    <div style={{ fontSize: "0.85rem", fontWeight: "600", color: "#718096", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "0.5rem" }}>Contact No</div>
+                                    <div style={{ fontSize: "1.05rem", color: "#2d3748", fontWeight: "500" }}>{profileData.contactNo || "N/A"}</div>
+                                  </div>
+                                  <div style={{ background: "#f7fafc", padding: "1.25rem", borderLeft: "4px solid #1B78CE", borderRadius: "4px" }}>
+                                    <div style={{ fontSize: "0.85rem", fontWeight: "600", color: "#718096", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "0.5rem" }}>Address</div>
+                                    <div style={{ fontSize: "1.05rem", color: "#2d3748", fontWeight: "500" }}>{profileData.address || "N/A"}</div>
+                                  </div>
+                                  <div style={{ background: "#f7fafc", padding: "1.25rem", borderLeft: "4px solid #1B78CE", borderRadius: "4px" }}>
+                                    <div style={{ fontSize: "0.85rem", fontWeight: "600", color: "#718096", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "0.5rem" }}>Logo</div>
+                                    <div>{profileData.logo ? (<img src={typeof profileData.logo === "string" ? `http://127.0.0.1:8000/${profileData.logo}` : URL.createObjectURL(profileData.logo)} alt="Agency Logo" style={{ maxHeight: "60px", maxWidth: "100%", objectFit: "contain", borderRadius: "8px" }} />) : (<span style={{ fontSize: "0.9rem", color: "#9CA3AF", fontStyle: "italic" }}>No logo uploaded</span>)}</div>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                            {userType !== "employee" && (
+                              <div style={{ textAlign: "center", marginTop: "1rem" }}>
+                                <input type="file" className="d-none" id="logoUpload" accept="image/*" onChange={handleLogoUpload} />
+                                <label htmlFor="logoUpload" className="btn btn-primary" style={{ padding: "12px 28px", borderRadius: "12px", fontWeight: "600", background: "linear-gradient(135deg, #1B78CE 0%, #1557a0 100%)", border: "none" }}>
+                                  <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24" style={{ marginRight: "8px", verticalAlign: "middle" }}><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z" /></svg>
+                                  Upload Logo
+                                </label>
                               </div>
                             )}
                           </div>
                         </div>
-                      </div>
-
-                      <div className="text-center">
-                        <button
-                          id="btn" className="btn px-4"
-                          onClick={handleProfileSave}
-                        >
-                          Save
-                        </button>
                       </div>
                     </div>
                   </div>

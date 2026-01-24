@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import AgentSidebar from "../../components/AgentSidebar";
 import AgentHeader from "../../components/AgentHeader";
@@ -11,17 +11,19 @@ import { Link } from "react-router-dom";
 const AgentBookingInvoice = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { id } = useParams(); // Get booking ID from URL
   const [bookingData, setBookingData] = useState(null);
   const [agencyData, setAgencyData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Get booking number from location state
+  // Get booking number from location state OR use the ID from URL
   const bookingNumber = location.state?.bookingNumber;
+  const bookingId = id;
 
   useEffect(() => {
-    if (!bookingNumber) {
-      setError("No booking number provided");
+    if (!bookingNumber && !bookingId) {
+      setError("No booking information provided");
       setLoading(false);
       return;
     }
@@ -33,24 +35,41 @@ const AgentBookingInvoice = () => {
         const orgData = JSON.parse(localStorage.getItem("agentOrganization"));
         const organizationId = orgData?.ids?.[0] || orgData?.id;
 
-        // Fetch booking data
-        const bookingResponse = await axios.get(
-          `http://127.0.0.1:8000/api/bookings/`,
-          {
-            params: {
-              booking_number: bookingNumber,
-              organization: organizationId,
-            },
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        // Fetch booking data - use ID if available, otherwise use booking_number
+        let bookingResponse;
+        if (bookingId) {
+          // Fetch by ID
+          bookingResponse = await axios.get(
+            `http://127.0.0.1:8000/api/bookings/${bookingId}/`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+        } else {
+          // Fetch by booking_number
+          bookingResponse = await axios.get(
+            `http://127.0.0.1:8000/api/bookings/`,
+            {
+              params: {
+                booking_number: bookingNumber,
+                organization: organizationId,
+              },
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+        }
 
-        const booking = Array.isArray(bookingResponse.data)
-          ? bookingResponse.data[0]
-          : bookingResponse.data.results?.[0] || bookingResponse.data;
+        const booking = bookingId
+          ? bookingResponse.data
+          : (Array.isArray(bookingResponse.data)
+            ? bookingResponse.data[0]
+            : bookingResponse.data.results?.[0] || bookingResponse.data);
 
         setBookingData(booking);
 
@@ -83,7 +102,7 @@ const AgentBookingInvoice = () => {
     };
 
     fetchBookingData();
-  }, [bookingNumber]);
+  }, [bookingNumber, bookingId]);
 
   if (loading) {
     return (

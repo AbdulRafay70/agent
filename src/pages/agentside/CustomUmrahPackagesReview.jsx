@@ -277,9 +277,10 @@ const BookingReview = () => {
     const orgId = getOrgId();
 
     // Validate required context IDs
-    if (!orgId || !userId || !agencyId || !branchId) {
+    // Agency and branch are optional for employees
+    if (!orgId || !userId) {
       console.error('Missing required IDs', { orgId, userId, agencyId, branchId });
-      toast.error('Cannot make booking: missing agent/organization context. Please ensure you are logged in.');
+      toast.error('Cannot make booking: missing organization or user context. Please ensure you are logged in.');
       return null;
     }
 
@@ -671,8 +672,9 @@ const BookingReview = () => {
 
       user_id: parseInt(userId),
       organization_id: parseInt(orgId),
-      branch_id: parseInt(branchId),
-      agency_id: parseInt(agencyId)
+      // Only include branch_id and agency_id if they exist (optional for employees)
+      ...(branchId && !isNaN(parseInt(branchId)) ? { branch_id: parseInt(branchId) } : {}),
+      ...(agencyId && !isNaN(parseInt(agencyId)) ? { agency_id: parseInt(agencyId) } : {})
     };
 
     console.log("📦 Prepared Booking Data:", bookingData);

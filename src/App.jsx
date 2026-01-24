@@ -12,6 +12,7 @@ import AgentPayment from "./pages/agentside/AgentPayment";
 import AgentAddDeposit from "./pages/agentside/AgentAddDeposit";
 import AgentBankAccounts from "./pages/agentside/AgentBankAccounts";
 import AgentHotels from "./pages/agentside/AgentHotels";
+import AgentHotelAvailability from "./pages/agentside/AgentHotelAvailability";
 import AgentPackages from "./pages/agentside/AgentPackages";
 import AgentPackagesDetail from "./pages/agentside/AgentPackagesDetail";
 import AgentPackagesReview from "./pages/agentside/AgentPackagesReview";
@@ -38,6 +39,7 @@ import AgentRegister from "./pages/agentside/AgentRegister";
 import PrivateRoute from "./components/PrivateRoute";
 
 import AgentProtectedRoute from "./components/AgentProtectedRoute";
+import MyCommissions from "./pages/agentside/MyCommissions";
 import { PermissionProvider } from "./contexts/EnhancedPermissionContext";
 
 function App() {
@@ -60,6 +62,14 @@ function App() {
               element={
                 <AgentProtectedRoute>
                   <Profile />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/my-commissions"
+              element={
+                <AgentProtectedRoute>
+                  <MyCommissions />
                 </AgentProtectedRoute>
               }
             />
@@ -140,6 +150,14 @@ function App() {
               element={
                 <AgentProtectedRoute>
                   <AgentHotels />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/hotel-availability"
+              element={
+                <AgentProtectedRoute>
+                  <AgentHotelAvailability />
                 </AgentProtectedRoute>
               }
             />
@@ -248,7 +266,7 @@ function App() {
               }
             />
             <Route
-              path="/booking-history/invoice"
+              path="/booking-history/invoice/:id"
               element={
                 <AgentProtectedRoute>
                   <AgentBookingInvoice />
@@ -256,10 +274,10 @@ function App() {
               }
             />
             <Route
-              path="/booking-history/group-tickets"
+              path="/booking-history/group-tickets/:id"
               element={
                 <AgentProtectedRoute>
-                  <AgentBookingGroupTicket />
+                  <AgentGroupTicketInvoice />
                 </AgentProtectedRoute>
               }
             />
@@ -273,14 +291,6 @@ function App() {
             />
             <Route
               path="/pax-movement"
-              element={
-                <AgentProtectedRoute>
-                  <PaxMovement />
-                </AgentProtectedRoute>
-              }
-            />
-            <Route
-              path="/agent-pax-movement"
               element={
                 <AgentProtectedRoute>
                   <AgentPaxMovement />

@@ -185,7 +185,17 @@ const BookingHistory = () => {
     const bookingType = booking.booking_type || '';
 
     if (activeTab === "Groups Tickets") {
-      return bookingType === "Group Ticket";
+      // Show Group Ticket
+      if (bookingType === "Group Ticket") return true;
+
+      // Also show Umrah/Custom packages if they have tickets
+      if ((bookingType === "Umrah Package" || bookingType === "Custom Package") &&
+        booking.ticket_details &&
+        booking.ticket_details.length > 0) {
+        return true;
+      }
+
+      return false;
     }
 
     if (activeTab === "UMRAH BOOKINGS") {
@@ -414,7 +424,14 @@ const BookingHistory = () => {
                           filteredBookings.map((booking) => (
                             <tr key={booking.id}>
                               <td className="small">{formatDate(booking.date)}</td>
-                              <td className="small fw-semibold">{booking.booking_number || "N/A"}</td>
+                              <td className="small fw-semibold">
+                                {booking.booking_number || "N/A"}
+                                {(booking.booking_type === 'Umrah Package' || booking.booking_type === 'Custom Package') && activeTab === "Groups Tickets" && (
+                                  <div className="text-muted" style={{ fontSize: '10px', marginTop: '2px', fontStyle: 'italic' }}>
+                                    Linked to {booking.booking_type}
+                                  </div>
+                                )}
+                              </td>
                               <td className="small">{getPassengerNames(booking.person_details)}</td>
                               <td className="small">
                                 <ExpiryCountdown expiryTime={booking.expiry_time} status={booking.status} />
@@ -533,7 +550,11 @@ const BookingHistory = () => {
                                       )}
                                     <Dropdown.Item
                                       as={Link}
-                                      to={`/booking-history/invoice/${booking.id}`}
+                                      to={
+                                        (booking.booking_type === 'Group Ticket' || activeTab === "Groups Tickets")
+                                          ? `/booking-history/group-tickets/${booking.id}`
+                                          : `/booking-history/invoice/${booking.id}`
+                                      }
                                       className="text-primary"
                                     >
                                       Invoice

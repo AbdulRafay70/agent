@@ -182,7 +182,9 @@ const BookingReview = () => {
       if (passenger.type === "Infant") infantCount++;
     });
 
-    const adultPrice = ticket?.adult_price || 0;
+
+    // Use final_price for adults (includes service charge), fallback to adult_price
+    const adultPrice = ticket?.final_price || ticket?.adult_price || 0;
     const childPrice = ticket?.child_price || 0;
     const infantPrice = ticket?.infant_price || 0;
 
@@ -277,7 +279,7 @@ const BookingReview = () => {
       departure_stay_type: ticket.departure_stay_type || "standard",
       return_stay_type: ticket.return_stay_type || "standard",
       seats: seatsCount,
-      adult_price: ticket.adult_price || ticket.adult_fare || 0,
+      adult_price: ticket.final_price || ticket.adult_price || ticket.adult_fare || 0,
       child_price: ticket.child_price || ticket.child_fare || 0,
       infant_price: ticket.infant_price || ticket.infant_fare || 0,
     }];
@@ -332,9 +334,10 @@ const BookingReview = () => {
     const branchIdNum = parseInt(branchId) || (ticket.branch_id || 0);
 
     // Validate required context IDs before building payload
-    if (!orgId || !userIdNum || !agencyIdNum || !branchIdNum) {
-      console.error('Missing required organization/branch/agency/user ids', { orgId, userIdNum, agencyIdNum, branchIdNum });
-      alert('Cannot make booking: missing agent/organization context (organization_id, branch_id, agency_id or user_id). Please ensure you are logged in as an agent.');
+    // Employees don't need agency_id or branch_id - they work independently
+    if (!orgId || !userIdNum) {
+      console.error('Missing required organization/user ids', { orgId, userIdNum, agencyIdNum, branchIdNum });
+      alert('Cannot make booking: missing organization or user context. Please ensure you are logged in.');
       return null;
     }
 

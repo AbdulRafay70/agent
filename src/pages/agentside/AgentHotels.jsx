@@ -9,6 +9,7 @@ import {
   Save, X
 } from "lucide-react";
 import api from "../../utils/Api";
+import { useNavigate } from "react-router-dom";
 import useHotels from "../../hooks/useHotelsFixed";
 import jwtDecode from "../../utils/jwtDecode";
 import HotelRulesSection from "../../components/HotelRulesSection";
@@ -1345,6 +1346,7 @@ const AgentHotels = () => {
           <th>Distance</th>
           <th>Walking Time</th>
           <th>Price Dates</th>
+          <th>Room Price</th>
           <th>Sharing Price</th>
           <th>Quint Price</th>
           <th>Quad Price</th>
@@ -1396,6 +1398,7 @@ const AgentHotels = () => {
               <td>{hotel.distance != null ? hotel.distance : '-'}</td>
               <td>{hotel.walking_time != null ? hotel.walking_time : (hotel.walking_distance != null ? hotel.walking_distance : '-')}</td>
               <td>{priceDates}</td>
+              <td>{fmt(hotel.room_price)}</td>
               <td>{fmt(sharingPrice)}</td>
               <td>{fmt(quintPrice)}</td>
               <td>{fmt(quadPrice)}</td>
@@ -1445,7 +1448,7 @@ const AgentHotels = () => {
 
   return (
     <>
-      <div className="page-container" style={{ display: "flex", minHeight: "100vh", backgroundColor: "#f8f9fa" }}>
+    <div className="page-container" style={{ display: "flex", minHeight: "100vh", backgroundColor: "#f8f9fa" }}>
         <AgentSidebar />
         <div className="content-wrapper" style={{ flex: 1, overflow: "auto" }}>
           <AgentHeader />
@@ -1458,6 +1461,17 @@ const AgentHotels = () => {
                   Hotel Availability Manager
                 </h2>
                 <p className="text-muted mb-0">Manage hotels, rooms, pricing, and availability</p>
+              </div>
+              <div>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => navigate('/hotel-availability')}
+                  className="d-flex align-items-center"
+                >
+                  <Calendar size={20} className="me-2" />
+                  Hotel Availability
+                </Button>
               </div>
             </div>
 
@@ -1624,7 +1638,6 @@ const AgentHotels = () => {
                         <th style={{ minWidth: "110px" }}>Walk Time (min)</th>
                         <th style={{ minWidth: "110px" }}>Walking Distance (m)</th>
                         <th style={{ minWidth: "160px" }}>Price Dates</th>
-                        <th style={{ minWidth: "120px" }}>Room Price</th>
                         <th style={{ minWidth: "120px" }}>Sharing Price</th>
                         <th style={{ minWidth: "120px" }}>Quint Price</th>
                         <th style={{ minWidth: "120px" }}>Quad Price</th>
@@ -1637,13 +1650,13 @@ const AgentHotels = () => {
                     <tbody>
                       {loading ? (
                         <tr>
-                          <td colSpan="19" className="text-center py-4">
+                          <td colSpan="18" className="text-center py-4">
                             <Spinner animation="border" variant="primary" />
                           </td>
                         </tr>
                       ) : filteredHotels.length === 0 ? (
                         <tr>
-                          <td colSpan="19" className="text-center py-4">
+                          <td colSpan="18" className="text-center py-4">
                             <AlertCircle size={48} className="text-muted mb-3" />
                             <p className="text-muted">No hotels found</p>
                           </td>
@@ -1754,24 +1767,25 @@ const AgentHotels = () => {
                                 if (sp != null && (roomPrice == null || sp < roomPrice)) roomPrice = sp;
                               });
 
+
                               let sharingPrice = null;
                               prices.forEach(p => {
                                 if (p && p.is_sharing_allowed) {
-                                  const sp = p.selling_price != null ? p.selling_price : p.price;
+                                  const sp = p.selling_price;
                                   if (sharingPrice == null || (sp != null && sp < sharingPrice)) sharingPrice = sp;
                                 }
                               });
                               if (sharingPrice == null) {
                                 const byType = prices.find(p => p && String(p.room_type).toLowerCase() === 'sharing');
-                                if (byType) sharingPrice = byType.selling_price != null ? byType.selling_price : byType.price;
+                                if (byType) sharingPrice = byType.selling_price;
                               }
+
 
                               const fmt = (v) => (v == null ? 'N/A' : (Number.isFinite(Number(v)) ? Number(v).toLocaleString() : String(v)));
 
                               return (
                                 <>
                                   <td>{priceDates}</td>
-                                  <td>{fmt(roomPrice)}</td>
                                   <td>{fmt(sharingPrice)}</td>
                                   <td>{fmt(quintPrice)}</td>
                                   <td>{fmt(quadPrice)}</td>

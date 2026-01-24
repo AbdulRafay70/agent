@@ -673,7 +673,9 @@ const FlightBookingForm = () => {
       if (passenger.type === "Infant") infantCount++;
     });
 
-    const adultPrice = ticket?.adult_price || 0;
+
+    // Use final_price for adults (includes service charge), fallback to adult_price
+    const adultPrice = ticket?.final_price || ticket?.adult_price || 0;
     const childPrice = ticket?.child_price || 0;
     const infantPrice = ticket?.infant_price || 0;
 

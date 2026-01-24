@@ -35,6 +35,7 @@ const AgentPackagesDetail = () => {
   const [showInfantModal, setShowInfantModal] = useState(false);
   const [selectedFamilyHead, setSelectedFamilyHead] = useState("");
   const [selectedRooms, setSelectedRooms] = useState({});
+  const [agencyType, setAgencyType] = useState(null);
 
   // Room type definitions (passengers per room)
   const bedsPerRoomType = {
@@ -44,6 +45,38 @@ const AgentPackagesDetail = () => {
     quad: 4,
     quint: 5,
   };
+
+  // Fetch agency type on component mount
+  useEffect(() => {
+    const fetchAgencyType = async () => {
+      try {
+        const agentOrg = localStorage.getItem('agentOrganization');
+        if (!agentOrg) return;
+
+        const orgData = JSON.parse(agentOrg);
+        const agencyId = orgData.agency_id;
+
+        if (!agencyId) return;
+
+        const token = localStorage.getItem('agentAccessToken');
+        const orgId = orgData.ids[0];
+
+        const response = await fetch(`http://127.0.0.1:8000/api/agencies/${agencyId}/?organization=${orgId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+          const agencyData = await response.json();
+          setAgencyType(agencyData.agency_type);
+          console.log('✅ Fetched agency type:', agencyData.agency_type);
+        }
+      } catch (error) {
+        console.error('Error fetching agency type:', error);
+      }
+    };
+
+    fetchAgencyType();
+  }, []);
 
   const countries = [
     "Afghanistan",
@@ -353,6 +386,7 @@ const AgentPackagesDetail = () => {
               passportNumber: "",
               passportIssue: "",
               passportExpiry: "",
+              dob: "",
               country: "",
               passportFile: null,
               roomType: type,
@@ -371,15 +405,16 @@ const AgentPackagesDetail = () => {
     }
   }, [pkg, navigate, roomTypes, isInitialized, passengers.length]);
 
-  // Recalculate total price whenever passengers change (to ensure accuracy)
+  // Recalculate total price whenever passengers change OR agency type is fetched
   useEffect(() => {
-    if (passengers.length > 0) {
+    if (passengers.length > 0 && agencyType !== null) {
       const calculatedTotal = passengers.reduce((sum, passenger) => {
         return sum + getPriceForPassenger(passenger);
       }, 0);
       setTotalPrice(calculatedTotal);
+      console.log('💰 Recalculated total price:', calculatedTotal, 'for agency type:', agencyType);
     }
-  }, [passengers]);
+  }, [passengers, agencyType]);
 
   // Update family heads whenever passengers change
   useEffect(() => {
@@ -522,10 +557,17 @@ const AgentPackagesDetail = () => {
       return sum + hotelTotal;
     }, 0) || 0;
 
-    console.log('  - Total Hotel Price:', hotelPrice);
-    console.log('  - FINAL TOTAL:', basePrice + hotelPrice);
 
-    return basePrice + hotelPrice;
+    console.log('  - Total Hotel Price:', hotelPrice);
+
+    // Add 500 PKR service charge for packages (applied only to Area Agency)
+    const serviceCharge = (agencyType === 'Full Agency') ? 0 : 500;
+
+    console.log('  - Agency Type:', agencyType);
+    console.log('  - Service Charge:', serviceCharge);
+    console.log('  - FINAL TOTAL:', basePrice + hotelPrice + serviceCharge);
+
+    return basePrice + hotelPrice + serviceCharge;
   };
 
   const formatDateTime = (dateStr) => {
@@ -695,6 +737,7 @@ const AgentPackagesDetail = () => {
           passportNumber: "",
           passportIssue: "",
           passportExpiry: "",
+          dob: "",
           country: "",
           passportFile: null,
           roomType: familyHead.roomType,
@@ -730,6 +773,7 @@ const AgentPackagesDetail = () => {
       passportNumber: "",
       passportIssue: "",
       passportExpiry: "",
+      dob: "",
       country: "",
       passportFile: null,
       roomType: familyHead.roomType,
@@ -820,6 +864,7 @@ const AgentPackagesDetail = () => {
             passportNumber: "",
             passportIssue: "",
             passportExpiry: "",
+            dob: "",
             country: "",
             passportFile: null,
             roomType: roomType,
@@ -1444,6 +1489,21 @@ const AgentPackagesDetail = () => {
                                     )}
                                   </div>
 
+                                  {/* Date of Birth */}
+                                  <div className="col-lg-2 mb-2">
+                                    <label className="control-label">DOB</label>
+                                    <input
+                                      type="date"
+                                      className={`form-control bg-light shadow-none ${formErrors[`passenger-${passenger.id}-dob`] ? "is-invalid" : ""}`}
+                                      value={passenger.dob || ''}
+                                      onChange={(e) => updatePassenger(passenger.id, "dob", e.target.value)}
+                                      max={new Date().toISOString().split('T')[0]} // Can't be born in future
+                                    />
+                                    {formErrors[`passenger-${passenger.id}-dob`] && (
+                                      <div className="invalid-feedback">{formErrors[`passenger-${passenger.id}-dob`]}</div>
+                                    )}
+                                  </div>
+
                                   <div className="col-lg-2 mb-2">
                                     <label className="control-label">Passport Issue</label>
                                     <input
@@ -1474,6 +1534,8 @@ const AgentPackagesDetail = () => {
                                       <div className="invalid-feedback">{formErrors[`passenger-${passenger.id}-passportExpiry`]}</div>
                                     )}
                                   </div>
+
+
 
                                   {/* Country */}
                                   <div className="col-lg-2 mb-2">

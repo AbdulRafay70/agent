@@ -112,10 +112,11 @@ const AgentLogin = () => {
       // Check if user can access agent panel:
       // 1. Agents and subagents (branches) can always access
       // 2. Employees with can_access_agent_panel permission can access
-      const canAccessAgentPanel = data?.user?.can_access_agent_panel || decoded?.can_access_agent_panel || false;
+      const canAccessAgentPanel = userData?.profile?.can_access_agent_panel || false;
 
       console.log("🔐 User Type:", userType);
       console.log("🔐 Can Access Agent Panel:", canAccessAgentPanel);
+      console.log("🔐 Profile Data:", userData?.profile);
 
       if (!["agent", "subagent"].includes(userType) && !canAccessAgentPanel) {
         throw new Error(

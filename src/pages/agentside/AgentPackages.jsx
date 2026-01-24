@@ -505,10 +505,27 @@ const AgentPackages = () => {
     const visaAdult = pkgPick(['adault_visa_selling_price', 'adault_visa_price']);
     const ticketInfo = pkg?.ticket_details?.[0]?.ticket_info || {};
     let adultTicketRaw = pick(ticketInfo, ['adult_selling_price', 'adult_price', 'adult_fare', 'adult_ticket_price']);
-    let childTicketRaw = pick(ticketInfo, ['child_selling_price', 'child_price', 'child_fare', 'child_ticket_price']);
     let ticketAdult = Number(adultTicketRaw) || 0;
+    const baseAdultCost = food + makkah + madinah + transport + visaAdult + ticketAdult;
+
+    // Use backend-provided prices if they exist (they already handle service charges)
+    if (pkg.sharing_price || pkg.quint_price || pkg.quad_price || pkg.triple_price || pkg.double_price) {
+      return {
+        hotelDetails,
+        adultCost: baseAdultCost,
+        totalSharing: Number(pkg.sharing_price) || 0,
+        totalQuint: Number(pkg.quint_price) || 0,
+        totalQuad: Number(pkg.quad_price) || 0,
+        totalTriple: Number(pkg.triple_price) || 0,
+        totalDouble: Number(pkg.double_price) || 0,
+        totalSingle: Number(pkg.single_price) || 0,
+        totalInfant: Number(pkg.infant_price) || 0,
+      };
+    }
+
+    // Fallback to manual calculation if backend prices are missing
+    let childTicketRaw = pick(ticketInfo, ['child_selling_price', 'child_price', 'child_fare', 'child_ticket_price']);
     let ticketChild = Number(childTicketRaw) || 0;
-    const adultCost = food + makkah + madinah + transport + visaAdult + ticketAdult;
     // hotel totals per bed-type
     const sharingHotelTotal = sumPerNight('sharing_per_night');
     const quaintHotelTotal = sumPerNight('quaint_per_night');
@@ -516,12 +533,42 @@ const AgentPackages = () => {
     const tripleHotelTotal = sumPerNight('triple_per_night');
     const doubleHotelTotal = sumPerNight('double_per_night');
     const singleHotelTotal = sumPerNight('single_per_night');
-    const totalSharing = adultCost + sharingHotelTotal;
-    const totalQuint = adultCost + quaintHotelTotal;
-    const totalQuad = adultCost + quadHotelTotal;
-    const totalTriple = adultCost + tripleHotelTotal;
-    const totalDouble = adultCost + doubleHotelTotal;
-    const totalSingle = adultCost + singleHotelTotal;
+
+
+    // Fixed service charge of 500 PKR for packages (applied only to Area Agency)
+    // Note: Agency type should be fetched from API and passed as prop or context
+    // For now, we'll fetch it here but ideally this should be in a context provider
+    const getAgencyType = async () => {
+      try {
+        const agentOrg = localStorage.getItem('agentOrganization');
+        if (!agentOrg) return null;
+        const orgData = JSON.parse(agentOrg);
+        if (!orgData.agency_id) return null;
+        const token = localStorage.getItem('agentAccessToken');
+        const response = await fetch(`http://127.0.0.1:8000/api/agencies/${orgData.agency_id}/?organization=${orgData.ids[0]}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          return data.agency_type;
+        }
+      } catch (error) {
+        console.error('Error fetching agency type:', error);
+      }
+      return null;
+    };
+
+    // For now, default to Area Agency (with service charge) if we can't determine
+    // This will be improved with a context provider
+    const serviceCharge = 500; // TODO: Make this dynamic based on agency type
+
+    // Add service charge to each room type total
+    const totalSharing = adultCostCalc + sharingHotelTotal + serviceCharge;
+    const totalQuint = adultCostCalc + quaintHotelTotal + serviceCharge;
+    const totalQuad = adultCostCalc + quadHotelTotal + serviceCharge;
+    const totalTriple = adultCostCalc + tripleHotelTotal + serviceCharge;
+    const totalDouble = adultCostCalc + doubleHotelTotal + serviceCharge;
+    const totalSingle = adultCostCalc + singleHotelTotal + serviceCharge;
     // Infant price should be ticket selling price + infant visa selling price.
     let infantTicketRaw = pick(ticketInfo, ['infant_selling_price', 'infant_price', 'infant_ticket_selling_price', 'infant_ticket_price', 'infantTicketPrice', 'infant_fare']);
     let infantTicket = Number(infantTicketRaw) || 0;
@@ -529,7 +576,7 @@ const AgentPackages = () => {
     const totalInfant = Number(infantTicket) + Number(infantVisa || 0);
     return {
       hotelDetails,
-      adultCost,
+      adultCost: adultCostCalc,
       totalSharing,
       totalQuint,
       totalQuad,

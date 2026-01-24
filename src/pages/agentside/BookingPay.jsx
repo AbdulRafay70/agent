@@ -443,7 +443,12 @@ const BookingPay = () => {
         const patchBody = {
           status: 'Confirmed',
           payment_method: 'credit',
-          is_paid: true
+          is_paid: true,
+          // Add required IDs
+          organization_id: organization,
+          branch_id: branch,
+          agency_id: agency,
+          user_id: user
         };
 
         // Debug logging

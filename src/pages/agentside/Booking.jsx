@@ -438,7 +438,7 @@ const FlightCard = ({ ticket, airlineMap, cityMap, hasBookPermission = true }) =
           <div className="col-md-5 text-md-end text-center d-flex align-items-center justify-content-end">
             <div className="d-flex flex-column me-3 align-items-center">
               <div className="fw-bold">
-                PKR {ticket.adult_price ?? ticket.adult_fare}{" "}
+                PKR {ticket.final_price ?? ticket.adult_price ?? ticket.adult_fare}{" "}
                 <span className="text-muted fw-normal">/per person</span>
               </div>
             </div>

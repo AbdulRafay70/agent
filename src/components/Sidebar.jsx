@@ -11,6 +11,7 @@ import {
   LogOut,
   Menu,
   PackageIcon,
+  DollarSign,
 } from "lucide-react";
 import { Bag, Cash } from "react-bootstrap-icons";
 import { useAuth } from "../context/AuthContext";
@@ -60,6 +61,13 @@ const Sidebar = () => {
                   <NavLink to="/admin/dashboard" className={getNavLinkClass}>
                     <LayoutDashboard size={20} />{" "}
                     <span className="fs-6">Dashboard</span>
+                  </NavLink>
+                </Nav.Item>
+
+                {/* My Commissions */}
+                <Nav.Item className="mb-3">
+                  <NavLink to="/my-commissions" className={getNavLinkClass}>
+                    <DollarSign size={20} /> <span className="fs-6">My Commissions</span>
                   </NavLink>
                 </Nav.Item>
 
@@ -153,6 +161,17 @@ const Sidebar = () => {
                 >
                   <LayoutDashboard size={20} />{" "}
                   <span className="fs-6">Dashboard</span>
+                </NavLink>
+              </Nav.Item>
+
+              {/* My Commissions */}
+              <Nav.Item className="mb-3">
+                <NavLink
+                  to="/my-commissions"
+                  style={{ color: "black" }}
+                  className={getNavLinkClass}
+                >
+                  <DollarSign size={20} /> <span className="fs-6">My Commissions</span>
                 </NavLink>
               </Nav.Item>
 

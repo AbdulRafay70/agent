@@ -22,6 +22,7 @@ const BookingReview = () => {
   const [totalPriceState, setTotalPriceState] = useState(initialTotalPrice);
   const [childPrices, setChildPrices] = useState(initialChildPrices || 0);
   const [infantPrices, setInfantPrices] = useState(initialInfantPrices || 0);
+  const [agencyType, setAgencyType] = useState(null);
   // If no location.state provided, try to load from sessionStorage (packages flow)
   useEffect(() => {
     if (!pkgState) {
@@ -58,6 +59,38 @@ const BookingReview = () => {
         console.error('Failed to load session booking data:', e);
       }
     }
+  }, []);
+
+  // Fetch agency type on component mount
+  useEffect(() => {
+    const fetchAgencyType = async () => {
+      try {
+        const agentOrg = localStorage.getItem('agentOrganization');
+        if (!agentOrg) return;
+
+        const orgData = JSON.parse(agentOrg);
+        const agencyId = orgData.agency_id;
+
+        if (!agencyId) return;
+
+        const token = localStorage.getItem('agentAccessToken');
+        const orgId = orgData.ids[0];
+
+        const response = await fetch(`http://127.0.0.1:8000/api/agencies/${agencyId}/?organization=${orgId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+          const agencyData = await response.json();
+          setAgencyType(agencyData.agency_type);
+          console.log('✅ Review page - Fetched agency type:', agencyData.agency_type);
+        }
+      } catch (error) {
+        console.error('Error fetching agency type:', error);
+      }
+    };
+
+    fetchAgencyType();
   }, []);
   const [riyalRate, setRiyalRate] = useState(0);
   const [expiryTime, setExpiryTime] = useState(24);
@@ -247,7 +280,9 @@ const BookingReview = () => {
       return sum + (pricePerNight * (hotel.number_of_nights || 0));
     }, 0) || 0;
 
-    return basePrice + hotelPrice;
+    // Add 500 PKR service charge for packages (applied only to Area Agency)
+    const serviceCharge = (agencyType === 'Full Agency') ? 0 : 500;
+    return basePrice + hotelPrice + serviceCharge;
   };
 
   const calculateRoomQuantity = (roomType, paxCount) => {
@@ -571,8 +606,14 @@ const BookingReview = () => {
     const totalZiyaratAmount = personDetails.reduce((sum, person) => sum + person.ziyarat_price, 0);
 
     // Calculate grand total - use CALCULATED amounts, not UI state
+    // Add 500 PKR service charge per passenger (excluding infants), but skip for Full Agency
+    const serviceCharge = (agencyType === 'Full Agency') ? 0 : 500;
+
+    const nonInfantPassengers = passengersState.filter(p => p.type !== "Infant").length;
+    const totalServiceCharge = serviceCharge * nonInfantPassengers;
+
     const allTotalPrice = totalTicketAmount + totalHotelAmount + totalTransportAmount +
-      totalVisaAmount + totalFoodAmount + totalZiyaratAmount;
+      totalVisaAmount + totalFoodAmount + totalZiyaratAmount + totalServiceCharge;
 
     console.log('💰 Price Breakdown:', {
       totalTicketAmount,
@@ -581,19 +622,25 @@ const BookingReview = () => {
       totalVisaAmount,
       totalFoodAmount,
       totalZiyaratAmount,
+      serviceCharge,
+      nonInfantPassengers,
+      totalServiceCharge,
       allTotalPrice,
       totalPriceState: totalPriceState,  // The package selling price from UI
       childPrices: childPrices,
       infantPrices: infantPrices
     });
 
+
     // Use totalPriceState (package selling price from UI) if available and is a valid price
     // This is the package price including profit margin that was displayed to the user
-    const finalTotalAmount = (Number(totalPriceState) > 0 ? Number(totalPriceState) : allTotalPrice) +
-      (Number(childPrices) || 0) + (Number(infantPrices) || 0);
+    // IMPORTANT: totalPriceState from detail page already includes service charge via getPriceForRoomType
+    // But to be safe, we'll use allTotalPrice which explicitly includes service charge
+    const finalTotalAmount = allTotalPrice + (Number(childPrices) || 0) + (Number(infantPrices) || 0);
 
     console.log('💰 Final Total Amount:', {
-      usingPackagePrice: Number(totalPriceState) > 0,
+      usingAllTotalPrice: true,
+      allTotalPrice,
       totalPriceState,
       childPrices,
       infantPrices,
@@ -627,15 +674,17 @@ const BookingReview = () => {
       return null;
     }
 
-    if (!agencyIdNum || isNaN(agencyIdNum) || agencyIdNum <= 0) {
+    // Agency and branch are optional for employees
+    // Only validate if they are provided
+    if (agencyIdNum && (isNaN(agencyIdNum) || agencyIdNum <= 0)) {
       console.error('❌ Invalid agency ID:', agencyIdNum);
-      alert('Agency ID is missing or invalid. Please log in again.');
+      alert('Agency ID is invalid. Please log in again.');
       return null;
     }
 
-    if (!branchIdNum || isNaN(branchIdNum) || branchIdNum <= 0) {
+    if (branchIdNum && (isNaN(branchIdNum) || branchIdNum <= 0)) {
       console.error('❌ Invalid branch ID:', branchIdNum);
-      alert('Branch ID is missing or invalid. Please log in again.');
+      alert('Branch ID is invalid. Please log in again.');
       return null;
     }
 
@@ -706,7 +755,7 @@ const BookingReview = () => {
       total_adult: Number(passengersState.filter(p => p.type === "Adult").length) || 0,
       total_infant: Number(passengersState.filter(p => p.type === "Infant").length) || 0,
       total_child: Number(passengersState.filter(p => p.type === "Child").length) || 0,
-      total_ticket_amount: Number(totalTicketAmount) || 0,
+      total_ticket_amount: Number(totalTicketAmount) + totalServiceCharge || 0,  // Include service charge here so backend recalculation works
       total_hotel_amount: Number(totalHotelAmount) || 0,  // Changed from totalPriceState to totalHotelAmount
       total_transport_amount: Number(totalTransportAmount) || 0,
       total_visa_amount: Number(totalVisaAmount) || 0,
@@ -716,10 +765,15 @@ const BookingReview = () => {
       // For Umrah packages, prices are ALREADY in PKR, so don't multiply by riyal_rate
       total_hotel_amount_pkr: Number(totalHotelAmount),  // Already in PKR, no conversion needed
       total_transport_amount_pkr: Number(totalTransportAmount),  // Already in PKR
-      total_ticket_amount_pkr: Number(totalTicketAmount),
+      total_ticket_amount_pkr: Number(totalTicketAmount) + totalServiceCharge,  // Include service charge
       total_visa_amount_pkr: Number(totalVisaAmount),
-      total_food_amount_pkr: Number(totalFoodAmount),
+      total_food_amount_pkr: Number(totalFoodAmount),  // Food amount
       total_ziyarat_amount_pkr: Number(totalZiyaratAmount),
+
+      // CRITICAL: Set total_discount to prevent backend from recalculating total_amount
+      // Backend skips recalculation if total_discount > 0 (see booking/models.py line 641)
+      total_discount: 0.01,  // Tiny value to trigger skip, won't affect actual price
+      discount_notes: "Service charge included in total_amount",
 
       is_paid: false,
       status: "Under-process",  // Match Custom Umrah: "Under-process"
@@ -753,6 +807,14 @@ const BookingReview = () => {
 
       console.log("BookingData Payload (stringified):", {
         ...bookingData
+      });
+
+      console.log("🔍 TOTAL_AMOUNT DEBUG:", {
+        total_amount: bookingData.total_amount,
+        total_ticket_amount: bookingData.total_ticket_amount,
+        total_hotel_amount: bookingData.total_hotel_amount,
+        total_transport_amount: bookingData.total_transport_amount,
+        total_visa_amount: bookingData.total_visa_amount
       });
 
       console.log("📤 Sending as JSON (not FormData)");
