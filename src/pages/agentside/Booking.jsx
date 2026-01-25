@@ -153,19 +153,27 @@ const FlightCard = ({ ticket, airlineMap, cityMap, hasBookPermission = true }) =
 
   // Determine seat warning style
   const seatWarningStyle =
-    ticket.left_seats <= 9
+    ticket.left_seats <= 0
       ? {
-        color: "#FB4118",
-        border: "1px solid #F14848",
+        color: "#D32F2F",
+        border: "1px solid #D32F2F",
+        backgroundColor: "#FFEBEE",
         display: "inline-block",
-        fontWeight: 500,
+        fontWeight: 600,
       }
-      : {
-        color: "#3391FF",
-        border: "1px solid #3391FF",
-        display: "inline-block",
-        fontWeight: 500,
-      };
+      : ticket.left_seats <= 9
+        ? {
+          color: "#FB4118",
+          border: "1px solid #F14848",
+          display: "inline-block",
+          fontWeight: 500,
+        }
+        : {
+          color: "#3391FF",
+          border: "1px solid #3391FF",
+          display: "inline-block",
+          fontWeight: 500,
+        };
 
   // Refundable badge style
   const refundableBadgeStyle = ticket.is_refundable
@@ -402,9 +410,11 @@ const FlightCard = ({ ticket, airlineMap, cityMap, hasBookPermission = true }) =
                   className="small mt-1 px-2 py-1 rounded"
                   style={seatWarningStyle}
                 >
-                  {ticket.left_seats <= 9
-                    ? `Only ${ticket.left_seats} seats left`
-                    : `${ticket.left_seats} seats left`}
+                  {ticket.left_seats <= 0
+                    ? "Sold Out"
+                    : ticket.left_seats <= 9
+                      ? `Only ${ticket.left_seats} seats left`
+                      : `${ticket.left_seats} seats left`}
                 </div>
                 {/* </div> */}
               </div>
@@ -438,24 +448,41 @@ const FlightCard = ({ ticket, airlineMap, cityMap, hasBookPermission = true }) =
           <div className="col-md-5 text-md-end text-center d-flex align-items-center justify-content-end">
             <div className="d-flex flex-column me-3 align-items-center">
               <div className="fw-bold">
-                PKR {ticket.final_price ?? ticket.adult_price ?? ticket.adult_fare}{" "}
+                PKR {ticket.adult_selling_price}{" "}
                 <span className="text-muted fw-normal">/per person</span>
               </div>
             </div>
             {/* Continue Button - only show if user has book permission */}
             {hasBookPermission && (
-              <Link
-                to={`/booking/detail`}
-                state={{ ticket, cityMap, airlineMap }}
-                onClick={() => localStorage.removeItem('TicketPassengersDetails')}
-              >
-                <button
-                  id="btn" className="btn btn-sm w-100 rounded"
-                  style={{ padding: "0.5rem 1.5rem" }}
+              ticket.left_seats > 0 ? (
+                <Link
+                  to={`/booking/detail`}
+                  state={{ ticket, cityMap, airlineMap }}
+                  onClick={() => localStorage.removeItem('TicketPassengersDetails')}
                 >
-                  Continue
+                  <button
+                    id="btn" className="btn btn-sm w-100 rounded"
+                    style={{ padding: "0.5rem 1.5rem" }}
+                  >
+                    Continue
+                  </button>
+                </Link>
+              ) : (
+                <button
+                  className="btn btn-sm w-100 rounded"
+                  disabled
+                  style={{
+                    padding: "0.5rem 1.5rem",
+                    backgroundColor: "#e0e0e0",
+                    color: "#757575",
+                    border: "1px solid #bdbdbd",
+                    cursor: "not-allowed",
+                    fontWeight: 600
+                  }}
+                >
+                  Sold Out
                 </button>
-              </Link>
+              )
             )}
           </div>
         </div>

@@ -42,8 +42,12 @@ const AgentPackagesDetail = () => {
     sharing: 1,
     double: 2,
     triple: 3,
+    triple: 3,
     quad: 4,
     quint: 5,
+    private_double: 1, // Single Occupancy in a Double Room
+    'private double': 1, // Handle space variant
+
   };
 
   // Fetch agency type on component mount
@@ -550,6 +554,12 @@ const AgentPackagesDetail = () => {
         case 'TRIPLE': pricePerNight = hotel.triple_bed_selling_price || 0; break;
         case 'QUAD': pricePerNight = hotel.quad_bed_selling_price || 0; break;
         case 'QUINT': pricePerNight = hotel.quaint_bed_selling_price || 0; break;
+        case 'PRIVATE_DOUBLE':
+        case 'PRIVATE DOUBLE':
+          // Private Double = Single Occupancy in Double Room
+          // Pay for the full double room (2 beds)
+          pricePerNight = (hotel.double_bed_selling_price || 0) * 2;
+          break;
         default: pricePerNight = 0;
       }
       const hotelTotal = pricePerNight * (hotel.number_of_nights || 0);
@@ -648,8 +658,11 @@ const AgentPackagesDetail = () => {
 
   const flightDetails = getFlightDetails();
 
-  const flightMinAdultAge = pkg?.flight_min_adult_age || 0;
-  const flightMaxAdultAge = pkg?.flight_max_adult_age || 0;
+  // Use exact field names from backend model (with typos if present)
+  // filght_min_adault_age, filght_max_adault_age, max_chilld_allowed, max_infant_allowed
+  const flightMinAdultCount = pkg?.filght_min_adault_age || 0;
+  const flightMaxAdultCount = pkg?.filght_max_adault_age || 0;
+  const maxChildAllowed = pkg?.max_chilld_allowed || 0;
   const maxInfantAllowed = pkg?.max_infant_allowed || 0;
 
   // const addRoomType = (type) => {
@@ -788,18 +801,127 @@ const AgentPackagesDetail = () => {
     setSelectedFamilyHead("");
   };
 
+  // Check if current adult count is within the range defined by flight conditions
+  const isAdultCountInRange = () => {
+    const totalAdults = passengers.filter(p => p.type === "Adult").length;
+    // If limits are 0, assume no restriction
+    if (flightMinAdultCount === 0 && flightMaxAdultCount === 0) return true;
+
+    const min = flightMinAdultCount;
+    const max = flightMaxAdultCount > 0 ? flightMaxAdultCount : Infinity;
+
+    return totalAdults >= min && totalAdults <= max;
+  };
+
   const canAddInfant = () => {
-    const totalAdultsChildren = passengers.filter(p =>
-      p.type === "Adult" || p.type === "Child"
-    ).length;
+    // Basic rule: Must have at least 1 adult
+    const totalAdults = passengers.filter(p => p.type === "Adult").length;
+    if (totalAdults < 1) return false;
+
+    // Condition 1: Check absolute max infant limit
     const totalInfants = passengers.filter(p => p.type === "Infant").length;
+    // If maxInfantAllowed is 0, assume default 10 (or 0 means 0? Prompt says check limits)
+    // Prompt says "If Adult from 7 To Adult 10 Max Childs Allowed 01..."
+    // Usually 0 in backend integer field means "None" or "Not Set". 
+    // Let's assume strict limit if > 0.
+    const limit = maxInfantAllowed > 0 ? maxInfantAllowed : 10;
+    if (totalInfants >= limit) return false;
 
-    // Simplified validation: just check if we have adults and haven't exceeded infant limit
-    const hasAdults = totalAdultsChildren > 0;
-    const infantLimit = maxInfantAllowed > 0 ? maxInfantAllowed : 10; // Default to 10 if not set
-    const belowInfantLimit = totalInfants < infantLimit;
+    // Condition 2: If we are STRICTLY enforcing ranges
+    // The prompt implies: "if select min a adult... user can only add this amount"
+    // So if we are IN the range, we enforce the limit. If we are OUT of range, what?
+    // Let's enforce limits if we are consistently validating against them.
+    // If limits exist, enforce them.
 
-    return hasAdults && belowInfantLimit;
+    return true;
+  };
+
+  const canAddChild = () => {
+    const totalAdults = passengers.filter(p => p.type === "Adult").length;
+    if (totalAdults < 1) return false;
+
+    const totalChildren = passengers.filter(p => p.type === "Child").length;
+    const limit = maxChildAllowed > 0 ? maxChildAllowed : 10; // Default or strict?
+
+    // Check if we are in the adult range that triggers this limit?
+    // User said: "check that for example i select min a adult and max 5 adult and allo 1 child... so user can only add this amount"
+    // This implies that IF (min <= adults <= max) THEN (max_child is enforced).
+    // But what if adults are outside range? Usually these rules define the ONLY valid configuration.
+    // We will enforce the limit globally if set.
+
+    if (totalChildren >= limit) return false;
+    return true;
+  };
+
+  const handleAddChild = () => {
+    // Validate constraint
+    if (!canAddChild()) {
+      alert(`Cannot add more children. Max allowed: ${maxChildAllowed}`);
+      return;
+    }
+
+    // Logic similar to Add Infant but for Child
+    // Find a room to add to
+    const roomGroups = {};
+    passengers.forEach(p => {
+      if (p.groupId && p.roomType) {
+        const key = `${p.roomType}_${p.groupId}`;
+        if (!roomGroups[key]) {
+          roomGroups[key] = { roomType: p.roomType, groupId: p.groupId };
+        }
+      }
+    });
+
+    const rooms = Object.values(roomGroups);
+    if (rooms.length === 0) {
+      alert("No rooms available.");
+      return;
+    }
+
+    // Auto-add to first room for simplicity (or we can add modal if needed, but 'Private Room' user usually has 1 room)
+    const room = rooms[0];
+    const familyHead = passengers.find(p => p.groupId === room.groupId && p.isFamilyHead);
+
+    if (familyHead) {
+      const newPassenger = {
+        id: `child-${Math.random().toString(36).substr(2, 9)}`,
+        type: "Child",
+        title: "",
+        name: "",
+        lName: "",
+        passportNumber: "",
+        passportIssue: "",
+        passportExpiry: "",
+        dob: "",
+        country: "",
+        passportFile: null,
+        roomType: familyHead.roomType,
+        groupId: familyHead.groupId,
+        isFamilyHead: false
+      };
+
+      setPassengers([...passengers, newPassenger]);
+      // Update Price
+      setTotalPrice(totalPrice + (getPriceForRoomType(familyHead.roomType) - calculateChildPrice()));
+      setChildPrices(childPrices + calculateChildPrice());
+      // Children consume seats? Usually yes if "With Bed" but "Child" type here seems "Without Bed" or calculated special
+      // The price logic subtracts 'child_visa_price' diff.
+      // If we treat Child as seat-taking, decrement availableSeats
+      setAvailableSeats(availableSeats - 1);
+    }
+  };
+
+  const removeChild = (passengerId) => {
+    const child = passengers.find(p => p.id === passengerId);
+    if (!child || child.type !== "Child") return;
+    const updatedPassengers = passengers.filter(p => p.id !== passengerId);
+    setPassengers(updatedPassengers);
+
+    // Recalculate removal price
+    const priceToRemove = getPriceForRoomType(child.roomType) - calculateChildPrice();
+    setTotalPrice(totalPrice - priceToRemove);
+    setChildPrices(childPrices - calculateChildPrice());
+    setAvailableSeats(availableSeats + 1);
   };
 
   const removeInfant = (passengerId) => {
@@ -1329,20 +1451,40 @@ const AgentPackagesDetail = () => {
                         Passengers Details For Umrah Package
                       </h4>
                       <div className="d-flex align-items-center ">
-                        <button
-                          id="btn" className="btn me-2"
-                          onClick={handleAddInfant}
-                          disabled={!canAddInfant()}
-                        >
-                          <Plus size={16} /> Infant
-                        </button>
-                        <button
-                          id="btn" className="btn"
-                          onClick={() => setShowRoomModal(true)}
-                          disabled={availableSeats <= 0}
-                        >
-                          Add Room
-                        </button>
+                        {/* Logic: 
+                             If Private Room selected: Show Add Child, Add Infant.
+                             Otherwise: Show Add Infant only.
+                             "Add Room" is removed.
+                         */}
+                        {(() => {
+                          const isPrivateRoom = roomTypes.some(r =>
+                            r.toLowerCase() === 'private_double' || r.toLowerCase() === 'private double'
+                          );
+
+                          return (
+                            <>
+                              {isPrivateRoom && (
+                                <button
+                                  id="btn-child" className="btn me-2"
+                                  onClick={handleAddChild}
+                                  disabled={!canAddChild()}
+                                >
+                                  <Plus size={16} /> Child
+                                </button>
+                              )}
+
+                              <button
+                                id="btn-infant" className="btn me-2"
+                                onClick={handleAddInfant}
+                                disabled={!canAddInfant()}
+                              >
+                                <Plus size={16} /> Infant
+                              </button>
+
+                              {/* Add Room Button Removed as per request */}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -1589,7 +1731,6 @@ const AgentPackagesDetail = () => {
                                     )}
                                   </div>
 
-                                  {/* Remove Infant Button */}
                                   {passenger.type === "Infant" && (
                                     <div className="col-lg-2 mb-2 mt-2 d-flex align-items-center">
                                       <button
@@ -1597,7 +1738,19 @@ const AgentPackagesDetail = () => {
                                         className="btn btn-danger"
                                         onClick={() => removeInfant(passenger.id)}
                                       >
-                                        Remove Infant
+                                        <PersonDash size={16} /> Remove
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {passenger.type === "Child" && (
+                                    <div className="col-lg-2 mb-2 mt-2 d-flex align-items-center">
+                                      <button
+                                        type="button"
+                                        className="btn btn-danger"
+                                        onClick={() => removeChild(passenger.id)}
+                                      >
+                                        <PersonDash size={16} /> Remove
                                       </button>
                                     </div>
                                   )}

@@ -183,10 +183,10 @@ const BookingReview = () => {
     });
 
 
-    // Use final_price for adults (includes service charge), fallback to adult_price
-    const adultPrice = ticket?.final_price || ticket?.adult_price || 0;
-    const childPrice = ticket?.child_price || 0;
-    const infantPrice = ticket?.infant_price || 0;
+    // Use selling prices (includes service charges if applicable)
+    const adultPrice = ticket?.adult_selling_price ?? 0;
+    const childPrice = ticket?.child_selling_price ?? 0;
+    const infantPrice = ticket?.infant_selling_price ?? 0;
 
     const adultTotal = adultCount * adultPrice;
     const childTotal = childCount * childPrice;
@@ -279,9 +279,9 @@ const BookingReview = () => {
       departure_stay_type: ticket.departure_stay_type || "standard",
       return_stay_type: ticket.return_stay_type || "standard",
       seats: seatsCount,
-      adult_price: ticket.final_price || ticket.adult_price || ticket.adult_fare || 0,
-      child_price: ticket.child_price || ticket.child_fare || 0,
-      infant_price: ticket.infant_price || ticket.infant_fare || 0,
+      adult_price: ticket.adult_selling_price ?? 0,
+      child_price: ticket.child_selling_price ?? 0,
+      infant_price: ticket.infant_selling_price ?? 0,
     }];
 
     // Prepare person details

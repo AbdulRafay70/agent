@@ -258,31 +258,95 @@ const BookingReview = () => {
   const getPriceForRoomType = (type) => {
     if (!pkgState) return 0;
 
-    const ticketInfo = pkgState.ticket_details?.[0]?.ticket_info;
+    const ticketInfo = pkgState.ticket_details?.[0]?.ticket_info || pkgState.ticket_details?.[0];
     const basePrice =
-      (pkgState.adault_visa_selling_price || 0) +
-      (pkgState.transport_selling_price || 0) +
-      (ticketInfo?.adult_selling_price || ticketInfo?.adult_price || 0) +
-      (pkgState.food_selling_price || 0) +
-      (pkgState.makkah_ziyarat_selling_price || 0) +
-      (pkgState.madinah_ziyarat_selling_price || 0);
+      (Number(pkgState.adault_visa_selling_price) || Number(pkgState.adault_visa_price) || 0) +
+      (Number(pkgState.transport_selling_price) || Number(pkgState.transport_price) || 0) +
+      (Number(ticketInfo?.adult_selling_price) || Number(ticketInfo?.adult_price) || Number(ticketInfo?.adult_fare) || Number(pkgState.adult_ticket_price) || 0) +
+      (Number(pkgState.food_selling_price) || Number(pkgState.food_price) || 0) +
+      (Number(pkgState.makkah_ziyarat_selling_price) || Number(pkgState.makkah_ziyarat_price) || 0) +
+      (Number(pkgState.madinah_ziyarat_selling_price) || Number(pkgState.madinah_ziyarat_price) || 0);
+
+    // --- BACKUP CALCULATION ---
+    // (Logic moved to getEffectiveBasePrice to avoid clutter, but we need basePrice + hotelPrice here)
 
     const hotelPrice = pkgState.hotel_details?.reduce((sum, hotel) => {
       let pricePerNight = 0;
       switch (type.toUpperCase()) {
-        case 'SHARING': pricePerNight = hotel.sharing_bed_selling_price || 0; break;
-        case 'DOUBLE': pricePerNight = hotel.double_bed_selling_price || 0; break;
-        case 'TRIPLE': pricePerNight = hotel.triple_bed_selling_price || 0; break;
-        case 'QUAD': pricePerNight = hotel.quad_bed_selling_price || 0; break;
-        case 'QUINT': pricePerNight = hotel.quaint_bed_selling_price || 0; break;
+        case 'SHARING': pricePerNight = Number(hotel.sharing_bed_selling_price) || Number(hotel.sharing_bed_price) || 0; break;
+        case 'DOUBLE': pricePerNight = Number(hotel.double_bed_selling_price) || Number(hotel.double_bed_price) || 0; break;
+        case 'TRIPLE': pricePerNight = Number(hotel.triple_bed_selling_price) || Number(hotel.triple_bed_price) || 0; break;
+        case 'QUAD': pricePerNight = Number(hotel.quad_bed_selling_price) || Number(hotel.quad_bed_price) || 0; break;
+        case 'QUINT': pricePerNight = Number(hotel.quaint_bed_selling_price) || Number(hotel.quaint_bed_price) || Number(hotel.quint_bed_price) || 0; break;
+        case 'PRIVATE_DOUBLE':
+        case 'PRIVATE DOUBLE': pricePerNight = (Number(hotel.double_bed_selling_price) || Number(hotel.double_bed_price) || 0) * 2; break;
         default: pricePerNight = 0;
       }
-      return sum + (pricePerNight * (hotel.number_of_nights || 0));
+      return sum + (pricePerNight * (Number(hotel.number_of_nights) || 0));
     }, 0) || 0;
 
     // Add 500 PKR service charge for packages (applied only to Area Agency)
     const serviceCharge = (agencyType === 'Full Agency') ? 0 : 500;
+
     return basePrice + hotelPrice + serviceCharge;
+  };
+
+  // Logic to get the EFFECTIVE base price (Ticket+Visa+Transport+Food+Ziyarat)
+  // checks if the calculated one is 0, and if so, tries to derive from Grand Total
+  // only works for simple single-pax or uniform cases, but better than 0.
+  const getEffectiveBasePrice = () => {
+    if (!pkgState) return 0;
+    const ticketInfo = pkgState.ticket_details?.[0]?.ticket_info || pkgState.ticket_details?.[0];
+    let base = (Number(pkgState.adault_visa_selling_price) || Number(pkgState.adault_visa_price) || 0) +
+      (Number(pkgState.transport_selling_price) || Number(pkgState.transport_price) || 0) +
+      (Number(ticketInfo?.adult_selling_price) || Number(ticketInfo?.adult_price) || Number(ticketInfo?.adult_fare) || Number(pkgState.adult_ticket_price) || 0) +
+      (Number(pkgState.food_selling_price) || Number(pkgState.food_price) || 0) +
+      (Number(pkgState.makkah_ziyarat_selling_price) || Number(pkgState.makkah_ziyarat_price) || 0) +
+      (Number(pkgState.madinah_ziyarat_selling_price) || Number(pkgState.madinah_ziyarat_price) || 0);
+
+    // If base is 0 but we have a Total Price, try to infer base
+    if (base === 0 && totalPriceState > 0 && passengersState.length > 0) {
+      // Calculate Total Hotel Cost
+      let totalHotelCost = 0;
+      roomTypesState.forEach(type => {
+        const paxInRoom = passengersState.filter(p => p.roomType === type && p.type !== "Infant");
+        // Calculate hotel cost for this room type
+        // Logic: Hotel Price Per Pax * Pax Count
+        const hotelPricePerPax = pkgState.hotel_details?.reduce((sum, hotel) => {
+          let pricePerNight = 0;
+          switch (type.toUpperCase()) {
+            case 'SHARING': pricePerNight = Number(hotel.sharing_bed_selling_price) || 0; break;
+            case 'DOUBLE': pricePerNight = Number(hotel.double_bed_selling_price) || 0; break;
+            case 'TRIPLE': pricePerNight = Number(hotel.triple_bed_selling_price) || 0; break;
+            case 'QUAD': pricePerNight = Number(hotel.quad_bed_selling_price) || 0; break;
+            case 'QUINT': pricePerNight = Number(hotel.quaint_bed_selling_price) || 0; break;
+            case 'PRIVATE_DOUBLE':
+            case 'PRIVATE DOUBLE': pricePerNight = (Number(hotel.double_bed_selling_price) || 0) * 2; break; // Full room cost per pax if single occupancy? 
+            // Actually Private Double means 1 person pays for 2 beds.
+            default: pricePerNight = 0;
+          }
+          return sum + (pricePerNight * (Number(hotel.number_of_nights) || 0));
+        }, 0) || 0;
+
+        totalHotelCost += hotelPricePerPax * paxInRoom.length;
+      });
+
+      // Subtract Service Charges (500 per pax)
+      const totalService = (agencyType === 'Full Agency' ? 0 : 500) * passengersState.filter(p => p.type !== "Infant").length;
+
+      // Remaining is Total Base (Adults*Base + Children*ChildBase + Infants*InfantBase)
+      // For simplicity, assume Base is approx (Total - Hotel - Svc) / NonInfantPax
+      // This is a rough fallback but better than 0.
+      const nonInfantPax = passengersState.filter(p => p.type !== "Infant").length;
+      if (nonInfantPax > 0) {
+        const residual = totalPriceState - totalHotelCost - totalService;
+        if (residual > 0) {
+          base = residual / nonInfantPax;
+          console.log('⚠️ Derived Base Price from Total:', base);
+        }
+      }
+    }
+    return base;
   };
 
   const calculateRoomQuantity = (roomType, paxCount) => {
@@ -617,7 +681,7 @@ const BookingReview = () => {
 
     console.log('💰 Price Breakdown:', {
       totalTicketAmount,
-      totalHotelAmount,  // Changed from totalPriceState to totalHotelAmount
+      totalHotelAmount,
       totalTransportAmount,
       totalVisaAmount,
       totalFoodAmount,
@@ -626,20 +690,24 @@ const BookingReview = () => {
       nonInfantPassengers,
       totalServiceCharge,
       allTotalPrice,
-      totalPriceState: totalPriceState,  // The package selling price from UI
+      totalPriceState: totalPriceState,
       childPrices: childPrices,
       infantPrices: infantPrices
     });
 
+    // Use totalPriceState (package selling price from UI) if available and greater than recalculated sum
+    // This handles the case where session data might be missing price fields but the passed total is correct.
+    let finalTotalAmount = allTotalPrice + (Number(childPrices) || 0) + (Number(infantPrices) || 0);
 
-    // Use totalPriceState (package selling price from UI) if available and is a valid price
-    // This is the package price including profit margin that was displayed to the user
-    // IMPORTANT: totalPriceState from detail page already includes service charge via getPriceForRoomType
-    // But to be safe, we'll use allTotalPrice which explicitly includes service charge
-    const finalTotalAmount = allTotalPrice + (Number(childPrices) || 0) + (Number(infantPrices) || 0);
+    // Fallback: If totalPriceState is significantly larger than our recalculated sum, assume components were missing data
+    // and trust the passed state.
+    if (totalPriceState > 0 && totalPriceState > finalTotalAmount) {
+      console.log('⚠️ Using passed totalPriceState as recalculated sum is lower (missing data).');
+      finalTotalAmount = totalPriceState;
+    }
 
     console.log('💰 Final Total Amount:', {
-      usingAllTotalPrice: true,
+      usingAllTotalPrice: finalTotalAmount === allTotalPrice,
       allTotalPrice,
       totalPriceState,
       childPrices,
@@ -971,34 +1039,77 @@ const BookingReview = () => {
 
                         <div className="col-md-4">
                           <h4 className="mb-3 fw-bold">Price Calculation</h4>
+                          {/* Adults per Room Type */}
                           <div className="mb-3">
                             {roomTypesState.map((type) => {
-                              const paxCount = passengersState.filter(p => p.roomType === type && p.type !== "Infant").length;
-                              const price = getPriceForRoomType(type);
-                              const quantity = calculateRoomQuantity(type, paxCount);
+                              const adultsInRoom = passengersState.filter(p => p.roomType === type && p.type === "Adult").length;
+                              if (adultsInRoom === 0) return null;
+
+                              const hotelPrice = getPriceForRoomType(type) - (getEffectiveBasePrice() + (agencyType === 'Full Agency' ? 0 : 500));
+                              // Use Effective Base Price
+                              const effectiveTotal = (getEffectiveBasePrice() + hotelPrice + (agencyType === 'Full Agency' ? 0 : 500));
 
                               return (
-                                <div key={type} className="mb-2 small">
-                                  <span className="fw-bold">{type} Room:</span>
-                                  <span> Rs. {price.toLocaleString()} × {quantity} = </span>
-                                  <span className="text-primary">Rs. {(price * quantity).toLocaleString()}</span>
-                                  <div className="text-muted">({paxCount} paxs in {quantity} rooms)</div>
+                                <div key={`adult-${type}`} className="mb-2 small">
+                                  <span className="fw-bold">Adult ({type}):</span>
+                                  <span> Rs. {effectiveTotal.toLocaleString()} × {adultsInRoom} = </span>
+                                  <span className="text-primary">Rs. {(effectiveTotal * adultsInRoom).toLocaleString()}</span>
                                 </div>
                               );
                             })}
                           </div>
 
-                          {childPrices > 0 && (
-                            <div className="text-success small">
-                              Child Discounts Applied: Rs. {childPrices.toLocaleString()}
-                            </div>
-                          )}
+                          {/* Children (Assumed Without Bed for now or derived) */}
+                          {(() => {
+                            const children = passengersState.filter(p => p.type === "Child");
+                            if (children.length === 0) return null;
 
-                          {infantPrices > 0 && (
-                            <div className="text-info small">
-                              Infant Charges: Rs. {infantPrices.toLocaleString()}
-                            </div>
-                          )}
+                            // Calculate Child Price (Base Price without Hotel, minus Visa/Ticket difference)
+                            // This matches the logic implied: Child Price = Package Base - (Adult - Child diffs)
+                            // Note: We use the base helper from getPriceForRoomType logic implicitly or redefine it.
+                            // For safety, let's calculate it consistently.
+                            const ticketInfo = pkgState.ticket_details?.[0]?.ticket_info || pkgState.ticket_details?.[0];
+                            const adultTicket = Number(ticketInfo?.adult_selling_price) || Number(ticketInfo?.adult_price) || Number(pkgState.adult_ticket_price) || 0;
+                            const childTicket = Number(ticketInfo?.child_selling_price) || Number(ticketInfo?.child_price) || Number(pkgState.child_ticket_price) || 0;
+
+                            const adultVisa = Number(pkgState.adault_visa_selling_price) || Number(pkgState.adault_visa_price) || 0;
+                            const childVisa = Number(pkgState.child_visa_selling_price) || Number(pkgState.child_visa_price) || 0;
+
+                            // Base components common to all
+                            const transport = Number(pkgState.transport_selling_price) || Number(pkgState.transport_price) || 0;
+                            const food = Number(pkgState.food_selling_price) || Number(pkgState.food_price) || 0;
+                            const ziarat = (Number(pkgState.makkah_ziyarat_selling_price) || 0) + (Number(pkgState.madinah_ziyarat_selling_price) || 0);
+
+                            const childTotal = childVisa + childTicket + transport + food + ziarat;
+
+                            return (
+                              <div className="mb-2 small">
+                                <span className="fw-bold">Child (Without Bed):</span>
+                                <span> Rs. {childTotal.toLocaleString()} × {children.length} = </span>
+                                <span className="text-primary">Rs. {(childTotal * children.length).toLocaleString()}</span>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Infants */}
+                          {(() => {
+                            const infants = passengersState.filter(p => p.type === "Infant");
+                            if (infants.length === 0) return null;
+
+                            const ticketInfo = pkgState.ticket_details?.[0]?.ticket_info || pkgState.ticket_details?.[0];
+                            const infantTicket = Number(ticketInfo?.infant_selling_price) || Number(ticketInfo?.infant_price) || Number(pkgState.infant_ticket_price) || 0;
+                            const infantVisa = Number(pkgState.infant_visa_selling_price) || Number(pkgState.infant_visa_price) || 0;
+
+                            const infantTotal = infantTicket + infantVisa;
+
+                            return (
+                              <div className="mb-2 small text-info">
+                                <span className="fw-bold">Infant:</span>
+                                <span> Rs. {infantTotal.toLocaleString()} × {infants.length} = </span>
+                                <span> Rs. {(infantTotal * infants.length).toLocaleString()}</span>
+                              </div>
+                            );
+                          })()}
 
                           <div className="border-top pt-2 mt-2 fw-bold">
                             Grand Total: Rs. {totalPriceState.toLocaleString()}

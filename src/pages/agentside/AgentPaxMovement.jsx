@@ -1,153 +1,338 @@
 import React, { useState, useEffect } from "react";
-import { Container, Row, Col, Card, Table, Form, Button, Badge, Modal, Spinner, Alert } from "react-bootstrap";
+import { Container, Row, Col, Card, Form, Button, Badge, Spinner, Alert } from "react-bootstrap";
 import AgentSidebar from "../../components/AgentSidebar";
 import AgentHeader from "../../components/AgentHeader";
 import {
-  Plane, MapPin, Users, Search, Edit, CheckCircle, XCircle, AlertCircle,
-  Clock, Bell, Calendar, Eye
+  Plane, MapPin, Calendar, Users, Search, ArrowRight, Clock, CheckCircle, 
+  Briefcase, Coffee, CreditCard, XCircle, Info
 } from "lucide-react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+import axios from "axios";
 
-/**
- * Helper to get logged-in organization ID from localStorage
- */
-const getLoggedInOrgId = () => {
-  try {
-    const raw = localStorage.getItem("agentOrganization");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed?.ids && parsed.ids.length > 0) return parsed.ids[0];
-    if (parsed?.id) return parsed.id;
-    return null;
-  } catch (e) {
-    return null;
-  }
+// Airport list with IATA codes
+const AIRPORTS = [
+  // Pakistan
+  "Karachi - KHI",
+  "Lahore - LHE",
+  "Islamabad - ISB",
+  "Peshawar - PEW",
+  "Quetta - UET",
+  "Multan - MUX",
+  "Faisalabad - LYP",
+  "Sialkot - SKT",
+  "Rahim Yar Khan - RYK",
+  "Bahawalpur - BHV",
+  // Saudi Arabia
+  "Jeddah - JED",
+  "Riyadh - RUH",
+  "Madinah - MED",
+  "Dammam - DMM",
+  // UAE
+  "Dubai - DXB",
+  "Abu Dhabi - AUH",
+  "Sharjah - SHJ",
+  // Middle East
+  "Kuwait - KWI",
+  "Doha - DOH",
+  "Muscat - MCT",
+  "Bahrain - BAH",
+  // Europe
+  "London - LHR",
+  "Manchester - MAN",
+  "Birmingham - BHX",
+  "Paris - CDG",
+  "Frankfurt - FRA",
+  "Amsterdam - AMS",
+  "Istanbul - IST",
+  "Rome - FCO",
+  "Madrid - MAD",
+  "Barcelona - BCN",
+  "Milan - MXP",
+  // Asia
+  "Bangkok - BKK",
+  "Singapore - SIN",
+  "Kuala Lumpur - KUL",
+  "Hong Kong - HKG",
+  "Tokyo - NRT",
+  "Seoul - ICN",
+  "Beijing - PEK",
+  "Shanghai - PVG",
+  "Delhi - DEL",
+  "Mumbai - BOM",
+  // Americas
+  "New York - JFK",
+  "Los Angeles - LAX",
+  "Toronto - YYZ",
+  "Chicago - ORD",
+  "Miami - MIA",
+  // Australia
+  "Sydney - SYD",
+  "Melbourne - MEL"
+];
+
+];
+
+// Airline names mapping
+const AIRLINE_NAMES = {
+  '9P': 'Air Arabia Pakistan', 'PK': 'Pakistan International Airlines', 'PA': 'Airblue',
+  'ER': 'Serene Air', 'G9': 'Air Arabia', 'FZ': 'flydubai', 'EK': 'Emirates',
+  'QR': 'Qatar Airways', 'TK': 'Turkish Airlines', 'EY': 'Etihad Airways',
+  'GF': 'Gulf Air', 'KU': 'Kuwait Airways', 'WY': 'Oman Air', 'SV': 'Saudia',
+  'J9': 'Jazeera Airways', 'AI': 'Air India', '6E': 'IndiGo', 'UK': 'Vistara',
+  'SG': 'SpiceJet', 'BA': 'British Airways', 'LH': 'Lufthansa', 'AF': 'Air France',
+  'KL': 'KLM', 'AZ': 'ITA Airways', 'OS': 'Austrian Airlines', 'LX': 'Swiss International',
+  'TG': 'Thai Airways', 'SQ': 'Singapore Airlines', 'MH': 'Malaysia Airlines',
+  'CX': 'Cathay Pacific', 'NH': 'All Nippon Airways', 'JL': 'Japan Airlines',
+  'KE': 'Korean Air', 'OZ': 'Asiana Airlines', 'CA': 'Air China'
 };
 
 const AgentPaxMovement = () => {
-  const [passengers, setPassengers] = useState([]);
-  const [filteredPassengers, setFilteredPassengers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [cityFilter, setCityFilter] = useState("all");
-  const [selectedPax, setSelectedPax] = useState(null);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [alert, setAlert] = useState({ show: false, type: "", message: "" });
-  const [activeTab, setActiveTab] = useState("all");
+  // Search form state
+  const [formData, setFormData] = useState({
+    from: "",
+    to: "",
+    departureDate: null,
+    adults: 1,
+    children: 0,
+    infants: 0,
+    cabinClass: "Economy"
+  });
 
-  // Status options
-  const statusOptions = [
-    { value: "in_pakistan", label: "In Pakistan", color: "#6c757d", icon: "🇵🇰" },
-    { value: "in_flight", label: "In Flight", color: "#17a2b8", icon: "✈️" },
-    { value: "entered_ksa", label: "Entered KSA", color: "#ffc107", icon: "🛬" },
-    { value: "in_ksa", label: "In KSA", color: "#0dcaf0", icon: "🕋" },
-    { value: "in_makkah", label: "In Makkah", color: "#198754", icon: "🕋" },
-    { value: "in_madina", label: "In Madina", color: "#20c997", icon: "🕌" },
-    { value: "in_jeddah", label: "In Jeddah", color: "#0d6efd", icon: "🏙️" },
-    { value: "exit_pending", label: "Exit Pending", color: "#fd7e14", icon: "⏳" },
-    { value: "exited_ksa", label: "Exited KSA", color: "#198754", icon: "✅" },
-  ];
+  // Flight results state
+  const [flights, setFlights] = useState([]);
+  const [filteredFlights, setFilteredFlights] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [showResults, setShowResults] = useState(false);
+  
+  // Filter states
+  const [filters, setFilters] = useState({
+    priceRange: [0, 500000],
+    stops: 'all',
+    airlines: [],
+    departureTime: 'all',
+    sortBy: 'price'
+  });
 
   useEffect(() => {
-    loadPassengers();
-  }, []);
+    if (flights.length > 0) {
+      applyFilters();
+    }
+  }, [filters, flights]);
 
-  useEffect(() => {
-    filterPassengers();
-  }, [passengers, searchQuery, statusFilter, cityFilter, activeTab]);
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+  };
 
-  const loadPassengers = async () => {
+  const handleDateChange = (date) => {
+    setFormData({ ...formData, departureDate: date });
+  };
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    
+    // Validation
+    if (!formData.from || !formData.to) {
+      setError("Please select departure and arrival cities");
+      return;
+    }
+    if (!formData.departureDate) {
+      setError("Please select departure date");
+      return;
+    }
+
+    // Extract airport codes
+    const fromCode = formData.from.match(/- ([A-Z]{3})$/)?.[1];
+    const toCode = formData.to.match(/- ([A-Z]{3})$/)?.[1];
+
+    if (!fromCode || !toCode) {
+      setError("Invalid airport selection");
+      return;
+    }
+
+    // Format date to DD-MM-YYYY
+    const day = String(formData.departureDate.getDate()).padStart(2, '0');
+    const month = String(formData.departureDate.getMonth() + 1).padStart(2, '0');
+    const year = formData.departureDate.getFullYear();
+    const formattedDate = `${day}-${month}-${year}`;
+
     setLoading(true);
+    setError(null);
+    setShowResults(true);
+
     try {
-      const organizationId = getLoggedInOrgId();
-      const token = localStorage.getItem("agentAccessToken");
+      const searchParams = {
+        from: fromCode,
+        to: toCode,
+        departureDate: formattedDate,
+        adults: parseInt(formData.adults) || 1,
+        children: parseInt(formData.children) || 0,
+        infants: parseInt(formData.infants) || 0,
+        cabinClass: getCabinCode(formData.cabinClass)
+      };
 
-      if (!organizationId) {
-        setAlert({ show: true, type: "danger", message: "Organization not found" });
-        setLoading(false);
-        return;
-      }
-
-      if (!token) {
-        setAlert({ show: true, type: "danger", message: "Authentication required" });
-        setLoading(false);
-        return;
-      }
-
-      // Fetch all bookings for the agent's organization
-      const response = await fetch(
-        `http://127.0.0.1:8000/api/bookings/?organization=${organizationId}`,
+      const response = await axios.post(
+        'http://localhost:8000/api/flights/search/',
+        searchParams,
         {
+          timeout: 45000,
           headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json'
           }
         }
       );
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch bookings: ${response.status}`);
+      if (response.data && response.data.flights) {
+        setFlights(response.data.flights);
+        setFilteredFlights(response.data.flights);
+      } else {
+        setFlights([]);
+        setFilteredFlights([]);
       }
-
-      const allBookings = await response.json();
-
-      // Filter for Approved or Delivered bookings
-      const bookings = allBookings.filter(b =>
-        b.status === 'Approved' || b.status === 'Delivered'
+    } catch (err) {
+      console.error('Flight search error:', err);
+      setError(
+        err.response?.data?.error || 
+        err.message || 
+        'Failed to search flights. Please try again.'
       );
+      setFlights([]);
+      setFilteredFlights([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      // Transform bookings data to passenger format
-      const transformedPassengers = [];
+  const getCabinCode = (className) => {
+    const cabinMap = {
+      'Economy': 'Y',
+      'Premium Economy': 'W',
+      'Business': 'C',
+      'First Class': 'F'
+    };
+    return cabinMap[className] || 'Y';
+  };
 
-      // Helper function to determine passenger status (from Admin logic)
-      const determinePassengerStatus = (booking, person) => {
-        const currentDate = new Date();
-        currentDate.setHours(0, 0, 0, 0); // Reset to start of day
+  const applyFilters = () => {
+    let filtered = [...flights];
 
-        let status = "in_pakistan";
-        let current_city = "Pakistan";
-        let last_updated = booking.updated_at || new Date().toISOString();
+    // Price filter
+    filtered = filtered.filter(f => 
+      f.fare.total >= filters.priceRange[0] && f.fare.total <= filters.priceRange[1]
+    );
 
-        const hotelDetails = booking.hotel_details || [];
+    // Stops filter
+    if (filters.stops !== 'all') {
+      filtered = filtered.filter(f => {
+        const totalFlights = f.segments?.reduce((sum, seg) => sum + (seg.flights?.length || 0), 0) || 0;
+        const stops = totalFlights - 1;
+        if (filters.stops === 'nonstop') return stops === 0;
+        if (filters.stops === 'onestop') return stops === 1;
+        return true;
+      });
+    }
 
-        // No hotel info -> In Pakistan
-        if (hotelDetails.length === 0) {
-          return { status, current_city, last_updated };
-        }
+    // Airline filter
+    if (filters.airlines.length > 0) {
+      filtered = filtered.filter(f => {
+        const flightAirlines = f.segments?.flatMap(seg => 
+          seg.flights?.map(fl => fl.airlineCode) || []
+        ) || [];
+        return filters.airlines.some(airline => flightAirlines.includes(airline));
+      });
+    }
 
-        // Sort hotels by check-in date
-        const sortedHotels = [...hotelDetails].sort((a, b) => {
-          const dateA = a.check_in_date ? new Date(a.check_in_date) : new Date(0);
-          const dateB = b.check_in_date ? new Date(b.check_in_date) : new Date(0);
-          return dateA - dateB;
+    // Departure time filter
+    if (filters.departureTime !== 'all') {
+      filtered = filtered.filter(f => {
+        const firstFlight = f.segments?.[0]?.flights?.[0];
+        if (!firstFlight) return false;
+        const hour = parseInt(firstFlight.departureTime?.slice(0, 2) || '0');
+        if (filters.departureTime === 'morning') return hour >= 6 && hour < 12;
+        if (filters.departureTime === 'afternoon') return hour >= 12 && hour < 18;
+        if (filters.departureTime === 'evening') return hour >= 18 && hour < 24;
+        if (filters.departureTime === 'night') return hour >= 0 && hour < 6;
+        return true;
+      });
+    }
+
+    // Sort
+    if (filters.sortBy === 'price') {
+      filtered.sort((a, b) => a.fare.total - b.fare.total);
+    } else if (filters.sortBy === 'duration') {
+      filtered.sort((a, b) => {
+        const durationA = a.segments?.[0]?.ond?.duration || 999999;
+        const durationB = b.segments?.[0]?.ond?.duration || 999999;
+        return durationA - durationB;
+      });
+    }
+
+    setFilteredFlights(filtered);
+  };
+
+  const getUniqueAirlines = () => {
+    const airlines = new Set();
+    flights.forEach(flight => {
+      flight.segments?.forEach(segment => {
+        segment.flights?.forEach(f => {
+          if (f.airlineCode) airlines.add(f.airlineCode);
         });
+      });
+    });
+    return Array.from(airlines);
+  };
 
-        const firstHotel = sortedHotels[0];
-        const lastHotel = sortedHotels[sortedHotels.length - 1];
+  const toggleAirlineFilter = (airline) => {
+    setFilters(prev => ({
+      ...prev,
+      airlines: prev.airlines.includes(airline)
+        ? prev.airlines.filter(a => a !== airline)
+        : [...prev.airlines, airline]
+    }));
+  };
 
-        const firstCheckIn = firstHotel.check_in_date ? new Date(firstHotel.check_in_date) : null;
-        const lastCheckOut = lastHotel.check_out_date ? new Date(lastHotel.check_out_date) : null;
+  const getAirlineLogo = (code) => {
+    return `https://images.kiwi.com/airlines/64x64/${code}.png`;
+  };
 
-        if (firstCheckIn) firstCheckIn.setHours(0, 0, 0, 0);
-        if (lastCheckOut) lastCheckOut.setHours(0, 0, 0, 0);
+  const getAirlineName = (code) => {
+    return AIRLINE_NAMES[code] || code;
+  };
 
-        if (!firstCheckIn) return { status, current_city, last_updated };
+  const formatTime = (time) => {
+    if (!time) return '';
+    if (time.includes(':')) return time;
+    return `${time.slice(0, 2)}:${time.slice(2)}`;
+  };
 
-        // Exited KSA
-        if (lastCheckOut && currentDate > lastCheckOut) {
-          return {
-            status: "exited_ksa",
-            current_city: "Pakistan",
-            last_updated: lastHotel.check_out_date
-          };
-        }
+  const formatDuration = (duration) => {
+    if (!duration) return '';
+    const hours = Math.floor(duration / 60);
+    const minutes = duration % 60;
+    return `${hours}h ${minutes}m`;
+  };
 
-        // Exit Pending (Last day)
-        if (lastCheckOut && currentDate.getTime() === lastCheckOut.getTime()) {
-          const cityObj = lastHotel.hotel?.city;
-          const city = (typeof cityObj === 'string' ? cityObj : cityObj?.name) || "KSA";
-          return {
-            status: "exit_pending",
+  const formatPrice = (price, currency) => {
+    return `${currency} ${parseFloat(price || 0).toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    })}`;
+  };
+
+  const handleBookFlight = (flight) => {
+    localStorage.setItem('selectedFlight', JSON.stringify(flight));
+    console.log('Selected flight:', flight);
+    alert('Flight selected! Booking functionality coming soon...');
+  };
+
+  const handleBackToSearch = () => {
+    setShowResults(false);
+    setFlights([]);
+    setFilteredFlights([]);
+    setError(null);
+  };
             current_city: city,
             last_updated: lastHotel.check_out_date
           };

@@ -176,7 +176,7 @@ const RoomBookingModal = ({ pkg, show, onClose, bedsPerRoomType, calculatePrice,
                     <div className="d-flex justify-content-between align-items-center border p-3 rounded">
                       <div>
                         <div className="text-uppercase fw-bold" style={{ fontSize: "14px" }}>
-                          {roomType} ({bedsPerRoomType[roomType]} Beds)
+                          {roomType.replace(/_/g, ' ')} ({bedsPerRoomType[roomType]} Beds)
                         </div>
                         <div className="text-primary fw-bold">
                           Rs. {Number(price).toLocaleString()}/. <span className="text-muted small">per adult</span>
@@ -217,6 +217,7 @@ const AgentPackages = () => {
     quad: 4,
     triple: 3,
     double: 2,
+    private_double: 2,
   };
   const tabs = [
     { name: "Umrah Package", path: "/packages" },
@@ -415,9 +416,9 @@ const AgentPackages = () => {
   };
 
 
-  // --- Robust Package Price Calculation (copied from Packages.jsx) ---
+  // --- Robust Package Price Calculation (Updated) ---
   const computePackageTotals = (pkg, hotelsList = [], airlinesList = [], ticketsList = []) => {
-    // Helper: pick first defined value from keys
+    // generic picker helper used throughout this function
     const pick = (obj, keys) => {
       if (!obj) return undefined;
       for (const k of keys) {
@@ -425,12 +426,13 @@ const AgentPackages = () => {
       }
       return undefined;
     };
-    // Build hotelDetails with robust price picking
+    // build hotelDetails with resilient price lookups
     const hotelDetails = (pkg?.hotel_details || []).map((hotelEntry) => {
       const hotelInfo = hotelsList.find((h) => h.id === hotelEntry.hotel_info?.id) || hotelEntry.hotel_info || {};
       const nights = hotelEntry?.number_of_nights || hotelEntry?.nights || hotelEntry?.total_nights || 0;
       // priceSources: prefer explicit entry values, then first prices entry, then hotelInfo root
-      const priceSources = [hotelEntry || {}, (hotelInfo?.prices?.[0] || {}), hotelInfo || {}];
+      const priceSources = [hotelEntry || {}, hotelInfo?.prices?.[0] || {}, hotelInfo || {}];
+
       // helper: try the usual keys and also include '*_bed_selling_price' variants
       const priceCandidates = (keys, altKeys = []) => {
         const candidates = [...keys, ...altKeys];
@@ -440,6 +442,7 @@ const AgentPackages = () => {
         }
         return undefined;
       };
+
       // try to read price from hotelInfo.prices[] matching a room_type
       const findPriceInPricesArray = (roomTypeNames = []) => {
         const pricesArr = hotelInfo?.prices || [];
@@ -452,30 +455,37 @@ const AgentPackages = () => {
         }
         return undefined;
       };
+
       const sharing = priceCandidates(
         ['sharing_bed_selling_price', 'sharing_bed_price', 'sharing_selling_price', 'sharing_price', 'sharing'],
         ['sharing_bed_purchase_price']
       ) || findPriceInPricesArray(['sharing', 'shared']);
+
       const quaint = priceCandidates(
         ['quaint_bed_selling_price', 'quaint_bed_price', 'quaint_selling_price', 'quaint_price', 'quaint'],
         ['quaint_bed_purchase_price']
       ) || findPriceInPricesArray(['quaint', 'quint', 'quintet']);
+
       const quad = priceCandidates(
         ['quad_bed_selling_price', 'quad_bed_price', 'quad_selling_price', 'quad_price', 'quad'],
         ['quad_bed_purchase_price']
       ) || findPriceInPricesArray(['quad']);
+
       const triple = priceCandidates(
         ['triple_bed_selling_price', 'triple_bed_price', 'triple_selling_price', 'triple_price', 'triple'],
         ['triple_bed_purchase_price']
       ) || findPriceInPricesArray(['triple']);
+
       const doubleBed = priceCandidates(
         ['double_bed_selling_price', 'double_bed_price', 'double_selling_price', 'double_price', 'double'],
         ['double_bed_purchase_price']
       ) || findPriceInPricesArray(['double']);
+
       const single = priceCandidates(
         ['single_bed_selling_price', 'single_bed_price', 'single_selling_price', 'single_price', 'single'],
         ['single_bed_purchase_price']
       ) || findPriceInPricesArray(['single']);
+
       return {
         ...hotelEntry,
         hotel_info: hotelInfo,
@@ -488,9 +498,11 @@ const AgentPackages = () => {
         single_per_night: Number(single) || 0,
       };
     });
+
     // helper to sum per-night prices across hotels
     const sumPerNight = (key) =>
       hotelDetails.reduce((s, h) => s + (Number(h[key] || 0) * (Number(h.nights || 0) || 0)), 0);
+
     // resolve package-level selling price fields with fallbacks
     const pkgPick = (keys) => {
       for (const k of keys) {
@@ -498,34 +510,30 @@ const AgentPackages = () => {
       }
       return 0;
     };
+
     const food = pkgPick(['food_selling_price', 'food_price', 'food_selling_price']);
     const makkah = pkgPick(['makkah_ziyarat_selling_price', 'makkah_ziyarat_price']);
     const madinah = pkgPick(['madinah_ziyarat_selling_price', 'madinah_ziyarat_price']);
-    const transport = pkg?.transport_details?.[0]?.transport_selling_price || pkgPick(['transport_selling_price', 'transport_price']);
+
+    // Transport price: prefer transport_details array, fallback to package-level field
+    const transport = pkg.transport_details?.[0]?.transport_selling_price
+      ?? pkgPick(['transport_selling_price', 'transport_price']);
+
     const visaAdult = pkgPick(['adault_visa_selling_price', 'adault_visa_price']);
-    const ticketInfo = pkg?.ticket_details?.[0]?.ticket_info || {};
+
+    const ticketInfo = pkg?.ticket_details?.[0]?.ticket_info || pkg?.ticket_info || {};
+
+    // Extract adult and child ticket selling prices with common field-name fallbacks.
     let adultTicketRaw = pick(ticketInfo, ['adult_selling_price', 'adult_price', 'adult_fare', 'adult_ticket_price']);
-    let ticketAdult = Number(adultTicketRaw) || 0;
-    const baseAdultCost = food + makkah + madinah + transport + visaAdult + ticketAdult;
-
-    // Use backend-provided prices if they exist (they already handle service charges)
-    if (pkg.sharing_price || pkg.quint_price || pkg.quad_price || pkg.triple_price || pkg.double_price) {
-      return {
-        hotelDetails,
-        adultCost: baseAdultCost,
-        totalSharing: Number(pkg.sharing_price) || 0,
-        totalQuint: Number(pkg.quint_price) || 0,
-        totalQuad: Number(pkg.quad_price) || 0,
-        totalTriple: Number(pkg.triple_price) || 0,
-        totalDouble: Number(pkg.double_price) || 0,
-        totalSingle: Number(pkg.single_price) || 0,
-        totalInfant: Number(pkg.infant_price) || 0,
-      };
-    }
-
-    // Fallback to manual calculation if backend prices are missing
     let childTicketRaw = pick(ticketInfo, ['child_selling_price', 'child_price', 'child_fare', 'child_ticket_price']);
+
+    // Global fallback for tickets if list provided (omitted here for brevity/Agent logic usually has data)
+
+    let ticketAdult = Number(adultTicketRaw) || 0;
     let ticketChild = Number(childTicketRaw) || 0;
+
+    const adultCost = food + makkah + madinah + transport + visaAdult + ticketAdult;
+
     // hotel totals per bed-type
     const sharingHotelTotal = sumPerNight('sharing_per_night');
     const quaintHotelTotal = sumPerNight('quaint_per_night');
@@ -534,56 +542,50 @@ const AgentPackages = () => {
     const doubleHotelTotal = sumPerNight('double_per_night');
     const singleHotelTotal = sumPerNight('single_per_night');
 
+    // Use backend pre-calculated prices if available (Source of Truth)
+    const backendPrices = pkg?.package_selling_prices || {};
 
-    // Fixed service charge of 500 PKR for packages (applied only to Area Agency)
-    // Note: Agency type should be fetched from API and passed as prop or context
-    // For now, we'll fetch it here but ideally this should be in a context provider
-    const getAgencyType = async () => {
-      try {
-        const agentOrg = localStorage.getItem('agentOrganization');
-        if (!agentOrg) return null;
-        const orgData = JSON.parse(agentOrg);
-        if (!orgData.agency_id) return null;
-        const token = localStorage.getItem('agentAccessToken');
-        const response = await fetch(`http://127.0.0.1:8000/api/agencies/${orgData.agency_id}/?organization=${orgData.ids[0]}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          return data.agency_type;
-        }
-      } catch (error) {
-        console.error('Error fetching agency type:', error);
-      }
-      return null;
-    };
+    // Adult Totals (Prioritize backend)
+    const totalSharing = backendPrices.sharing || (adultCost + sharingHotelTotal);
+    const totalQuint = backendPrices.quint || (adultCost + quaintHotelTotal);
+    const totalQuad = backendPrices.quad || (adultCost + quadHotelTotal);
+    const totalTriple = backendPrices.triple || (adultCost + tripleHotelTotal);
+    const totalDouble = backendPrices.double || (adultCost + doubleHotelTotal);
+    const totalSingle = backendPrices.single || (adultCost + singleHotelTotal);
 
-    // For now, default to Area Agency (with service charge) if we can't determine
-    // This will be improved with a context provider
-    const serviceCharge = 500; // TODO: Make this dynamic based on agency type
-
-    // Add service charge to each room type total
-    const totalSharing = adultCostCalc + sharingHotelTotal + serviceCharge;
-    const totalQuint = adultCostCalc + quaintHotelTotal + serviceCharge;
-    const totalQuad = adultCostCalc + quadHotelTotal + serviceCharge;
-    const totalTriple = adultCostCalc + tripleHotelTotal + serviceCharge;
-    const totalDouble = adultCostCalc + doubleHotelTotal + serviceCharge;
-    const totalSingle = adultCostCalc + singleHotelTotal + serviceCharge;
+    // Infant Total (Prioritize backend)
     // Infant price should be ticket selling price + infant visa selling price.
     let infantTicketRaw = pick(ticketInfo, ['infant_selling_price', 'infant_price', 'infant_ticket_selling_price', 'infant_ticket_price', 'infantTicketPrice', 'infant_fare']);
     let infantTicket = Number(infantTicketRaw) || 0;
     const infantVisa = pkgPick(['infant_visa_selling_price', 'infant_visa_price', 'infant_visa_cost']);
-    const totalInfant = Number(infantTicket) + Number(infantVisa || 0);
+    const totalInfant = backendPrices.infant || (Number(infantTicket) + Number(infantVisa || 0));
+
+
+    // Child Without Bed (Use backend 'child_without_bed' or calculate)
+    const adultVisaForDiscount = pkgPick(['adault_visa_selling_price', 'adault_visa_price']) || 0;
+    const childVisaForDiscount = pkgPick(['child_visa_selling_price', 'child_visa_price']) || 0;
+    // Note: This fallback is imperfect if backend logic changes, but serves as safety.
+    const childCostWithoutBed = backendPrices.child_without_bed ||
+      (food + makkah + madinah + transport + childVisaForDiscount + Math.max(0, ticketAdult - (ticketChild || 0)));
+
+    // Private Double (Custom Rule: Total Double Price + Hotel Double Price again)
+    // Interpret: Single Occupancy of Double Room -> pays full double rate + extra bed/room cost
+    // Formula: TotalDouble + DoubleHotelTotal
+    const totalPrivateDouble = totalDouble + doubleHotelTotal;
+
     return {
       hotelDetails,
-      adultCost: adultCostCalc,
+      adultCost,
       totalSharing,
       totalQuint,
       totalQuad,
       totalTriple,
       totalDouble,
+      totalPrivateDouble,
       totalSingle,
       totalInfant,
+      childCostWithoutBed,
+      ticketInfo,
     };
   };
 
@@ -596,8 +598,10 @@ const AgentPackages = () => {
       case 'quad': return totals.totalQuad;
       case 'triple': return totals.totalTriple;
       case 'double': return totals.totalDouble;
+      case 'private_double': return totals.totalPrivateDouble;
       case 'single': return totals.totalSingle;
       case 'infant': return totals.totalInfant;
+      case 'child_without_bed': return totals.childCostWithoutBed;
       default: return 0;
     }
   };
@@ -1007,24 +1011,9 @@ const AgentPackages = () => {
                         const quadPrice = calculatePackagePrice(pkg, 'quad');
                         const triplePrice = calculatePackagePrice(pkg, 'triple');
                         const doublePrice = calculatePackagePrice(pkg, 'double');
-                        const singlePrice = calculatePackagePrice(pkg, 'single'); // Added single price
-
-                        // The child/infant visa calculation — handled with robust fallbacks
-                        const pickPkg = (obj, ...keys) => {
-                          for (const k of keys) {
-                            if (obj && obj[k] != null) return obj[k];
-                          }
-                          return undefined;
-                        };
-
-                        const adultVisa = Number(pickPkg(pkg, 'adault_visa_price', 'adault_visa_selling_price', 'adault_visa_selling', 'adault_visa_purchase_price') || 0);
-                        const childVisa = Number(pickPkg(pkg, 'child_visa_price', 'child_visa_selling_price', 'child_visa_selling', 'child_visa_purchase_price') || 0);
-                        const infantVisa = Number(pickPkg(pkg, 'infant_visa_price', 'infant_visa_selling_price', 'infant_visa_selling', 'infant_visa_purchase_price') || 0);
-                        const ticketInfant = Number(pickPkg(ticketInfo || {}, 'infant_price') || 0);
-
-                        const childPrices = Math.max(0, adultVisa - childVisa);
-                        const infantPrices = ticketInfant + infantVisa;
-
+                        const singlePrice = calculatePackagePrice(pkg, 'single');
+                        const infantPrice = calculatePackagePrice(pkg, 'infant');
+                        const childWithoutBedPrice = calculatePackagePrice(pkg, 'child_without_bed');
 
                         return (
                           <div key={index} className="border rounded-3 mb-4 package-card" style={{ padding: "24px", background: "white" }}>
@@ -1138,15 +1127,15 @@ const AgentPackages = () => {
                                   </div>
                                 </div>
 
-                                {/* Child Discount & Infant Price */}
+                                {/* Child Without Bed & Infant Price */}
                                 <div className="mb-3 d-flex gap-4" style={{ fontSize: "13px" }}>
-                                  {childPrices > 0 && (
-                                    <div className="text-success">
-                                      Per Child <span className="text-primary fw-bold">Rs {Number(childPrices).toLocaleString()}/.</span> discount.
+                                  {childWithoutBedPrice > 0 && (
+                                    <div className="text-secondary">
+                                      Child Without Bed: <span className="text-primary fw-bold">Rs {Number(childWithoutBedPrice).toLocaleString()}/.</span>
                                     </div>
                                   )}
                                   <div className="text-info">
-                                    Per Infant Price: <span className="text-primary fw-bold">Rs. {Number(infantPrices).toLocaleString()}/.</span>
+                                    Per Infant Price: <span className="text-primary fw-bold">Rs. {Number(infantPrice).toLocaleString()}/.</span>
                                   </div>
                                 </div>
 

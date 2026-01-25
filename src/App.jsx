@@ -31,7 +31,7 @@ import AgentBookingInvoice from "./pages/agentside/AgentBookingInvoice";
 import AgentBookingGroupTicket from "./pages/agentside/AgentBookingGroupTicket";
 import AgentGroupTicketInvoice from "./pages/agentside/AgentGroupTicketInvoice";
 import PaxMovement from "./pages/agentside/PaxMovement";
-import AgentPaxMovement from "./pages/agentside/AgentPaxMovement";
+import AgentFlightUpdates from "./pages/agentside/AgentFlightUpdates";
 import AgentKuickpay from "./pages/agentside/AgentKuickpay";
 import AgentLogin from "./pages/agentside/AgentLogin";
 import AgentRegister from "./pages/agentside/AgentRegister";
@@ -290,10 +290,18 @@ function App() {
               }
             />
             <Route
+              path="/agent-pax-movement"
+              element={
+                <AgentProtectedRoute>
+                  <AgentFlightUpdates />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
               path="/pax-movement"
               element={
                 <AgentProtectedRoute>
-                  <AgentPaxMovement />
+                  <PaxMovement />
                 </AgentProtectedRoute>
               }
             />

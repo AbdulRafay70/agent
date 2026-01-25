@@ -505,12 +505,15 @@ const AgentPackagesPay = () => {
                     <div className="card-body">
                       <div className="row">
                         <div className="col-6">
-                          <div className=" fw-bold">Flight Ticket</div>
-                          <div>120,000/- x 2 Pax</div>
+                          <div className=" fw-bold">Package Total</div>
+                          <div>
+                            {bookingData ? `${bookingData.total_pax} Pax` : 'Loading...'}
+                            {bookingData?.total_ticket_amount > 0 && ` (Ticket Only: Rs. ${bookingData.total_ticket_amount.toLocaleString()})`}
+                          </div>
                         </div>
                         <div className="col-6">
                           <div className=" fw-bold">Total Amount</div>
-                          <div className="">Rs.240,000/-</div>
+                          <div className="fw-bold fs-5 text-primary">Rs. {computedTotal?.toLocaleString() || '0'}</div>
                         </div>
                       </div>
                     </div>
