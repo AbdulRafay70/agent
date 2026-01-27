@@ -136,6 +136,47 @@ const AgentPackagesPay = () => {
     note: ''
   });
 
+  // Helper to format transport route
+  const getTransportRouteDisplay = (transportDetails) => {
+    if (!transportDetails || transportDetails.length === 0) return "N/A";
+    const transport = transportDetails[0];
+    const transportInfo = transport.transport_sector_info || transport.transport_sector;
+    if (!transportInfo) return "N/A";
+
+    // Handle Big Sector (Chain of cities)
+    if (transportInfo.big_sector) {
+      const smalls = transportInfo.big_sector.small_sectors || [];
+      if (smalls.length > 0) {
+        const cities = [smalls[0].departure_city];
+        smalls.forEach(s => cities.push(s.arrival_city));
+        return cities.join(" ➔ ");
+      }
+      return transportInfo.big_sector.name || `Region #${transportInfo.big_sector.id}`;
+    }
+
+    // Handle Small Sector
+    if (transportInfo.small_sector) {
+      return `${transportInfo.small_sector.departure_city} ➔ ${transportInfo.small_sector.arrival_city}`;
+    }
+
+    // Fallback - use vehicle_name or type if specific route name unavailable
+    return transportInfo.vehicle_name || transportInfo.vehicle_type || transportInfo.name || "N/A";
+  };
+
+  const formatDateTime = (dateStr) => {
+    if (!dateStr) return "N/A";
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "N/A";
+    return date.toLocaleString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -340,29 +381,36 @@ const AgentPackagesPay = () => {
                         <div className="mb-2">
                           <strong>Hotels:</strong>
                           <div className="small text-muted">
-                            4 Nights at maskan (Soul ul Magi) / 6nights At Medina
-                            (Rou Taiba) / 6nights At Medina (Rou Taiba)
+                            {bookingData?.hotel_details?.map((hotel, i) => {
+                              const cityName = hotel.hotel_info?.city_name || hotel.hotel?.city_name || hotel.hotel_info?.city || hotel.hotel?.city || "N/A";
+                              const hotelName = hotel.hotel_info?.name || hotel.hotel?.name || "N/A";
+                              return `${hotel.number_of_nights} Nights at ${cityName} (${hotelName})`;
+                            }).join(" / ") || "N/A"}
                           </div>
                         </div>
                         <div className="mb-2">
-                          <strong>Departure Visa:</strong>
+                          <strong>Passengers:</strong>
                           <div className="small text-muted">
-                            4Adult-2Child-Infant
+                            {bookingData?.total_adult} Adult - {bookingData?.total_child} Child - {bookingData?.total_infant} Infant
                           </div>
                         </div>
                         <div className="mb-2">
                           <strong>Transport:</strong>
                           <div className="small text-muted">
-                            4Adult-2Child-Infant
+                            {getTransportRouteDisplay(bookingData?.transport_details)}
                           </div>
                         </div>
                         <div className="mb-2">
                           <strong>Flight:</strong>
                           <div className="small text-muted">
-                            Travel Date: SV-234-14E-463-19-DEC-2024-23-20-01:00
-                          </div>
-                          <div className="small text-muted">
-                            Return Date: SV-234-14E-463-19-DEC-2024-23-20-01:20
+                            {bookingData?.ticket_details?.[0]?.trip_details?.[0]?.departure_date_time ? (
+                              <>
+                                Travel Date: {formatDateTime(bookingData.ticket_details[0].trip_details[0].departure_date_time)}
+                                {bookingData.ticket_details[0].trip_details[1] && (
+                                  <> | Return Date: {formatDateTime(bookingData.ticket_details[0].trip_details[1].departure_date_time)}</>
+                                )}
+                              </>
+                            ) : "N/A"}
                           </div>
                         </div>
                       </div>
@@ -370,31 +418,29 @@ const AgentPackagesPay = () => {
                       <div className="col-md-4">
                         <h4 className="mb-3">Prices</h4>
                         <div className="mb-2">
-                          <div className="small text-muted">
-                            Makkah Hotel (Soul ul Magi)/125R Medina Hotel (Rou
-                            Taiba)/125R
-                          </div>
-                          <div className="small text-muted">(Umrah)</div>
-                        </div>
-                        <div className="mb-2">
-                          <div className="small">
-                            47558/Adult-47558/Child-47558/Infant
+                          <div className="small text-muted">Hotel Components</div>
+                          <div className="small fw-semibold">
+                            Rs. {bookingData?.total_hotel_amount?.toLocaleString()}
                           </div>
                         </div>
                         <div className="mb-2">
                           <div className="small text-muted">Transport</div>
-                          <div className="small">
-                            2058/Adult-3058/Child-1558/Infant
+                          <div className="small fw-semibold">
+                            Rs. {bookingData?.total_transport_amount?.toLocaleString()}
                           </div>
                         </div>
                         <div className="mb-2">
-                          <div className="small text-muted">Flight</div>
-                          <div className="small">
-                            RS 125,000/Adult-RS 120,000/Child-RS 15,000/Infant
+                          <div className="small text-muted">Flight & Visa</div>
+                          <div className="small fw-semibold">
+                            Rs. {(bookingData?.total_ticket_amount + bookingData?.total_visa_amount)?.toLocaleString()}
                           </div>
                         </div>
-                        <div className="text-muted small">SAUDI RIYAL RATE</div>
-                        <div className="fw-bold">RS 78.55=1 SAR</div>
+                        {bookingData?.riyal_rate > 0 && (
+                          <div className="mt-3">
+                            <div className="text-muted small">CONVERSION RATE</div>
+                            <div className="fw-bold">RS {bookingData.riyal_rate} = 1 SAR</div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

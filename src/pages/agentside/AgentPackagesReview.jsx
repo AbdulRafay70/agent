@@ -231,28 +231,39 @@ const BookingReview = () => {
   const formatDateTime = (dateStr) => {
     if (!dateStr) return "N/A";
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "N/A";
     return date.toLocaleString('en-GB', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: true
     });
   };
 
-  // Format sector reference to readable route
-  const formatSectorReference = (reference) => {
-    if (!reference) return '';
-    const referenceMap = {
-      'full_package': 'R/T - Jed(A)-Mak(H)-Med(H)-Mak(H)-Jed(A)',
-      'jeddah_makkah': 'Jed(A)-Mak(H)',
-      'makkah_madinah': 'Mak(H)-Med(H)',
-      'madinah_makkah': 'Med(H)-Mak(H)',
-      'makkah_jeddah': 'Mak(H)-Jed(A)',
-      'jeddah_madinah': 'Jed(A)-Med(H)',
-      'madinah_jeddah': 'Med(H)-Jed(A)',
-    };
-    return referenceMap[reference] || reference.replace(/_/g, '-').toUpperCase();
+  // Helper to format transport route
+  const getTransportRouteDisplay = (transportInfo) => {
+    if (!transportInfo) return "N/A";
+
+    // Handle Big Sector (Chain of cities)
+    if (transportInfo.big_sector) {
+      const smalls = transportInfo.big_sector.small_sectors || [];
+      if (smalls.length > 0) {
+        const cities = [smalls[0].departure_city];
+        smalls.forEach(s => cities.push(s.arrival_city));
+        return cities.join(" ➔ ");
+      }
+      return transportInfo.big_sector.name || `Region #${transportInfo.big_sector.id}`;
+    }
+
+    // Handle Small Sector
+    if (transportInfo.small_sector) {
+      return `${transportInfo.small_sector.departure_city} ➔ ${transportInfo.small_sector.arrival_city}`;
+    }
+
+    // Fallback - use vehicle_name or type if specific route name unavailable
+    return transportInfo.vehicle_name || transportInfo.vehicle_type || transportInfo.name || "N/A";
   };
 
   const getPriceForRoomType = (type) => {
@@ -991,23 +1002,22 @@ const BookingReview = () => {
                           <div className="mb-2">
                             <strong>Hotels:</strong>
                             <div className="small text-muted">
-                              {pkgState?.hotel_details?.map((hotel, i) => (
-                                `${hotel.number_of_nights} Nights at ${hotel.hotel_info?.city} (${hotel.hotel_info?.name})`
-                              )).join(" / ") || "N/A"}
+                              {pkgState?.hotel_details?.map((hotel, i) => {
+                                const cityName = hotel.hotel_info?.city_name || hotel.hotel_info?.city || "N/A";
+                                return `${hotel.number_of_nights} Nights at ${cityName} (${hotel.hotel_info?.name})`;
+                              }).join(" / ") || "N/A"}
                             </div>
                           </div>
                           <div className="mb-2">
                             <strong>Selected Room Types:</strong>
                             <div className="small text-muted">
-                              {roomTypesState.join(", ") || "None selected"}
+                              {roomTypesState.map(r => r.replace(/_/g, ' ').toUpperCase()).join(", ") || "None selected"}
                             </div>
                           </div>
                           <div className="mb-2">
                             <strong>Transport:</strong>
                             <div className="small text-muted">
-                              {pkgState?.transport_details?.[0]?.transport_sector_info?.reference
-                                ? formatSectorReference(pkgState.transport_details[0].transport_sector_info.reference)
-                                : pkgState?.transport_details?.[0]?.transport_sector_info?.name || "N/A"}
+                              {getTransportRouteDisplay(pkgState?.transport_details?.[0]?.transport_sector_info)}
                             </div>
                           </div>
                           <div className="mb-2">

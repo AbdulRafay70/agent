@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Container, Row, Col, Card, Form, Button, Badge, Spinner, Alert, Accordion, Table } from "react-bootstrap";
+import { Container, Row, Col, Card, Form, Button, Badge, Spinner, Alert, Accordion, Table, Modal } from "react-bootstrap";
 import AgentSidebar from "../../components/AgentSidebar";
 import AgentHeader from "../../components/AgentHeader";
 import {
@@ -87,6 +87,92 @@ const AgentFlightUpdates = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showResults, setShowResults] = useState(false);
+  // Booking UI state
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [selectedFlight, setSelectedFlight] = useState(null);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState(null);
+  const [passenger, setPassenger] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    salutation: 'Mr',
+    gender: 'Male',
+    birthDate: null,
+    documentNumber: '',
+    docIssueCountry: 'PK',
+    expiryDate: null,
+    nationality: 'PK'
+  });
+  // Token modal state
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [tokenInput, setTokenInput] = useState(localStorage.getItem('idToken') || '');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState(null);
+
+  const handleSaveToken = () => {
+    if (tokenInput && tokenInput.trim()) {
+      localStorage.setItem('idToken', tokenInput.trim());
+      setShowTokenModal(false);
+      alert('idToken saved to localStorage');
+    } else {
+      alert('Please paste a valid token');
+    }
+  };
+
+  const handleRemoveToken = () => {
+    localStorage.removeItem('idToken');
+    setTokenInput('');
+    setShowTokenModal(false);
+    alert('idToken removed from localStorage');
+  };
+
+  const authenticateAndSaveToken = async () => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const body = {
+        clientId: '6tvsrg4go69ktu9f4369tvmvi8',
+        authFlow: 'USER_PASSWORD_AUTH',
+        authParameters: {
+          USERNAME: 'preprod@gmail.com',
+          PASSWORD: 'Preprod#1@2025'
+        }
+      };
+
+      const res = await axios.post('https://pp-auth-api.aiqs.link/client/user/signin/initiate', body, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+
+      const data = res.data || {};
+      // Try common locations for id token
+      const idToken = data?.AuthenticationResult?.IdToken || data?.idToken || data?.id_token || data?.response?.idToken || data?.response?.AuthenticationResult?.IdToken || data?.AuthenticationResult?.Id_Token;
+
+      if (!idToken) {
+        // Try nested structures
+        const firstLevel = Object.values(data)[0] || {};
+        const nestedToken = firstLevel?.AuthenticationResult?.IdToken || firstLevel?.idToken || firstLevel?.id_token;
+        if (nestedToken) {
+          localStorage.setItem('idToken', nestedToken);
+          setTokenInput(nestedToken);
+          alert('idToken saved to localStorage');
+        } else {
+          throw new Error('idToken not found in authentication response');
+        }
+      } else {
+        localStorage.setItem('idToken', idToken);
+        setTokenInput(idToken);
+        alert('idToken saved to localStorage');
+      }
+    } catch (err) {
+      console.error('Auth error', err);
+      setAuthError(err.response?.data || err.message || 'Auth failed');
+      alert('Authentication failed: ' + (err.response?.data?.message || err.message || 'unknown'));
+    } finally {
+      setAuthLoading(false);
+    }
+  };
   
   // Filter states
   const [filters, setFilters] = useState({
@@ -308,9 +394,204 @@ const AgentFlightUpdates = () => {
   };
 
   const handleBookFlight = (flight) => {
-    localStorage.setItem('selectedFlight', JSON.stringify(flight));
-    console.log('Selected flight:', flight);
-    alert('Flight selected! Booking functionality coming soon...');
+    setSelectedFlight(flight);
+    setShowBookingModal(true);
+  };
+
+  const handlePassengerChange = (e) => {
+    const { name, value } = e.target;
+    setPassenger(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handlePassengerDateChange = (name, date) => {
+    setPassenger(prev => ({ ...prev, [name]: date }));
+  };
+
+  const handleConfirmBooking = async () => {
+    if (!selectedFlight) return;
+    if (!passenger.name || !passenger.phone || !passenger.email) {
+      setBookingError('Please fill passenger name, phone and email');
+      return;
+    }
+    if (!passenger.birthDate || !passenger.documentNumber || !passenger.expiryDate || !passenger.nationality) {
+      setBookingError('Please fill DOB, passport number, expiry and nationality');
+      return;
+    }
+
+    setBookingLoading(true);
+    setBookingError(null);
+    try {
+      // 1) Build validate payload from selectedFlight
+      const from = selectedFlight.ondPairs?.[0]?.originLocation || selectedFlight.ondPairs?.[0]?.originCity || selectedFlight.segments?.[0]?.flights?.[0]?.departureLocation;
+      const to = selectedFlight.ondPairs?.[0]?.destinationLocation || selectedFlight.ondPairs?.[0]?.destinationCity || selectedFlight.segments?.[0]?.flights?.[0]?.arrivalLocation;
+
+      const segmentGroup = (selectedFlight.ondPairs || selectedFlight.segments || []).map((ond, ondIdx) => {
+        const segs = (ond.segments || ond.flights || []).map(f => ({
+          dateTime: {
+            depDate: f.depDate || f.departureDate || f.departureDate,
+            depTime: (f.depTime || f.departureTime || '').replace(':', ''),
+            arrDate: f.arrDate || f.arrivalDate || f.arrivalDate,
+            arrTime: (f.arrTime || f.arrivalTime || '').replace(':', '')
+          },
+          location: {
+            depAirport: f.depAirport || f.depAirport || f.departureLocation,
+            arrAirport: f.arrAirport || f.arrivalLocation
+          },
+          mktgAirline: f.mktgAirline || f.airlineCode,
+          operAirline: f.operatingAirline || f.operatingAirline || f.airlineCode,
+          issuingAirline: f.issuingAirline || f.airlineCode,
+          flightNo: f.flightNo || f.flightNo || f.flightNo,
+          rbd: f.rbd || f.cabin || f.rbd,
+          flightTypeDetails: {
+            ondID: ondIdx,
+            segID: 0
+          }
+        }));
+
+        return { flifo: segs };
+      });
+
+      const validatePayload = {
+        request: {
+          service: 'FlightRQ',
+          supplierCodes: [selectedFlight.supplierCode || selectedFlight.supplierCode || 2],
+          node: {},
+          content: {
+            command: 'FlightValidateRQ',
+            validateFareRequest: {
+              target: 'Test',
+              adt: parseInt(formData.adults) || 1,
+              chd: parseInt(formData.children) || 0,
+              inf: parseInt(formData.infants) || 0,
+              segmentGroup: segmentGroup,
+              tripType: selectedFlight.tripType || 'O',
+              from: from || (formData.from?.match(/- ([A-Z]{3})$/)?.[1]),
+              to: to || (formData.to?.match(/- ([A-Z]{3})$/)?.[1]),
+              totalAmount: selectedFlight.fare?.total || selectedFlight.fare?.total || 0
+            }
+          },
+          supplierSpecific: selectedFlight.supplierSpecific || []
+        }
+      };
+
+      const authToken = localStorage.getItem('idToken');
+      const validateRes = await axios.post('/api/air/validate/', validatePayload, { timeout: 60000,
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authToken ? { Authorization: `Bearer ${authToken}` } : {})
+      });
+      const sealed = validateRes?.data?.response?.content?.validateFareResponse?.sealed || validateRes?.data?.response?.content?.sealed || validateRes?.data?.sealed;
+
+      if (!sealed) {
+        throw new Error('Failed to obtain sealed token from validate response');
+      }
+
+      // 2) Build travelerInfo from passenger modal (minimal required fields)
+      const [given, ...rest] = passenger.name.trim().split(' ');
+      const sur = rest.join(' ') || 'Passenger';
+      const formatDateDDMMYYYY = (d) => {
+        if (!d) return '';
+        const dt = new Date(d);
+        const day = String(dt.getDate()).padStart(2, '0');
+        const month = String(dt.getMonth() + 1).padStart(2, '0');
+        const year = dt.getFullYear();
+        return `${day}-${month}-${year}`;
+      };
+
+      const travelerInfo = [
+        {
+          paxType: 'ADT',
+          gender: passenger.gender || 'Male',
+          salutation: passenger.salutation || 'Mr',
+          givenName: given,
+          surName: sur,
+          birthDate: formatDateDDMMYYYY(passenger.birthDate),
+          docType: '1',
+          documentNumber: passenger.documentNumber,
+          docIssueCountry: passenger.docIssueCountry || 'PK',
+          expiryDate: formatDateDDMMYYYY(passenger.expiryDate),
+          nationality: passenger.nationality || 'PK',
+          leadPax: true,
+          contact: {
+            emailList: [{ emailId: passenger.email, emailType: { id: 1, name: 'Personal' } }],
+            phoneList: [{ number: passenger.phone, phoneType: { id: 1, name: 'Mobile' } }]
+          }
+        }
+      ];
+
+      // 3) Build ondPairs structure from selectedFlight
+      const ondPairs = (selectedFlight.ondPairs || selectedFlight.segments || []).map((ond) => {
+        const segments = (ond.segments || ond.flights || []).map(s => ({
+          fareBasis: s.fareBasis || s.fareBasis || s.rbd || '',
+          depDate: s.depDate || s.departureDate || '',
+          depTime: (s.depTime || s.departureTime || '').replace(':', ''),
+          arrDate: s.arrDate || s.arrivalDate || '',
+          arrTime: (s.arrTime || s.arrivalTime || '').replace(':', ''),
+          depAirport: s.depAirport || s.departureLocation || '',
+          arrAirport: s.arrAirport || s.arrivalLocation || '',
+          mktgAirline: s.mktgAirline || s.airlineCode || '',
+          operAirline: s.operatingAirline || s.operatingAirline || s.airlineCode || '',
+          issuingAirline: s.issuingAirline || s.airlineCode || '',
+          flightNo: s.flightNo || s.flightNo || s.flightNo || '',
+          cabin: s.cabin || s.cabin || '',
+          duration: s.duration || s.duration || '',
+          rbd: s.rbd || '',
+          eqpType: s.eqpType || s.equipmentType || '' ,
+          stopQuantity: s.stopQuantity || s.stops || 0
+        }));
+
+        return {
+          originCity: ond.originCity || ond.ond?.originLocation || ond.originLocation || '',
+          destinationCity: ond.destinationCity || ond.ond?.destinationLocation || ond.destinationLocation || '',
+          duration: ond.duration || '',
+          segments
+        };
+      });
+
+      const bookPayload = {
+        request: {
+          service: 'FlightRQ',
+          supplierCodes: [selectedFlight.supplierCode || 2],
+          node: {},
+          content: {
+            command: 'FlightBookRQ',
+            bookFlightRQ: {
+              bookingRefId: '',
+              sealed: sealed,
+              adt: parseInt(formData.adults) || 1,
+              chd: parseInt(formData.children) || 0,
+              inf: parseInt(formData.infants) || 0,
+              tripType: selectedFlight.tripType || 'O',
+              fare: selectedFlight.fare || { paxCount: String(formData.adults), baseFare: String(selectedFlight.fare?.baseFare || ''), tax: String(selectedFlight.fare?.tax || ''), total: selectedFlight.fare?.total || 0, currency: selectedFlight.fare?.currency || 'PKR' },
+              airFareRule: selectedFlight.airFareRule || [],
+              ondPairs: ondPairs,
+              travelerInfo: travelerInfo,
+              paymentMode: 7,
+              issue: false
+            }
+          },
+          supplierSpecific: selectedFlight.supplierSpecific || []
+        },
+        selectCredential: {
+          id: selectedFlight.selectCredential?.id || undefined
+        }
+      };
+
+      const bookRes = await axios.post('/api/air/book/', bookPayload, { timeout: 60000,
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authToken ? { Authorization: `Bearer ${authToken}` } : {})
+      });
+      const bookResp = bookRes?.data?.response?.content?.bookFlightRS || bookRes?.data?.response?.content?.bookFlightRS || bookRes?.data?.response?.content?.bookFlightRS;
+      const bookingRef = bookResp?.bookingRefId || bookRes?.data?.response?.content?.bookFlightRS?.bookingRefId || bookRes?.data?.response?.content?.bookingRefId;
+      const pnr = bookResp?.pnr || bookRes?.data?.response?.content?.pnr;
+
+      setShowBookingModal(false);
+      setSelectedFlight(null);
+      setPassenger({ name: '', phone: '', email: '' });
+      alert('Booking created successfully: ' + (bookingRef || pnr || 'OK'));
+    } catch (err) {
+      console.error('Booking error:', err);
+      setBookingError(err.response?.data?.error || err.response?.data?.message || err.response?.data || err.message || 'Failed to create booking');
+    } finally {
+      setBookingLoading(false);
+    }
   };
 
   const handleBackToSearch = () => {
@@ -327,6 +608,11 @@ const AgentFlightUpdates = () => {
         <AgentHeader />
         <div className="agent-flight-updates-wrapper">
           <Container fluid className="py-4">
+            <div className="d-flex justify-content-end mb-3">
+              <Button variant="outline-secondary" size="sm" onClick={() => setShowTokenModal(true)}>
+                Set idToken
+              </Button>
+            </div>
             {!showResults ? (
               // Search Form
               <Card className="shadow-sm border-0">
@@ -883,6 +1169,194 @@ const AgentFlightUpdates = () => {
               </div>
             )}
           </Container>
+                {/* Booking Modal */}
+                <Modal show={showBookingModal} onHide={() => setShowBookingModal(false)} centered>
+                  <Modal.Header closeButton>
+                    <Modal.Title>Confirm Booking</Modal.Title>
+                  </Modal.Header>
+                  <Modal.Body>
+                    {bookingError && (
+                      <Alert variant="danger">{bookingError}</Alert>
+                    )}
+
+                    {selectedFlight && (
+                      <div>
+                        <p className="small text-muted">Selected flight:</p>
+                        <div className="mb-2">
+                          <strong>{selectedFlight.segments?.[0]?.flights?.[0]?.airlineCode} {selectedFlight.segments?.[0]?.flights?.[0]?.flightNo}</strong>
+                          <div className="small text-muted">{selectedFlight.segments?.[0]?.flights?.[0]?.departureLocation} → {selectedFlight.segments?.[0]?.flights?.[0]?.arrivalLocation}</div>
+                          <div className="mt-1">Price: {formatPrice(selectedFlight.fare?.total, selectedFlight.fare?.currency)}</div>
+                        </div>
+                        <hr />
+
+                        <Form>
+                          <Row>
+                            <Col md={6} className="mb-2">
+                              <Form.Group>
+                                <Form.Label>Salutation</Form.Label>
+                                <Form.Select name="salutation" value={passenger.salutation} onChange={handlePassengerChange}>
+                                  <option>Mr</option>
+                                  <option>Mrs</option>
+                                  <option>Ms</option>
+                                  <option>Miss</option>
+                                  <option>Mstr</option>
+                                </Form.Select>
+                              </Form.Group>
+                            </Col>
+                            <Col md={6} className="mb-2">
+                              <Form.Group>
+                                <Form.Label>Gender</Form.Label>
+                                <Form.Select name="gender" value={passenger.gender} onChange={handlePassengerChange}>
+                                  <option>Male</option>
+                                  <option>Female</option>
+                                </Form.Select>
+                              </Form.Group>
+                            </Col>
+                          </Row>
+
+                          <Form.Group className="mb-2">
+                            <Form.Label>Lead Passenger Name</Form.Label>
+                            <Form.Control
+                              type="text"
+                              name="name"
+                              value={passenger.name}
+                              onChange={handlePassengerChange}
+                              placeholder="Full name"
+                            />
+                          </Form.Group>
+
+                          <Row>
+                            <Col md={6} className="mb-2">
+                              <Form.Group>
+                                <Form.Label>Date of Birth</Form.Label>
+                                <DatePicker
+                                  selected={passenger.birthDate}
+                                  onChange={(d) => handlePassengerDateChange('birthDate', d)}
+                                  dateFormat="dd-MM-yyyy"
+                                  className="form-control"
+                                  placeholderText="DD-MM-YYYY"
+                                />
+                              </Form.Group>
+                            </Col>
+                            <Col md={6} className="mb-2">
+                              <Form.Group>
+                                <Form.Label>Nationality</Form.Label>
+                                <Form.Control
+                                  type="text"
+                                  name="nationality"
+                                  value={passenger.nationality}
+                                  onChange={handlePassengerChange}
+                                  placeholder="PK"
+                                />
+                              </Form.Group>
+                            </Col>
+                          </Row>
+
+                          <Row>
+                            <Col md={6} className="mb-2">
+                              <Form.Group>
+                                <Form.Label>Passport / Document Number</Form.Label>
+                                <Form.Control
+                                  type="text"
+                                  name="documentNumber"
+                                  value={passenger.documentNumber}
+                                  onChange={handlePassengerChange}
+                                  placeholder="Passport number"
+                                />
+                              </Form.Group>
+                            </Col>
+                            <Col md={6} className="mb-2">
+                              <Form.Group>
+                                <Form.Label>Issuing Country</Form.Label>
+                                <Form.Control
+                                  type="text"
+                                  name="docIssueCountry"
+                                  value={passenger.docIssueCountry}
+                                  onChange={handlePassengerChange}
+                                  placeholder="PK"
+                                />
+                              </Form.Group>
+                            </Col>
+                          </Row>
+
+                          <Row>
+                            <Col md={6} className="mb-2">
+                              <Form.Group>
+                                <Form.Label>Document Expiry Date</Form.Label>
+                                <DatePicker
+                                  selected={passenger.expiryDate}
+                                  onChange={(d) => handlePassengerDateChange('expiryDate', d)}
+                                  dateFormat="dd-MM-yyyy"
+                                  className="form-control"
+                                  placeholderText="DD-MM-YYYY"
+                                />
+                              </Form.Group>
+                            </Col>
+                            <Col md={6} className="mb-2">
+                              <Form.Group>
+                                <Form.Label>Phone</Form.Label>
+                                <Form.Control
+                                  type="text"
+                                  name="phone"
+                                  value={passenger.phone}
+                                  onChange={handlePassengerChange}
+                                  placeholder="Phone number"
+                                />
+                              </Form.Group>
+                            </Col>
+                          </Row>
+
+                          <Form.Group className="mb-2">
+                            <Form.Label>Email</Form.Label>
+                            <Form.Control
+                              type="email"
+                              name="email"
+                              value={passenger.email}
+                              onChange={handlePassengerChange}
+                              placeholder="Email address"
+                            />
+                          </Form.Group>
+                        </Form>
+                      </div>
+                    )}
+                  </Modal.Body>
+                  <Modal.Footer>
+                    <Button variant="secondary" onClick={() => setShowBookingModal(false)} disabled={bookingLoading}>
+                      Cancel
+                    </Button>
+                    <Button variant="primary" onClick={handleConfirmBooking} disabled={bookingLoading}>
+                      {bookingLoading ? 'Booking...' : 'Confirm & Book'}
+                    </Button>
+                  </Modal.Footer>
+                </Modal>
+
+                {/* idToken Modal */}
+                <Modal show={showTokenModal} onHide={() => setShowTokenModal(false)} centered>
+                  <Modal.Header closeButton>
+                    <Modal.Title>Set idToken</Modal.Title>
+                  </Modal.Header>
+                  <Modal.Body>
+                    <Form>
+                      <Form.Group>
+                        <Form.Label>Paste idToken (JWT)</Form.Label>
+                        <Form.Control
+                          as="textarea"
+                          rows={4}
+                          value={tokenInput}
+                          onChange={(e) => setTokenInput(e.target.value)}
+                          placeholder="eyJ..."
+                        />
+                      </Form.Group>
+                      <div className="small text-muted mt-2">Current token will be overwritten.</div>
+                    </Form>
+                  </Modal.Body>
+                  <Modal.Footer>
+                    <Button variant="danger" onClick={handleRemoveToken}>Remove</Button>
+                    <Button variant="secondary" onClick={() => setShowTokenModal(false)}>Cancel</Button>
+                    <Button variant="primary" onClick={handleSaveToken}>Save Token</Button>
+                  </Modal.Footer>
+                </Modal>
+
         </div>
       </div>
     </div>

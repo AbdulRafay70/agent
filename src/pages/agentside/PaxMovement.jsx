@@ -1,172 +1,20 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, Row, Col, Badge, Table, Button, Form, Modal, Tabs, Tab, InputGroup } from "react-bootstrap";
 import { MapPin, Hotel, Plane, Users, Calendar, ArrowRight, TrendingUp, Eye, Search, X } from "lucide-react";
 import AgentSidebar from "../../components/AgentSidebar";
 import AgentHeader from "../../components/AgentHeader";
+import axios from "axios";
 
-// Demo data for UI/UX demonstration
-const demoPaxData = {
-  locationOverview: {
-    visaIssued: 15,
-    arrivedKSA: 45,
-    inMakkah: 30,
-    inMadinah: 10,
-    inJeddah: 5,
-    exitedKSA: 8
-  },
-  hotelSummary: {
-    currentCheckIns: 38,
-    readyForCheckout: 5,
-    checkedOutToday: 3,
-    upcomingCheckIns: 7
-  },
-  transportSummary: {
-    todaysTransfers: 12,
-    upcomingZiyarat: 8,
-    inProgress: 4,
-    completed: 15
-  },
-  flightSummary: {
-    todaysArrivals: 6,
-    todaysDepartures: 4,
-    upcomingFlights: 9
-  },
-  paxList: [
-    {
-      id: 1,
-      name: "Ahmed Ali Khan",
-      passport: "AB***456",
-      bookingNo: "BKG-2025-001",
-      currentCity: "Makkah",
-      hotel: "Hilton Makkah",
-      roomNo: "405",
-      status: "active",
-      statusBadge: "in_ksa",
-      checkIn: "2025-10-15",
-      checkOut: "2025-10-20",
-      nextMovement: "Check-out scheduled",
-      agent: "Abdul Rehman",
-      branch: "Lahore Branch"
-    },
-    {
-      id: 2,
-      name: "Fatima Zahra",
-      passport: "CD***789",
-      bookingNo: "BKG-2025-002",
-      currentCity: "Madinah",
-      hotel: "Madinah Grand",
-      roomNo: "302",
-      status: "active",
-      statusBadge: "in_ksa",
-      checkIn: "2025-10-18",
-      checkOut: "2025-10-23",
-      nextMovement: "Ziyarat scheduled tomorrow",
-      agent: "Abdul Rehman",
-      branch: "Lahore Branch"
-    },
-    {
-      id: 3,
-      name: "Muhammad Usman",
-      passport: "EF***012",
-      bookingNo: "BKG-2025-003",
-      currentCity: "Pakistan",
-      hotel: "Pending",
-      roomNo: "-",
-      status: "pending",
-      statusBadge: "visa_issued",
-      checkIn: "-",
-      checkOut: "-",
-      nextMovement: "Flight on 2025-11-05",
-      agent: "Abdul Rehman",
-      branch: "Karachi Branch"
-    }
-  ],
-  hotelDetails: [
-    {
-      id: 1,
-      paxName: "Ahmed Ali Khan",
-      hotel: "Hilton Makkah",
-      city: "Makkah",
-      roomNo: "405",
-      checkIn: "2025-10-15",
-      checkOut: "2025-10-20",
-      bookingNo: "BKG-2025-001",
-      agent: "Abdul Rehman",
-      status: "checked_in"
-    },
-    {
-      id: 2,
-      paxName: "Fatima Zahra",
-      hotel: "Madinah Grand",
-      city: "Madinah",
-      roomNo: "302",
-      checkIn: "2025-10-18",
-      checkOut: "2025-10-23",
-      bookingNo: "BKG-2025-002",
-      agent: "Abdul Rehman",
-      status: "checked_in"
-    },
-    {
-      id: 3,
-      paxName: "Hassan Ahmed",
-      hotel: "Makkah Tower",
-      city: "Makkah",
-      roomNo: "210",
-      checkIn: "2025-10-20",
-      checkOut: "2025-10-20",
-      bookingNo: "BKG-2025-005",
-      agent: "Sara Khan",
-      status: "ready_checkout"
-    }
-  ],
-  transportDetails: [
-    {
-      id: 1,
-      paxName: "Ahmed Ali Khan",
-      type: "Ziyarat",
-      location: "Cave Hira",
-      pickup: "Hilton Makkah",
-      time: "08:00 AM",
-      date: "2025-11-02",
-      status: "scheduled",
-      bookingNo: "BKG-2025-001"
-    },
-    {
-      id: 2,
-      paxName: "Fatima Zahra",
-      type: "Transfer",
-      location: "Madinah → Jeddah",
-      pickup: "Madinah Grand",
-      time: "10:30 AM",
-      date: "2025-11-02",
-      status: "in_progress",
-      bookingNo: "BKG-2025-002"
-    }
-  ],
-  flightDetails: [
-    {
-      id: 1,
-      paxName: "Muhammad Usman",
-      flightNo: "SV-802",
-      from: "Islamabad (ISB)",
-      to: "Jeddah (JED)",
-      time: "05:30 PM",
-      date: "2025-11-05",
-      type: "arrival",
-      bookingNo: "BKG-2025-003"
-    },
-    {
-      id: 2,
-      paxName: "Hassan Ahmed",
-      flightNo: "PK-740",
-      from: "Jeddah (JED)",
-      to: "Lahore (LHE)",
-      time: "11:45 PM",
-      date: "2025-11-02",
-      type: "departure",
-      bookingNo: "BKG-2025-005"
-    }
-  ]
+// Live data state (fetched from backend)
+const emptyLiveData = {
+  locationOverview: { visaIssued: 0, arrivedKSA: 0, inMakkah: 0, inMadinah: 0, inJeddah: 0, exitedKSA: 0 },
+  hotelSummary: { currentCheckIns: 0, readyForCheckout: 0, checkedOutToday: 0, upcomingCheckIns: 0 },
+  transportSummary: { todaysTransfers: 0, upcomingZiyarat: 0, inProgress: 0, completed: 0 },
+  flightSummary: { todaysArrivals: 0, todaysDepartures: 0, upcomingFlights: 0 },
+  paxList: [],
+  hotelDetails: [],
+  transportDetails: [],
+  flightDetails: []
 };
 
 const PaxMovement = () => {
@@ -177,6 +25,8 @@ const PaxMovement = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPax, setSelectedPax] = useState(null);
   const [showPaxDetailModal, setShowPaxDetailModal] = useState(false);
+  const [liveData, setLiveData] = useState(emptyLiveData);
+  const [loadingLive, setLoadingLive] = useState(true);
 
   const getStatusBadge = (status) => {
     const badges = {
@@ -203,14 +53,90 @@ const PaxMovement = () => {
     setSearchQuery("");
   };
 
+  // Fetch live data from backend
+  useEffect(() => {
+    const fetchLive = async () => {
+      setLoadingLive(true);
+      try {
+        const token = localStorage.getItem("accessToken");
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        // primary endpoint - adjust if your backend uses a different path
+        const url = "http://127.0.0.1:8000/api/pax-movement/";
+        const res = await axios.get(url, { headers });
+        let data = res.data;
+
+        // Normalize data shape: accept either an object with expected keys or an array of pax
+        if (Array.isArray(data)) {
+          // build minimal shape from pax array
+          const paxList = data;
+          const hotelDetails = paxList.filter(p => p.hotel);
+          const transportDetails = paxList.filter(p => p.type && (p.type.toLowerCase() === 'transfer' || p.type.toLowerCase() === 'ziyarat'));
+          const flightDetails = paxList.filter(p => p.flightNo || p.from);
+
+          const locationOverview = {
+            visaIssued: paxList.filter(p => (p.statusBadge || '').toLowerCase().includes('visa')).length,
+            arrivedKSA: paxList.filter(p => (p.currentCity || '').toString().toLowerCase() !== 'pakistan').length,
+            inMakkah: paxList.filter(p => (p.currentCity || '').toString().toLowerCase().includes('makkah')).length,
+            inMadinah: paxList.filter(p => (p.currentCity || '').toString().toLowerCase().includes('madinah')).length,
+            inJeddah: paxList.filter(p => (p.currentCity || '').toString().toLowerCase().includes('jeddah')).length,
+            exitedKSA: paxList.filter(p => (p.statusBadge || '').toLowerCase().includes('exited')).length,
+          };
+
+          const hotelSummary = {
+            currentCheckIns: hotelDetails.filter(h => h.status === 'checked_in' || (h.statusBadge || '').toLowerCase().includes('in_ksa')).length,
+            readyForCheckout: hotelDetails.filter(h => h.status === 'ready_checkout').length,
+            checkedOutToday: hotelDetails.filter(h => h.checkedOutToday).length || 0,
+            upcomingCheckIns: hotelDetails.filter(h => h.status === 'upcoming').length
+          };
+
+          const transportSummary = {
+            todaysTransfers: transportDetails.length,
+            upcomingZiyarat: transportDetails.filter(t => (t.type || '').toLowerCase().includes('ziyarat')).length,
+            inProgress: transportDetails.filter(t => (t.status || '').toLowerCase().includes('in_progress')).length,
+            completed: transportDetails.filter(t => (t.status || '').toLowerCase().includes('completed')).length
+          };
+
+          const flightSummary = {
+            todaysArrivals: flightDetails.filter(f => (f.type || '').toLowerCase() === 'arrival').length,
+            todaysDepartures: flightDetails.filter(f => (f.type || '').toLowerCase() === 'departure').length,
+            upcomingFlights: flightDetails.length
+          };
+
+          data = { locationOverview, hotelSummary, transportSummary, flightSummary, paxList, hotelDetails, transportDetails, flightDetails };
+        } else {
+          // if object but missing arrays, ensure keys exist
+          data = {
+            locationOverview: data.locationOverview || emptyLiveData.locationOverview,
+            hotelSummary: data.hotelSummary || emptyLiveData.hotelSummary,
+            transportSummary: data.transportSummary || emptyLiveData.transportSummary,
+            flightSummary: data.flightSummary || emptyLiveData.flightSummary,
+            paxList: data.paxList || data.pax_list || [],
+            hotelDetails: data.hotelDetails || data.hotel_details || [],
+            transportDetails: data.transportDetails || data.transport_details || [],
+            flightDetails: data.flightDetails || data.flight_details || []
+          };
+        }
+
+        setLiveData(data);
+      } catch (e) {
+        console.error("Failed to fetch live pax movement data", e);
+        setLiveData(emptyLiveData);
+      } finally {
+        setLoadingLive(false);
+      }
+    };
+
+    fetchLive();
+  }, []);
+
   // Filter passengers based on search query
-  const filteredPaxList = demoPaxData.paxList.filter((pax) => {
-    const query = searchQuery.toLowerCase();
+  const filteredPaxList = (liveData.paxList || []).filter((pax) => {
+    const query = (searchQuery || "").toLowerCase();
     return (
-      pax.name.toLowerCase().includes(query) ||
-      pax.bookingNo.toLowerCase().includes(query) ||
-      pax.passport.toLowerCase().includes(query) ||
-      pax.currentCity.toLowerCase().includes(query)
+      (pax.name || "").toString().toLowerCase().includes(query) ||
+      (pax.bookingNo || "").toString().toLowerCase().includes(query) ||
+      (pax.passport || "").toString().toLowerCase().includes(query) ||
+      (pax.currentCity || "").toString().toLowerCase().includes(query)
     );
   });
 
@@ -219,7 +145,7 @@ const PaxMovement = () => {
     const movements = [];
     
     // Check hotel records
-    const hotelRecord = demoPaxData.hotelDetails.find(h => h.paxName === paxName);
+    const hotelRecord = (liveData.hotelDetails || []).find(h => (h.paxName || h.name) === paxName);
     if (hotelRecord) {
       movements.push({
         type: "Hotel",
@@ -232,7 +158,7 @@ const PaxMovement = () => {
     }
 
     // Check transport records
-    const transportRecords = demoPaxData.transportDetails.filter(t => t.paxName === paxName);
+    const transportRecords = (liveData.transportDetails || []).filter(t => (t.paxName || t.name) === paxName);
     transportRecords.forEach(t => {
       movements.push({
         type: t.type,
@@ -245,7 +171,7 @@ const PaxMovement = () => {
     });
 
     // Check flight records
-    const flightRecords = demoPaxData.flightDetails.filter(f => f.paxName === paxName);
+    const flightRecords = (liveData.flightDetails || []).filter(f => (f.paxName || f.name) === paxName);
     flightRecords.forEach(f => {
       movements.push({
         type: "Flight",
@@ -266,7 +192,7 @@ const PaxMovement = () => {
         <Card className="text-center shadow-sm h-100 cursor-pointer hover-shadow" onClick={() => openDetailsModal("visa_issued")}>
           <Card.Body className="p-3">
             <div className="mb-2">🟡</div>
-            <h4 className="mb-1 text-warning">{demoPaxData.locationOverview.visaIssued}</h4>
+            <h4 className="mb-1 text-warning">{liveData.locationOverview?.visaIssued ?? 0}</h4>
             <small className="text-muted">Visa Issued</small>
             <div className="mt-2"><small className="text-muted">In Pakistan</small></div>
           </Card.Body>
@@ -276,7 +202,7 @@ const PaxMovement = () => {
         <Card className="text-center shadow-sm h-100 cursor-pointer hover-shadow" onClick={() => openDetailsModal("arrived_ksa")}>
           <Card.Body className="p-3">
             <div className="mb-2">🟢</div>
-            <h4 className="mb-1 text-success">{demoPaxData.locationOverview.arrivedKSA}</h4>
+            <h4 className="mb-1 text-success">{liveData.locationOverview?.arrivedKSA ?? 0}</h4>
             <small className="text-muted">Arrived KSA</small>
             <div className="mt-2"><small className="text-muted">Total in KSA</small></div>
           </Card.Body>
@@ -286,7 +212,7 @@ const PaxMovement = () => {
         <Card className="text-center shadow-sm h-100 cursor-pointer hover-shadow" onClick={() => openDetailsModal("in_makkah")}>
           <Card.Body className="p-3">
             <div className="mb-2">🕋</div>
-            <h4 className="mb-1 text-primary">{demoPaxData.locationOverview.inMakkah}</h4>
+            <h4 className="mb-1 text-primary">{liveData.locationOverview?.inMakkah ?? 0}</h4>
             <small className="text-muted">In Makkah</small>
             <div className="mt-2"><small className="text-muted">Holy City</small></div>
           </Card.Body>
@@ -296,7 +222,7 @@ const PaxMovement = () => {
         <Card className="text-center shadow-sm h-100 cursor-pointer hover-shadow" onClick={() => openDetailsModal("in_madinah")}>
           <Card.Body className="p-3">
             <div className="mb-2">🕌</div>
-            <h4 className="mb-1 text-info">{demoPaxData.locationOverview.inMadinah}</h4>
+            <h4 className="mb-1 text-info">{liveData.locationOverview?.inMadinah ?? 0}</h4>
             <small className="text-muted">In Madinah</small>
             <div className="mt-2"><small className="text-muted">Holy City</small></div>
           </Card.Body>
@@ -306,7 +232,7 @@ const PaxMovement = () => {
         <Card className="text-center shadow-sm h-100 cursor-pointer hover-shadow" onClick={() => openDetailsModal("in_jeddah")}>
           <Card.Body className="p-3">
             <div className="mb-2">🏙️</div>
-            <h4 className="mb-1 text-secondary">{demoPaxData.locationOverview.inJeddah}</h4>
+            <h4 className="mb-1 text-secondary">{liveData.locationOverview?.inJeddah ?? 0}</h4>
             <small className="text-muted">In Jeddah</small>
             <div className="mt-2"><small className="text-muted">Gateway City</small></div>
           </Card.Body>
@@ -316,7 +242,7 @@ const PaxMovement = () => {
         <Card className="text-center shadow-sm h-100 cursor-pointer hover-shadow" onClick={() => openDetailsModal("exited")}>
           <Card.Body className="p-3">
             <div className="mb-2">🔴</div>
-            <h4 className="mb-1 text-danger">{demoPaxData.locationOverview.exitedKSA}</h4>
+            <h4 className="mb-1 text-danger">{liveData.locationOverview?.exitedKSA ?? 0}</h4>
             <small className="text-muted">Exited KSA</small>
             <div className="mt-2"><small className="text-muted">Returned</small></div>
           </Card.Body>
@@ -337,25 +263,25 @@ const PaxMovement = () => {
         <Row className="g-3">
           <Col xs={6} md={3}>
             <div className="text-center p-3 bg-light rounded cursor-pointer hover-bg-primary" onClick={() => openDetailsModal("current_checkins")}>
-              <h3 className="text-success mb-2">{demoPaxData.hotelSummary.currentCheckIns}</h3>
+              <h3 className="text-success mb-2">{liveData.hotelSummary?.currentCheckIns ?? 0}</h3>
               <small className="text-muted">Current Check-Ins</small>
             </div>
           </Col>
           <Col xs={6} md={3}>
             <div className="text-center p-3 bg-light rounded cursor-pointer hover-bg-primary" onClick={() => openDetailsModal("ready_checkout")}>
-              <h3 className="text-warning mb-2">{demoPaxData.hotelSummary.readyForCheckout}</h3>
+              <h3 className="text-warning mb-2">{liveData.hotelSummary?.readyForCheckout ?? 0}</h3>
               <small className="text-muted">Ready for Checkout</small>
             </div>
           </Col>
           <Col xs={6} md={3}>
             <div className="text-center p-3 bg-light rounded cursor-pointer hover-bg-primary" onClick={() => openDetailsModal("checked_out_today")}>
-              <h3 className="text-secondary mb-2">{demoPaxData.hotelSummary.checkedOutToday}</h3>
+              <h3 className="text-secondary mb-2">{liveData.hotelSummary?.checkedOutToday ?? 0}</h3>
               <small className="text-muted">Checked Out Today</small>
             </div>
           </Col>
           <Col xs={6} md={3}>
             <div className="text-center p-3 bg-light rounded cursor-pointer hover-bg-primary" onClick={() => openDetailsModal("upcoming_checkins")}>
-              <h3 className="text-info mb-2">{demoPaxData.hotelSummary.upcomingCheckIns}</h3>
+              <h3 className="text-info mb-2">{liveData.hotelSummary?.upcomingCheckIns ?? 0}</h3>
               <small className="text-muted">Upcoming Check-Ins</small>
             </div>
           </Col>
@@ -376,25 +302,25 @@ const PaxMovement = () => {
         <Row className="g-3">
           <Col xs={6} md={3}>
             <div className="text-center p-3 bg-light rounded cursor-pointer hover-bg-primary" onClick={() => openDetailsModal("todays_transfers")}>
-              <h3 className="text-primary mb-2">{demoPaxData.transportSummary.todaysTransfers}</h3>
+              <h3 className="text-primary mb-2">{liveData.transportSummary?.todaysTransfers ?? 0}</h3>
               <small className="text-muted">Today's Transfers</small>
             </div>
           </Col>
           <Col xs={6} md={3}>
             <div className="text-center p-3 bg-light rounded cursor-pointer hover-bg-primary" onClick={() => openDetailsModal("upcoming_ziyarat")}>
-              <h3 className="text-info mb-2">{demoPaxData.transportSummary.upcomingZiyarat}</h3>
+              <h3 className="text-info mb-2">{liveData.transportSummary?.upcomingZiyarat ?? 0}</h3>
               <small className="text-muted">Upcoming Ziyarat</small>
             </div>
           </Col>
           <Col xs={6} md={3}>
             <div className="text-center p-3 bg-light rounded cursor-pointer hover-bg-primary" onClick={() => openDetailsModal("in_progress")}>
-              <h3 className="text-warning mb-2">{demoPaxData.transportSummary.inProgress}</h3>
+              <h3 className="text-warning mb-2">{liveData.transportSummary?.inProgress ?? 0}</h3>
               <small className="text-muted">In Progress</small>
             </div>
           </Col>
           <Col xs={6} md={3}>
             <div className="text-center p-3 bg-light rounded cursor-pointer hover-bg-primary" onClick={() => openDetailsModal("completed")}>
-              <h3 className="text-success mb-2">{demoPaxData.transportSummary.completed}</h3>
+              <h3 className="text-success mb-2">{liveData.transportSummary?.completed ?? 0}</h3>
               <small className="text-muted">Completed</small>
             </div>
           </Col>
@@ -415,21 +341,21 @@ const PaxMovement = () => {
         <Row className="g-3">
           <Col xs={6} md={4}>
             <div className="text-center p-3 bg-light rounded cursor-pointer hover-bg-primary" onClick={() => openDetailsModal("todays_arrivals")}>
-              <h3 className="text-success mb-2">{demoPaxData.flightSummary.todaysArrivals}</h3>
+              <h3 className="text-success mb-2">{liveData.flightSummary?.todaysArrivals ?? 0}</h3>
               <small className="text-muted">Today's Arrivals</small>
               <div className="mt-2"><small className="text-muted">From Pakistan</small></div>
             </div>
           </Col>
           <Col xs={6} md={4}>
             <div className="text-center p-3 bg-light rounded cursor-pointer hover-bg-primary" onClick={() => openDetailsModal("todays_departures")}>
-              <h3 className="text-danger mb-2">{demoPaxData.flightSummary.todaysDepartures}</h3>
+              <h3 className="text-danger mb-2">{liveData.flightSummary?.todaysDepartures ?? 0}</h3>
               <small className="text-muted">Today's Departures</small>
               <div className="mt-2"><small className="text-muted">To Pakistan</small></div>
             </div>
           </Col>
           <Col xs={12} md={4}>
             <div className="text-center p-3 bg-light rounded cursor-pointer hover-bg-primary" onClick={() => openDetailsModal("upcoming_flights")}>
-              <h3 className="text-info mb-2">{demoPaxData.flightSummary.upcomingFlights}</h3>
+              <h3 className="text-info mb-2">{liveData.flightSummary?.upcomingFlights ?? 0}</h3>
               <small className="text-muted">Upcoming Flights</small>
               <div className="mt-2"><small className="text-muted">Next 3 Days</small></div>
             </div>
@@ -476,7 +402,12 @@ const PaxMovement = () => {
         </div>
       </Card.Header>
       <Card.Body className="p-0">
-        {filteredPaxList.length === 0 ? (
+        {loadingLive ? (
+          <div className="text-center py-5">
+            <Users size={48} className="text-muted mb-3" />
+            <p className="text-muted">Loading live passenger data...</p>
+          </div>
+        ) : filteredPaxList.length === 0 ? (
           <div className="text-center py-5">
             <Users size={48} className="text-muted mb-3" />
             <p className="text-muted">No passengers found matching "{searchQuery}"</p>
@@ -585,7 +516,7 @@ const PaxMovement = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {demoPaxData.hotelDetails.map((hotel) => (
+                            {(liveData.hotelDetails || []).map((hotel) => (
                               <tr key={hotel.id}>
                                 <td>{hotel.paxName}</td>
                                 <td>{hotel.hotel}</td>
@@ -625,7 +556,7 @@ const PaxMovement = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {demoPaxData.transportDetails.map((transport) => (
+                            {(liveData.transportDetails || []).map((transport) => (
                               <tr key={transport.id}>
                                 <td>{transport.paxName}</td>
                                 <td><Badge bg="info">{transport.type}</Badge></td>
@@ -663,7 +594,7 @@ const PaxMovement = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {demoPaxData.flightDetails.map((flight) => (
+                            {(liveData.flightDetails || []).map((flight) => (
                               <tr key={flight.id}>
                                 <td>{flight.paxName}</td>
                                 <td><Badge bg="dark">{flight.flightNo}</Badge></td>
@@ -714,7 +645,7 @@ const PaxMovement = () => {
               </tr>
             </thead>
             <tbody>
-              {demoPaxData.paxList.slice(0, 3).map((pax) => (
+              {(liveData.paxList || []).slice(0, 3).map((pax) => (
                 <tr key={pax.id}>
                   <td>{pax.name}</td>
                   <td>{pax.bookingNo}</td>

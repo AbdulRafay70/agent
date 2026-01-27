@@ -176,7 +176,7 @@ const RoomBookingModal = ({ pkg, show, onClose, bedsPerRoomType, calculatePrice,
                     <div className="d-flex justify-content-between align-items-center border p-3 rounded">
                       <div>
                         <div className="text-uppercase fw-bold" style={{ fontSize: "14px" }}>
-                          {roomType.replace(/_/g, ' ')} ({bedsPerRoomType[roomType]} Beds)
+                          {roomType === 'private_double' ? 'PRIVATE ROOM (DOUBLE)' : `${roomType.replace(/_/g, ' ')} (${bedsPerRoomType[roomType]} Beds)`}
                         </div>
                         <div className="text-primary fw-bold">
                           Rs. {Number(price).toLocaleString()}/. <span className="text-muted small">per adult</span>
@@ -217,7 +217,8 @@ const AgentPackages = () => {
     quad: 4,
     triple: 3,
     double: 2,
-    private_double: 2,
+    private_double: 1,
+
   };
   const tabs = [
     { name: "Umrah Package", path: "/packages" },
@@ -704,56 +705,59 @@ const AgentPackages = () => {
     return scanObject(ticketInfo) || null;
   };
 
-  // Format sector reference to readable route
-  const formatSectorReference = (reference) => {
-    if (!reference) return '';
+  // Helper to format transport route
+  const getTransportRouteDisplay = (transportInfo) => {
+    if (!transportInfo) return null;
 
-    const referenceMap = {
-      'full_package': 'R/T - Jed(A)-Mak(H)-Med(H)-Mak(H)-Jed(A)',
-      'jeddah_makkah': 'Jed(A)-Mak(H)',
-      'makkah_madinah': 'Mak(H)-Med(H)',
-      'madinah_makkah': 'Med(H)-Mak(H)',
-      'makkah_jeddah': 'Mak(H)-Jed(A)',
-      'jeddah_madinah': 'Jed(A)-Med(H)',
-      'madinah_jeddah': 'Med(H)-Jed(A)',
-    };
+    // Handle Big Sector (Chain of cities)
+    if (transportInfo.big_sector) {
+      const smalls = transportInfo.big_sector.small_sectors || [];
+      if (smalls.length > 0) {
+        const cities = [smalls[0].departure_city];
+        smalls.forEach(s => cities.push(s.arrival_city));
+        return cities.join(" ➔ ");
+      }
+      return transportInfo.big_sector.name || `Region #${transportInfo.big_sector.id}`;
+    }
 
-    return referenceMap[reference] || reference.replace(/_/g, '-').toUpperCase();
+    // Handle Small Sector
+    if (transportInfo.small_sector) {
+      return `${transportInfo.small_sector.departure_city} ➔ ${transportInfo.small_sector.arrival_city}`;
+    }
+
+    // Fallback - use vehicle_name or type if specific route name unavailable
+    return transportInfo.vehicle_name || transportInfo.vehicle_type || transportInfo.name || null;
   };
 
   const resolveTransportDisplay = (pkg, orgIds = []) => {
     if (!pkg) return null;
-    if (pkg.transport) return pkg.transport;
-    if (pkg.transport_name) return pkg.transport_name;
 
     // transport_details can be an array
     const tDetails = pkg.transport_details;
     if (Array.isArray(tDetails) && tDetails.length) {
       // First try to find a transport whose sector organization matches one of our orgIds
       for (const td of tDetails) {
-        const sector = td.transport_sector_info || td.transport_sector || td.transport_sector_info?.organization ? td.transport_sector_info : null;
-        const sectorOrg = sector?.organization ?? sector?.org ?? td.organization ?? null;
+        const sectorInfo = td.transport_sector_info;
+        if (!sectorInfo) continue;
+
+        const sectorOrg = sectorInfo.organization ?? td.organization ?? null;
         if (sectorOrg != null && orgIds && orgIds.length) {
           for (const oid of orgIds) {
             if (String(sectorOrg) === String(oid)) {
-              // Return formatted route instead of name
-              const reference = sector?.reference || td.transport_sector_info?.reference;
-              return formatSectorReference(reference) || sector.name || td.transport_sector_info?.name || td.transport_name || td.transport || null;
+              return getTransportRouteDisplay(sectorInfo);
             }
           }
         }
       }
       // If none matched our orgIds, still show the first transport (don't hide it)
       const firstTransport = tDetails[0];
-      const sector = firstTransport?.transport_sector_info || firstTransport?.transport_sector;
-      if (sector) {
-        const reference = sector?.reference || firstTransport?.transport_sector_info?.reference;
-        return formatSectorReference(reference) || sector.name || firstTransport?.transport_sector_info?.name || firstTransport?.transport_name || firstTransport?.transport || null;
+      if (firstTransport?.transport_sector_info) {
+        return getTransportRouteDisplay(firstTransport.transport_sector_info);
       }
     }
 
     // Fallback: if transport_price exists and > 0, show Included
-    if (pkg.transport_price || pkg.transport_selling_price) return 'Included';
+    if (pkg.transport_price || pkg.transport_selling_price || pkg.transport_name) return pkg.transport_name || 'Included';
     return null;
   };
 
