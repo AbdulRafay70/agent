@@ -32,6 +32,8 @@ import AgentBookingGroupTicket from "./pages/agentside/AgentBookingGroupTicket";
 import AgentGroupTicketInvoice from "./pages/agentside/AgentGroupTicketInvoice";
 import PaxMovement from "./pages/agentside/PaxMovement";
 import AgentFlightUpdates from "./pages/agentside/AgentFlightUpdates";
+import AgentTickets from "./pages/agentside/AgentTickets";
+import AgentTicketDetails from "./pages/agentside/AgentTicketDetails";
 import AgentKuickpay from "./pages/agentside/AgentKuickpay";
 import AgentLogin from "./pages/agentside/AgentLogin";
 import AgentRegister from "./pages/agentside/AgentRegister";
@@ -294,6 +296,22 @@ function App() {
               element={
                 <AgentProtectedRoute>
                   <AgentFlightUpdates />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/tickets"
+              element={
+                <AgentProtectedRoute>
+                  <AgentTickets />
+                </AgentProtectedRoute>
+              }
+            />
+            <Route
+              path="/ticket-details/:bookingRefId"
+              element={
+                <AgentProtectedRoute>
+                  <AgentTicketDetails />
                 </AgentProtectedRoute>
               }
             />

@@ -345,7 +345,15 @@ const CustomUmrahPackagesDetail = () => {
             // Already in API format (from table Book Now)
             transformedData = {
               ...draftData,
-              id: id
+              id: id,
+              // Map fields to ensure compatibility with Detail/Review render
+              visa_total_cost: draftData.visa_total_cost || draftData.visas_cost || 0,
+              total_cost: draftData.total_cost || 0,
+              // Ensure we don't lose the calculated costs if they exist under different names
+              hotels_cost: draftData.hotels_cost || 0,
+              transports_cost: draftData.transports_cost || 0,
+              foods_cost: draftData.foods_cost || 0,
+              ziarats_cost: draftData.ziarats_cost || 0
             };
           } else {
             // Transform from calculator format (from invoice Book Now)
@@ -371,14 +379,16 @@ const CustomUmrahPackagesDetail = () => {
                 hotel_info: form.hotel_info || (form.hotelId ? { id: parseInt(form.hotelId), name: form.hotelName || "" } : null)
               })),
               transport_details: draftData.transportForms || [],
-              ticket_details: draftData.selectedFlight ? [{ ticket_info: draftData.selectedFlight }] : [],
-              food_details: draftData.foodForms || [],
-              ziarat_details: draftData.ziaratForms || [],
-              adault_visa_price: parseFloat(draftData.costs?.adultVisaCost) || 0,
-              child_visa_price: parseFloat(draftData.costs?.childVisaCost) || 0,
-              infant_visa_price: parseFloat(draftData.costs?.infantVisaCost) || 0,
-              margin: parseFloat(draftData.formData?.margin) || 0,
-              total_cost: parseFloat(draftData.costs?.grandTotal) || 0,
+              ticket_details: draftData.ticket_details || (draftData.selectedFlight ? [{ ticket_info: draftData.selectedFlight }] : []),
+              food_details: draftData.food_details || draftData.foodForms || [],
+              ziarat_details: draftData.ziarat_details || draftData.ziaratForms || [],
+              adault_visa_price: draftData.adault_visa_price || parseFloat(draftData.costs?.adultVisaCost) || 0,
+              child_visa_price: draftData.child_visa_price || parseFloat(draftData.costs?.childVisaCost) || 0,
+              infant_visa_price: draftData.infant_visa_price || parseFloat(draftData.costs?.infantVisaCost) || 0,
+              visa_total_cost: draftData.costs?.visaCost ? parseFloat(draftData.costs.visaCost.toString().replace(/,/g, '')) : 0, // Fallback Source
+              margin: draftData.margin || parseFloat(draftData.formData?.margin) || 0,
+              total_cost: draftData.total_cost || parseFloat(draftData.costs?.grandTotal) || 0,
+              status: "Custom Umrah Package"
             };
           }
 
@@ -589,40 +599,69 @@ const CustomUmrahPackagesDetail = () => {
 
   // Updated calculateTotalPrice function
   const calculateTotalPrice = (data) => {
-    if (!data || !riyalRate) {
-      return 0;
+    if (!data) return 0;
+
+    // Fallback if riyalRate is missing
+    const rate = riyalRate?.rate || 1;
+    const isHotelPkr = riyalRate?.is_hotel_pkr ?? false;
+    const isVisaPkr = riyalRate?.is_visa_pkr ?? false;
+    const isTransportPkr = riyalRate?.is_transport_pkr ?? false;
+    const isFoodPkr = riyalRate?.is_food_pkr ?? false;
+    const isZiaratPkr = riyalRate?.is_ziarat_pkr ?? false;
+
+    // FIX: If this is a Custom Umrah Package (from Calculator), TRUST the total_cost!
+    // Do not attempt to re-calculate from line items.
+    if (data.total_cost !== undefined) {
+      const trustedTotal = typeof data.total_cost === 'string'
+        ? parseFloat(data.total_cost.replace(/,/g, ''))
+        : data.total_cost;
+
+      console.log('💰 Using Trusted Total for Cost:', trustedTotal);
+      setTotalPrice(trustedTotal);
+      return;
     }
 
     let total = 0;
 
-    // Calculate hotel costs
+    // Calculate hotel costs (price is already Total for the line)
     data.hotel_details.forEach(hotel => {
-      const price = riyalRate.is_hotel_pkr ? hotel.price : hotel.price * riyalRate.rate;
-      total += price * data.total_adaults;
+      const price = isHotelPkr ? (hotel.price || 0) : (hotel.price || 0) * rate;
+      total += price;
     });
 
-    // Calculate visa costs
-    const adultVisaPrice = riyalRate.is_visa_pkr ? data.adault_visa_price : data.adault_visa_price * riyalRate.rate;
-    const childVisaPrice = riyalRate.is_visa_pkr ? data.child_visa_price : data.child_visa_price * riyalRate.rate;
-    const infantVisaPrice = riyalRate.is_visa_pkr ? data.infant_visa_price : data.infant_visa_price * riyalRate.rate;
+    // Calculate visa costs (prices are Per Person)
+    const adultVisaPrice = isVisaPkr ? (data.adault_visa_price || 0) : (data.adault_visa_price || 0) * rate;
+    const childVisaPrice = isVisaPkr ? (data.child_visa_price || 0) : (data.child_visa_price || 0) * rate;
+    const infantVisaPrice = isVisaPkr ? (data.infant_visa_price || 0) : (data.infant_visa_price || 0) * rate;
 
-    total += adultVisaPrice * data.total_adaults;
-    total += childVisaPrice * data.total_children;
-    total += infantVisaPrice * data.total_infants;
+    let totalVisa = (adultVisaPrice * data.total_adaults) +
+      (childVisaPrice * data.total_children) +
+      (infantVisaPrice * data.total_infants);
+
+    // Fallback: If calculated total is 0 but we have a stored total from the draft, use it
+    // The stored total from draft (costs.visaCost) is typically already converted/final logic
+    // We assume it is in PKR if it was displayed to the user, or valid base currency.
+    // Given the context, we treat it as valid final price to add.
+    if (totalVisa === 0 && data.visa_total_cost) {
+      totalVisa = data.visa_total_cost;
+    }
+
+    total += totalVisa;
 
     // Calculate transport costs
+    // Calculate transport costs
     data.transport_details.forEach(transport => {
-      const adultTransportPrice = riyalRate.is_transport_pkr
+      const adultTransportPrice = isTransportPkr
         ? transport.transport_sector_info?.adault_price || 0
-        : (transport.transport_sector_info?.adault_price || 0) * riyalRate.rate;
+        : (transport.transport_sector_info?.adault_price || 0) * rate;
 
-      const childTransportPrice = riyalRate.is_transport_pkr
+      const childTransportPrice = isTransportPkr
         ? transport.transport_sector_info?.child_price || 0
-        : (transport.transport_sector_info?.child_price || 0) * riyalRate.rate;
+        : (transport.transport_sector_info?.child_price || 0) * rate;
 
-      const infantTransportPrice = riyalRate.is_transport_pkr
+      const infantTransportPrice = isTransportPkr
         ? transport.transport_sector_info?.infant_price || 0
-        : (transport.transport_sector_info?.infant_price || 0) * riyalRate.rate;
+        : (transport.transport_sector_info?.infant_price || 0) * rate;
 
       total += adultTransportPrice * data.total_adaults;
       total += childTransportPrice * data.total_children;
@@ -632,9 +671,10 @@ const CustomUmrahPackagesDetail = () => {
     // Calculate flight costs (always in PKR)
     data.ticket_details.forEach(ticket => {
       // Use child_price/infant_price if available, otherwise fall back to child_fare/infant_fare
-      const adultPrice = ticket.ticket_info?.adult_price || ticket.ticket_info?.adult_fare || 0;
-      const childPrice = ticket.ticket_info?.child_price || ticket.ticket_info?.child_fare || 0;
-      const infantPrice = ticket.ticket_info?.infant_price || ticket.ticket_info?.infant_fare || 0;
+      const tInfo = ticket.ticket_info;
+      const adultPrice = tInfo?.adult_selling_price || tInfo?.adult_price || tInfo?.adult_fare || 0;
+      const childPrice = tInfo?.child_selling_price || tInfo?.child_price || tInfo?.child_fare || 0;
+      const infantPrice = tInfo?.infant_selling_price || tInfo?.infant_price || tInfo?.infant_fare || 0;
 
       const adultTotal = adultPrice * data.total_adaults;
       const childTotal = childPrice * data.total_children;
@@ -652,11 +692,12 @@ const CustomUmrahPackagesDetail = () => {
         const childPrice = food.food_info?.child_selling_price || 0;
         const infantPrice = food.food_info?.infant_selling_price || 0;
         const totalFood = (adultPrice * data.total_adaults) + (childPrice * data.total_children) + (infantPrice * data.total_infants);
-        const convertedFood = riyalRate.is_food_pkr ? totalFood : totalFood * riyalRate.rate;
+        const convertedFood = isFoodPkr ? totalFood : totalFood * rate;
         total += convertedFood;
       });
     }
 
+    // Calculate ziarat costs - use per-passenger-type prices
     // Calculate ziarat costs - use per-passenger-type prices
     if (data.ziarat_details && data.ziarat_details.length > 0) {
       data.ziarat_details.forEach(ziarat => {
@@ -666,7 +707,7 @@ const CustomUmrahPackagesDetail = () => {
         const infantPrice = ziarat.ziarat_info?.infant_selling_price || ziarat.infant_selling_price || 0;
 
         const totalZiarat = (adultPrice * data.total_adaults) + (childPrice * data.total_children) + (infantPrice * data.total_infants);
-        const convertedZiarat = riyalRate.is_ziarat_pkr ? totalZiarat : totalZiarat * riyalRate.rate;
+        const convertedZiarat = isZiaratPkr ? totalZiarat : totalZiarat * rate;
         total += convertedZiarat;
       });
     }
@@ -907,6 +948,10 @@ const CustomUmrahPackagesDetail = () => {
         isValid = false;
       } else if (new Date(passenger.passportExpiry) < new Date()) {
         errors[`passenger-passportExpiry-${passenger.id}`] = "Passport must be valid";
+        isValid = false;
+      }
+      if (!passenger.passportIssue) {
+        errors[`passenger-passportIssue-${passenger.id}`] = "Passport issue date is required";
         isValid = false;
       }
       if (!passenger.country) {
@@ -1235,11 +1280,11 @@ const CustomUmrahPackagesDetail = () => {
                             <div className="small text-muted fw-bold">Hotel:</div>
                             {packageData.hotel_details && packageData.hotel_details.length > 0 ? (
                               packageData.hotel_details.map((hotel, index) => {
-                                const hotelPrice = hotel.price || 0;
-                                const displayPrice = riyalRate?.is_hotel_pkr ? hotelPrice : hotelPrice * (riyalRate?.rate || 1);
+                                // Use total_price directly
+                                const displayPrice = hotel.total_price || hotel.price || 0;
                                 return (
                                   <div key={index} className="small">
-                                    {riyalRate?.is_hotel_pkr ? 'SAR' : 'PKR'} {displayPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {displayPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </div>
                                 );
                               })
@@ -1254,11 +1299,10 @@ const CustomUmrahPackagesDetail = () => {
                             {packageData.transport_details && packageData.transport_details.length > 0 ? (
                               <div className="small">
                                 {packageData.transport_details.map((transport, index) => {
-                                  const transportPrice = transport.price || 0;
-                                  const displayPrice = riyalRate?.is_transport_pkr ? transportPrice : transportPrice * (riyalRate?.rate || 1);
+                                  const displayPrice = transport.price || 0;
                                   return (
                                     <div key={index}>
-                                      {riyalRate?.is_transport_pkr ? 'SAR' : 'PKR'} {displayPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      {displayPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </div>
                                   );
                                 })}
@@ -1274,9 +1318,12 @@ const CustomUmrahPackagesDetail = () => {
                             {packageData.ticket_details && packageData.ticket_details.length > 0 ? (
                               <div className="small">
                                 {(() => {
-                                  const adultPrice = packageData.ticket_details[0]?.ticket_info?.adult_fare || packageData.ticket_details[0]?.ticket_info?.adult_price || 0;
-                                  const childPrice = packageData.ticket_details[0]?.ticket_info?.child_fare || packageData.ticket_details[0]?.ticket_info?.child_price || 0;
-                                  const infantPrice = packageData.ticket_details[0]?.ticket_info?.infant_fare || packageData.ticket_details[0]?.ticket_info?.infant_price || 0;
+                                  // Enhanced Flight Price Lookup
+                                  const tInfo = packageData.ticket_details[0]?.ticket_info;
+                                  const adultPrice = tInfo?.adult_selling_price || tInfo?.adult_fare || tInfo?.adult_price || 0;
+                                  const childPrice = tInfo?.child_selling_price || tInfo?.child_fare || tInfo?.child_price || 0;
+                                  const infantPrice = tInfo?.infant_selling_price || tInfo?.infant_fare || tInfo?.infant_price || 0;
+
                                   const totalFlight = (adultPrice * packageData.total_adaults) + (childPrice * packageData.total_children) + (infantPrice * packageData.total_infants);
                                   return `PKR ${totalFlight.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                                 })()}
@@ -1299,7 +1346,7 @@ const CustomUmrahPackagesDetail = () => {
                                 const displayFood = riyalRate?.is_food_pkr ? totalFood : totalFood * (riyalRate?.rate || 1);
                                 return (
                                   <div key={index} className="small">
-                                    {riyalRate?.is_food_pkr ? 'PKR' : 'PKR'} {displayFood.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    PKR {(food.total_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </div>
                                 );
                               })
@@ -1321,7 +1368,7 @@ const CustomUmrahPackagesDetail = () => {
                                 const displayZiarat = riyalRate?.is_ziarat_pkr ? totalZiarat : totalZiarat * (riyalRate?.rate || 1);
                                 return (
                                   <div key={index} className="small">
-                                    {riyalRate?.is_ziarat_pkr ? 'PKR' : 'PKR'} {displayZiarat.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    PKR {(ziarat.total_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </div>
                                 );
                               })
@@ -1334,20 +1381,13 @@ const CustomUmrahPackagesDetail = () => {
                           <div className="mb-3">
                             <div className="small text-muted fw-bold">Visa:</div>
                             <div className="small">
-                              {(() => {
-                                const adultVisa = packageData.adault_visa_price || 0;
-                                const childVisa = packageData.child_visa_price || 0;
-                                const infantVisa = packageData.infant_visa_price || 0;
-                                const totalVisa = (adultVisa * packageData.total_adaults) + (childVisa * packageData.total_children) + (infantVisa * packageData.total_infants);
-                                const displayVisa = riyalRate?.is_visa_pkr ? totalVisa : totalVisa * (riyalRate?.rate || 1);
-                                return `${riyalRate?.is_visa_pkr ? 'PKR' : 'PKR'} ${displayVisa.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                              })()}
+                              PKR {(packageData.visa_total_cost || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
                           </div>
 
                           {/* Total Price */}
                           <div className="mt-3 pt-2 border-top">
-                            <h5 className="fw-bold">Total Price: PKR {(totalPrice || packageData.total_cost || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h5>
+                            <h5 className="fw-bold">Total Price: PKR {(packageData.total_cost || totalPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h5>
                           </div>
                         </div>
                       </div>
@@ -1463,6 +1503,24 @@ const CustomUmrahPackagesDetail = () => {
                                     {formErrors[`passenger-passportNumber-${passenger.id}`] && (
                                       <div className="invalid-feedback">{formErrors[`passenger-passportNumber-${passenger.id}`]}</div>
                                     )}
+                                  </div>
+
+                                  {/* Passport Issue */}
+                                  < div className="col-lg-2 mb-2" >
+                                    <label className="control-label">Passport Issue</label>
+                                    <input
+                                      type="date"
+                                      className={`form-control bg-light shadow-none ${formErrors[`passenger-passportIssue-${passenger.id}`] ? "is-invalid" : ""}`}
+                                      value={passenger.passportIssue}
+                                      onChange={(e) => handleFieldChange(passenger.id, "passportIssue", e.target.value)}
+                                      required
+                                      max={new Date().toISOString().split('T')[0]}
+                                    />
+                                    {
+                                      formErrors[`passenger-passportIssue-${passenger.id}`] && (
+                                        <div className="invalid-feedback">{formErrors[`passenger-passportIssue-${passenger.id}`]}</div>
+                                      )
+                                    }
                                   </div>
 
                                   {/* Passport Expiry */}
@@ -1633,6 +1691,25 @@ const CustomUmrahPackagesDetail = () => {
                               )}
                             </div>
 
+
+                            {/* Passport Issue */}
+                            < div className="col-lg-2 mb-2" >
+                              <label className="control-label">Passport Issue</label>
+                              <input
+                                type="date"
+                                className={`form-control bg-light shadow-none ${formErrors[`passenger-passportIssue-${passenger.id}`] ? "is-invalid" : ""}`}
+                                value={passenger.passportIssue}
+                                onChange={(e) => handleFieldChange(passenger.id, "passportIssue", e.target.value)}
+                                required
+                                max={new Date().toISOString().split('T')[0]}
+                              />
+                              {
+                                formErrors[`passenger-passportIssue-${passenger.id}`] && (
+                                  <div className="invalid-feedback">{formErrors[`passenger-passportIssue-${passenger.id}`]}</div>
+                                )
+                              }
+                            </div>
+
                             {/* Passport Expiry */}
                             <div className="col-lg-2 mb-2">
                               <label className="control-label">Passport Expiry</label>
@@ -1728,9 +1805,9 @@ const CustomUmrahPackagesDetail = () => {
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </div >
+      </div >
+    </div >
   );
 };
 

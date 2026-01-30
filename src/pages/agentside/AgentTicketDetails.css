@@ -1,0 +1,21 @@
+.agent-ticket-details-wrapper {
+  background-color: #f8f9fa;
+  min-height: 100vh;
+}
+
+.ticket-detail-card {
+  border-left: 5px solid #0d6efd !important;
+}
+
+@media print {
+  .agent-sidebar,
+  .agent-header,
+  button {
+    display: none !important;
+  }
+  
+  .ticket-detail-card {
+    box-shadow: none !important;
+    border: 1px solid #dee2e6 !important;
+  }
+}

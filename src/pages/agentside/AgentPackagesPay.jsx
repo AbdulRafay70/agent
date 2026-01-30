@@ -716,12 +716,15 @@ const AgentPackagesPay = () => {
                   )}
 
                   <div className="mt-2 d-flex justify-content-start gap-2">
-                    <button id="btn" className="btn">
+                    <button
+                      className="btn text-white px-4 py-2"
+                      style={{ backgroundColor: "#09559B" }}
+                    >
                       Hold Booking
                     </button>
                     <button
-                      id="btn"
-                      className="btn"
+                      className="btn text-white px-4 py-2"
+                      style={{ backgroundColor: "#09559B" }}
                       onClick={handleConfirmOrder}
                       disabled={isSubmitting || !bookingId}
                     >

@@ -143,7 +143,7 @@ const PaxMovement = () => {
   // Get movement history for a specific pax
   const getPaxMovementHistory = (paxName) => {
     const movements = [];
-    
+
     // Check hotel records
     const hotelRecord = (liveData.hotelDetails || []).find(h => (h.paxName || h.name) === paxName);
     if (hotelRecord) {
@@ -768,10 +768,10 @@ const PaxMovement = () => {
                                     <h6 className="mb-0">{movement.type}</h6>
                                     <Badge bg={
                                       movement.status === "checked_in" ? "success" :
-                                      movement.status === "scheduled" ? "info" :
-                                      movement.status === "in_progress" ? "warning" :
-                                      movement.status === "arrival" ? "success" :
-                                      movement.status === "departure" ? "danger" : "secondary"
+                                        movement.status === "scheduled" ? "info" :
+                                          movement.status === "in_progress" ? "warning" :
+                                            movement.status === "arrival" ? "success" :
+                                              movement.status === "departure" ? "danger" : "secondary"
                                     }>
                                       {movement.status.replace("_", " ").toUpperCase()}
                                     </Badge>

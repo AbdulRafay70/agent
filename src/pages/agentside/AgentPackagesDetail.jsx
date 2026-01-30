@@ -12,7 +12,7 @@ const AgentPackagesDetail = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const {
-    package: pkg,
+    package: initialPkg,
     roomType,
     totalPrice: initialTotalPrice,
     passengers: initialPassengers = [],
@@ -22,10 +22,28 @@ const AgentPackagesDetail = () => {
   } = location.state || {};
 
   // Initialize state with values from location.state if available
+  const [packageData, setPackageData] = useState(initialPkg || null);
+  // Add effect to load from session if missing
+  useEffect(() => {
+    if (!packageData) {
+      const saved = sessionStorage.getItem('umrah_booknow_v1');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          // If stored value IS the package (Table Flow)
+          // or contains package in value (Modal Flow - we need to standardize this)
+          // For now, assume table flow or standardized modal flow
+          if (parsed.value) {
+            setPackageData(parsed.value);
+          }
+        } catch (e) { console.error("Error loading session draft", e); }
+      }
+    }
+  }, []);
   const [roomTypes, setRoomTypes] = useState(initialRoomTypes.length ? initialRoomTypes : (roomType ? [roomType] : []));
   const [passengers, setPassengers] = useState(initialPassengers);
   const [showRoomModal, setShowRoomModal] = useState(false);
-  const [availableSeats, setAvailableSeats] = useState(pkg?.total_seats || 0);
+  const [availableSeats, setAvailableSeats] = useState(packageData?.total_seats || 0);
   const [totalPrice, setTotalPrice] = useState(initialTotalPrice || 0);
   const [childPrices, setChildPrices] = useState(initialChildPrices || 0);
   const [infantPrices, setInfantPrices] = useState(initialInfantPrices || 0);
@@ -297,13 +315,25 @@ const AgentPackagesDetail = () => {
   };
 
   const calculateChildPrice = () => {
-    if (!pkg) return 0;
-    return (pkg.adault_visa_price || 0) - (pkg.child_visa_price || 0);
+    if (!packageData) return 0;
+    const visaDiff = (packageData.adault_visa_selling_price || 0) - (packageData.child_visa_selling_price || 0);
+
+    // Flight diff
+    const ticket = packageData.ticket_details?.[0]?.ticket_info;
+    const adultFlight = ticket?.adult_selling_price || ticket?.adult_price || 0;
+    const childFlight = ticket?.child_selling_price || ticket?.child_price || 0;
+    const flightDiff = adultFlight - childFlight;
+
+    return visaDiff + flightDiff;
   };
 
   const calculateInfantPrice = () => {
-    if (!pkg) return 0;
-    return (pkg.infant_visa_price || 0) + (pkg.ticket_details?.[0]?.ticket_info?.infant_price || 0);
+    if (!packageData) return 0;
+    const visa = packageData.infant_visa_selling_price || packageData.infant_visa_price || 0;
+    const ticket = packageData.ticket_details?.[0]?.ticket_info;
+    const flight = ticket?.infant_selling_price || ticket?.infant_price || 0;
+
+    return visa + flight; // Visa + Ticket
   };
 
   const getPriceForPassenger = (passenger) => {
@@ -360,13 +390,13 @@ const AgentPackagesDetail = () => {
   useEffect(() => {
     // Check for saved draft from Book Now before redirecting
     const savedDraft = sessionStorage.getItem('umrah_booknow_v1');
-    if (!pkg && !savedDraft) {
+    if (!packageData && !savedDraft) {
       navigate('/packages');
       return;
     }
 
     if (!isInitialized && passengers.length === 0) {
-      const maxSeats = pkg?.total_seats || 0;
+      const maxSeats = packageData?.total_seats || 0;
       let remainingSeats = maxSeats;
       const newPassengers = [];
       let priceTotal = 0;
@@ -407,18 +437,42 @@ const AgentPackagesDetail = () => {
       setAvailableSeats(remainingSeats);
       setIsInitialized(true);
     }
-  }, [pkg, navigate, roomTypes, isInitialized, passengers.length]);
+  }, [packageData, navigate, roomTypes, isInitialized, passengers.length]);
 
   // Recalculate total price whenever passengers change OR agency type is fetched
   useEffect(() => {
-    if (passengers.length > 0 && agencyType !== null) {
+    if (passengers.length > 0) {
+      // Check if it's a Custom Umrah Package with a pre-calculated total
+      if (packageData?.status === "Custom Umrah Package" && (packageData.total_cost || packageData.costs?.totalCost)) {
+        // Use the trusted total from the package (parse string if needed)
+        // packageData.total_cost is usually a Number in DB, but might be string in local
+        // packageData.costs.totalCost is a formatted string (e.g. "5,752,186")
+        let trustedTotal = 0;
+        if (packageData.total_cost) {
+          trustedTotal = typeof packageData.total_cost === 'string'
+            ? parseFloat(packageData.total_cost.replace(/,/g, ''))
+            : packageData.total_cost;
+        } else if (packageData.costs?.totalCost) {
+          trustedTotal = parseFloat(packageData.costs.totalCost.replace(/,/g, ''));
+        }
+
+        // If we have a valid total, use it.
+        // For the per-person breakdown, we'll just divide evenly or keep it simple.
+        if (trustedTotal > 0) {
+          setTotalPrice(trustedTotal);
+          console.log('💰 Using Pre-Calculated Custom Package Total:', trustedTotal);
+          return;
+        }
+      }
+
+      // Fallback to standard component-summation logic
       const calculatedTotal = passengers.reduce((sum, passenger) => {
         return sum + getPriceForPassenger(passenger);
       }, 0);
       setTotalPrice(calculatedTotal);
       console.log('💰 Recalculated total price:', calculatedTotal, 'for agency type:', agencyType);
     }
-  }, [passengers, agencyType]);
+  }, [passengers, agencyType, packageData]);
 
   // Update family heads whenever passengers change
   useEffect(() => {
@@ -433,11 +487,11 @@ const AgentPackagesDetail = () => {
         roomTypes,
         passengers,
         totalPrice,
-        package: pkg
+        package: packageData
       };
       localStorage.setItem('umrahBookingData', JSON.stringify(bookingData));
     }
-  }, [roomTypes, passengers, totalPrice, pkg, isInitialized]);
+  }, [roomTypes, passengers, totalPrice, packageData, isInitialized]);
 
   // Cleanup localStorage when leaving the booking flow
   useEffect(() => {
@@ -520,63 +574,91 @@ const AgentPackagesDetail = () => {
   };
 
   const getPriceForRoomType = (type) => {
-    if (!pkg) return 0;
+    if (!packageData) return 0;
 
-    const visaPrice = pkg.adault_visa_selling_price || 0;
-    const transportPrice = pkg.transport_selling_price || 0;
+    // Custom Umrah Package Logic: Use trusted total cost
+    if (packageData.status === "Custom Umrah Package" && (packageData.total_cost || packageData.costs?.totalCost)) {
+      let trustedTotal = 0;
+      if (packageData.total_cost) {
+        trustedTotal = typeof packageData.total_cost === 'string'
+          ? parseFloat(packageData.total_cost.replace(/,/g, ''))
+          : packageData.total_cost;
+      } else if (packageData.costs?.totalCost) {
+        trustedTotal = parseFloat(packageData.costs.totalCost.replace(/,/g, ''));
+      }
+
+      if (trustedTotal > 0) {
+        // Return average price per person
+        // Logic: Total Cost / Total Pax (Seats)
+        // This ensures the breakdown sums up roughly to the total.
+        const totalPax = packageData.total_seats ||
+          ((packageData.total_adaults || 0) + (packageData.total_children || 0) + (packageData.total_infants || 0)) || 1;
+
+        return trustedTotal / totalPax;
+      }
+    }
+
+    // Standard Package Logic (Pre-made)
+    const visaPrice = packageData.adault_visa_selling_price || 0;
+    const transportPrice = packageData.transport_selling_price || 0;
 
     // Try multiple paths for flight price
-    const ticketInfo = pkg.ticket_details?.[0]?.ticket_info;
+    const ticketInfo = packageData.ticket_details?.[0]?.ticket_info;
     const flightPrice = ticketInfo?.adult_selling_price || ticketInfo?.adult_price || 0;
 
-    const foodPrice = pkg.food_selling_price || 0;
-    const makkahZiyaratPrice = pkg.makkah_ziyarat_selling_price || 0;
-    const madinahZiyaratPrice = pkg.madinah_ziyarat_selling_price || 0;
+    const foodPrice = packageData.food_selling_price || 0;
+    const makkahZiyaratPrice = packageData.makkah_ziyarat_selling_price || 0;
+    const madinahZiyaratPrice = packageData.madinah_ziyarat_selling_price || 0;
 
     const basePrice = visaPrice + transportPrice + flightPrice + foodPrice + makkahZiyaratPrice + madinahZiyaratPrice;
 
     console.log('💰 Price Calculation for', type);
-    console.log('  - Visa:', visaPrice);
-    console.log('  - Transport:', transportPrice);
-    console.log('  - Flight (adult_selling_price):', ticketInfo?.adult_selling_price);
-    console.log('  - Flight (adult_price):', ticketInfo?.adult_price);
-    console.log('  - Flight (final):', flightPrice);
-    console.log('  - Food:', foodPrice);
-    console.log('  - Makkah Ziyarat:', makkahZiyaratPrice);
-    console.log('  - Madinah Ziyarat:', madinahZiyaratPrice);
-    console.log('  - Base Price:', basePrice);
+    // ... debug logs can remain or be simplified ...
 
-    const hotelPrice = pkg.hotel_details?.reduce((sum, hotel) => {
+    const hotelPrice = packageData.hotel_details?.reduce((sum, hotel) => {
       let pricePerNight = 0;
+      let capacity = 1;
+
       switch (type.toUpperCase()) {
-        case 'SHARING': pricePerNight = hotel.sharing_bed_selling_price || 0; break;
-        case 'DOUBLE': pricePerNight = hotel.double_bed_selling_price || 0; break;
-        case 'TRIPLE': pricePerNight = hotel.triple_bed_selling_price || 0; break;
-        case 'QUAD': pricePerNight = hotel.quad_bed_selling_price || 0; break;
-        case 'QUINT': pricePerNight = hotel.quaint_bed_selling_price || 0; break;
+        case 'SHARING':
+          pricePerNight = hotel.sharing_bed_selling_price || 0;
+          capacity = 1;
+          break;
+        case 'DOUBLE':
+          pricePerNight = hotel.double_bed_selling_price || 0;
+          capacity = 2;
+          break;
+        case 'TRIPLE':
+          pricePerNight = hotel.triple_bed_selling_price || 0;
+          capacity = 3;
+          break;
+        case 'QUAD':
+          pricePerNight = hotel.quad_bed_selling_price || 0;
+          capacity = 4;
+          break;
+        case 'QUINT':
+          pricePerNight = hotel.quaint_bed_selling_price || 0;
+          capacity = 5;
+          break;
         case 'PRIVATE_DOUBLE':
         case 'PRIVATE DOUBLE':
           // Private Double = Single Occupancy in Double Room
-          // Pay for the full double room (2 beds)
-          pricePerNight = (hotel.double_bed_selling_price || 0) * 2;
+          pricePerNight = (hotel.double_bed_selling_price || 0);
+          capacity = 1;
           break;
-        default: pricePerNight = 0;
+        default:
+          pricePerNight = 0;
+          capacity = 1;
       }
-      const hotelTotal = pricePerNight * (hotel.number_of_nights || 0);
-      console.log(`  - Hotel ${hotel.hotel_name}: ${pricePerNight} × ${hotel.number_of_nights} nights = ${hotelTotal}`);
+
+      // Calculate share per person
+      const pricePerPerson = (pricePerNight / capacity);
+      const hotelTotal = pricePerPerson * (hotel.number_of_nights || 0);
       return sum + hotelTotal;
     }, 0) || 0;
 
-
-    console.log('  - Total Hotel Price:', hotelPrice);
-
     // Add 500 PKR service charge for packages (applied only to Area Agency)
-    const serviceCharge = (agencyType === 'Full Agency') ? 0 : 500;
-
-    console.log('  - Agency Type:', agencyType);
-    console.log('  - Service Charge:', serviceCharge);
-    console.log('  - FINAL TOTAL:', basePrice + hotelPrice + serviceCharge);
-
+    const serviceCharge = 0;
     return basePrice + hotelPrice + serviceCharge;
   };
 
@@ -593,16 +675,16 @@ const AgentPackagesDetail = () => {
   };
 
   const getFlightDetails = () => {
-    if (!pkg?.ticket_details?.[0]?.ticket_info) return {};
+    if (!packageData?.ticket_details?.[0]?.ticket_info) return {};
 
-    const ticket = pkg.ticket_details[0].ticket_info;
+    const ticket = packageData.ticket_details[0].ticket_info;
     const tripDetails = ticket.trip_details || [];
 
     console.log('🔍 DEBUG Flight Data:');
     console.log('  - Full ticket object:', ticket);
     console.log('  - ticket.airline:', ticket.airline);
     console.log('  - tripDetails:', tripDetails);
-    console.log('  - pkg.ticket_details[0]:', pkg.ticket_details[0]);
+    console.log('  - packageData.ticket_details[0]:', packageData.ticket_details[0]);
 
     // Airline name to IATA code mapping
     const airlineNameToCode = {
@@ -660,10 +742,10 @@ const AgentPackagesDetail = () => {
 
   // Use exact field names from backend model (with typos if present)
   // filght_min_adault_age, filght_max_adault_age, max_chilld_allowed, max_infant_allowed
-  const flightMinAdultCount = pkg?.filght_min_adault_age || 0;
-  const flightMaxAdultCount = pkg?.filght_max_adault_age || 0;
-  const maxChildAllowed = pkg?.max_chilld_allowed || 0;
-  const maxInfantAllowed = pkg?.max_infant_allowed || 0;
+  const flightMinAdultCount = packageData?.filght_min_adault_age || 0;
+  const flightMaxAdultCount = packageData?.filght_max_adault_age || 0;
+  const maxChildAllowed = packageData?.max_chilld_allowed || 0;
+  const maxInfantAllowed = packageData?.max_infant_allowed || 0;
 
   // const addRoomType = (type) => {
   //   const count = getPassengerCountForRoomType(type);
@@ -1079,7 +1161,7 @@ const AgentPackagesDetail = () => {
     navigate(path, {
       ...options,
       state: {
-        package: pkg,
+        package: packageData,
         passengers,
         roomTypes,
         totalPrice
@@ -1130,7 +1212,7 @@ const AgentPackagesDetail = () => {
           __version: 1,
           __expiresAt: expiresAt,
           value: {
-            package: pkg,
+            package: packageData,
             roomTypes,
             totalPrice,
             childPrices,
@@ -1353,11 +1435,11 @@ const AgentPackagesDetail = () => {
                     <div className="card-body" style={{ background: "#F2F9FF" }}>
                       <div className="row">
                         <div className="col-md-8">
-                          <h4 className="mb-3 fw-bold">{pkg?.title || "Umrah Package"}</h4>
+                          <h4 className="mb-3 fw-bold">{packageData?.title || "Umrah Package"}</h4>
                           <div className="mb-2">
                             <strong>Hotels:</strong>
                             <div className="small text-muted">
-                              {pkg?.hotel_details?.map((hotel, i) => (
+                              {packageData?.hotel_details?.map((hotel, i) => (
                                 `${hotel.number_of_nights} Nights at ${hotel.hotel_info?.city} (${hotel.hotel_info?.name})`
                               )).join(" / ") || "N/A"}
                             </div>
@@ -1371,34 +1453,46 @@ const AgentPackagesDetail = () => {
                           <div className="mb-2">
                             <strong>Transport:</strong>
                             <div className="small text-muted">
-                              {pkg?.transport_details?.[0]?.transport_sector_info?.reference
-                                ? formatSectorReference(pkg.transport_details[0].transport_sector_info.reference)
-                                : pkg?.transport_details?.[0]?.transport_sector_info?.name || "N/A"}
+                              {packageData?.transport_details?.[0]?.transport_sector_info?.reference
+                                ? formatSectorReference(packageData.transport_details[0].transport_sector_info.reference)
+                                : packageData?.transport_details?.[0]?.transport_sector_info?.name || "N/A"}
                             </div>
                           </div>
                           <div className="mb-2">
                             <strong>Food:</strong>
                             <div className="small text-muted">
-                              {(pkg?.food_selling_price || 0) > 0 ? "INCLUDED" : "N/A"}
+                              {(packageData?.food_selling_price || 0) > 0 ? "INCLUDED" : "N/A"}
                             </div>
                           </div>
                           <div className="mb-2">
                             <strong>Ziyarat:</strong>
                             <div className="small text-muted">
-                              {((pkg?.makkah_ziyarat_selling_price || 0) > 0 || (pkg?.madinah_ziyarat_selling_price || 0) > 0) ? "YES" : "N/A"}
+                              {((packageData?.makkah_ziyarat_selling_price || 0) > 0 || (packageData?.madinah_ziyarat_selling_price || 0) > 0) ? "YES" : "N/A"}
                             </div>
                           </div>
                           <div className="mb-2">
                             <strong>Flight:</strong>
                             <div className="small text-muted">
                               Travel Date: {flightDetails.departure?.departure_date_time ?
-                                `${flightDetails.airline?.code}${flightDetails.departure.flight_number ? `-${flightDetails.departure.flight_number}` : ''} - ${formatDateTime(flightDetails.departure.departure_date_time)} to ${formatDateTime(flightDetails.departure.arrival_date_time)}` :
-                                "N/A"}
+                                (() => {
+                                  const d = flightDetails.departure;
+                                  const depCity = d.departure_city?.code || d.departure_city?.city_code || '';
+                                  const arrCity = d.arrival_city?.code || d.arrival_city?.city_code || '';
+                                  const route = (depCity && arrCity) ? `${depCity}-${arrCity} ` : '';
+                                  const flightStr = `${flightDetails.airline?.code}${d.flight_number ? `.${d.flight_number}` : ''}`;
+                                  return `${flightStr} ${route}${formatDateTime(d.departure_date_time)} to ${formatDateTime(d.arrival_date_time)}`;
+                                })() : "N/A"}
                             </div>
                             <div className="small text-muted">
                               Return Date: {flightDetails.return?.departure_date_time ?
-                                `${flightDetails.airline?.code}${flightDetails.return.flight_number ? `-${flightDetails.return.flight_number}` : ''} - ${formatDateTime(flightDetails.return.departure_date_time)} to ${formatDateTime(flightDetails.return.arrival_date_time)}` :
-                                "N/A"}
+                                (() => {
+                                  const r = flightDetails.return;
+                                  const depCity = r.departure_city?.code || r.departure_city?.city_code || '';
+                                  const arrCity = r.arrival_city?.code || r.arrival_city?.city_code || '';
+                                  const route = (depCity && arrCity) ? `${depCity}-${arrCity} ` : '';
+                                  const flightStr = `${flightDetails.airline?.code}${r.flight_number ? `.${r.flight_number}` : ''}`;
+                                  return `${flightStr} ${route}${formatDateTime(r.departure_date_time)} to ${formatDateTime(r.arrival_date_time)}`;
+                                })() : "N/A"}
                             </div>
                           </div>
                         </div>
@@ -1407,15 +1501,16 @@ const AgentPackagesDetail = () => {
                           <h4 className="mb-3 fw-bold">Price Calculation</h4>
 
                           {/* Room Type Prices */}
+                          {/* Room Type Prices */}
                           <div className="mb-3">
-                            {roomTypes.map((type) => {
+                            {[...new Set(roomTypes)].map((type) => {
                               const count = passengers.filter(p => p.roomType === type).length;
                               const price = getPriceForRoomType(type);
                               return (
                                 <div key={type} className="mb-2 small">
                                   <span className="fw-bold">{type} Room:</span>
-                                  <span> Rs. {price.toLocaleString()} × {count} = </span>
-                                  <span className="text-primary">Rs. {(price * count).toLocaleString()}</span>
+                                  <span> PKR {price.toLocaleString()} × {count} = </span>
+                                  <span className="text-primary">PKR {(price * count).toLocaleString()}</span>
                                 </div>
                               );
                             })}
@@ -1424,20 +1519,20 @@ const AgentPackagesDetail = () => {
                           {/* Child Discounts (if any) */}
                           {childPrices > 0 && (
                             <div className="text-success small">
-                              Child Discounts Applied: Rs. {childPrices.toLocaleString()}
+                              Child Discounts Applied: PKR {childPrices.toLocaleString()}
                             </div>
                           )}
 
                           {/* Infant Charges (if any) */}
                           {infantPrices > 0 && (
                             <div className="text-info small">
-                              Infant Charges: Rs. {infantPrices.toLocaleString()}
+                              Infant Charges: PKR {infantPrices.toLocaleString()}
                             </div>
                           )}
 
                           {/* Grand Total */}
                           <div className="border-top pt-2 mt-2 fw-bold">
-                            Grand Total: Rs. {totalPrice.toLocaleString()}
+                            Grand Total: PKR {totalPrice.toLocaleString()}
                           </div>
                         </div>
                       </div>
@@ -1631,21 +1726,22 @@ const AgentPackagesDetail = () => {
                                     )}
                                   </div>
 
-                                  {/* Date of Birth */}
+                                  {/* DOB */}
                                   <div className="col-lg-2 mb-2">
                                     <label className="control-label">DOB</label>
                                     <input
                                       type="date"
                                       className={`form-control bg-light shadow-none ${formErrors[`passenger-${passenger.id}-dob`] ? "is-invalid" : ""}`}
-                                      value={passenger.dob || ''}
+                                      value={passenger.dob}
                                       onChange={(e) => updatePassenger(passenger.id, "dob", e.target.value)}
-                                      max={new Date().toISOString().split('T')[0]} // Can't be born in future
+                                      required
                                     />
                                     {formErrors[`passenger-${passenger.id}-dob`] && (
                                       <div className="invalid-feedback">{formErrors[`passenger-${passenger.id}-dob`]}</div>
                                     )}
                                   </div>
 
+                                  {/* Passport Issue */}
                                   <div className="col-lg-2 mb-2">
                                     <label className="control-label">Passport Issue</label>
                                     <input
@@ -1654,7 +1750,6 @@ const AgentPackagesDetail = () => {
                                       value={passenger.passportIssue}
                                       onChange={(e) => updatePassenger(passenger.id, "passportIssue", e.target.value)}
                                       required
-                                      max={new Date().toISOString().split('T')[0]} // Can't issue passport in future
                                     />
                                     {formErrors[`passenger-${passenger.id}-passportIssue`] && (
                                       <div className="invalid-feedback">{formErrors[`passenger-${passenger.id}-passportIssue`]}</div>
@@ -1670,43 +1765,31 @@ const AgentPackagesDetail = () => {
                                       value={passenger.passportExpiry}
                                       onChange={(e) => updatePassenger(passenger.id, "passportExpiry", e.target.value)}
                                       required
-                                      min={new Date().toISOString().split('T')[0]} // Today's date
                                     />
                                     {formErrors[`passenger-${passenger.id}-passportExpiry`] && (
                                       <div className="invalid-feedback">{formErrors[`passenger-${passenger.id}-passportExpiry`]}</div>
                                     )}
                                   </div>
 
-
-
                                   {/* Country */}
                                   <div className="col-lg-2 mb-2">
                                     <label className="control-label">Country</label>
-                                    <div>
-                                      <RawSelect
-                                        options={countries.map(c => ({ label: c, value: c }))}
-                                        value={passenger.country ? { label: passenger.country, value: passenger.country } : null}
-                                        onChange={(opt) => updatePassenger(passenger.id, "country", opt ? opt.value : "")}
-                                        placeholder="Select Country"
-                                        isSearchable={true}
-                                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                                        styles={{
-                                          menuPortal: (base) => ({ ...base, zIndex: 9999 }),
-                                          control: (base, state) => ({
-                                            ...base,
-                                            minHeight: 38,
-                                            height: 38,
-                                            borderRadius: 4,
-                                            border: formErrors[`passenger-${passenger.id}-country`] ? '1px solid #dc3545' : '1px solid #ced4da'
-                                          }),
-                                          singleValue: (base) => ({ ...base, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' })
-                                        }}
-                                        classNamePrefix="react-select"
-                                      />
-                                      {formErrors[`passenger-${passenger.id}-country`] && (
-                                        <div className="invalid-feedback d-block">{formErrors[`passenger-${passenger.id}-country`]}</div>
-                                      )}
-                                    </div>
+                                    <input
+                                      list="countries"
+                                      className={`form-select bg-light shadow-none ${formErrors[`passenger-${passenger.id}-country`] ? "is-invalid" : ""}`}
+                                      value={passenger.country}
+                                      onChange={(e) => updatePassenger(passenger.id, "country", e.target.value)}
+                                      placeholder="Select Country"
+                                      required
+                                    />
+                                    <datalist id="countries">
+                                      {countries.map((c, i) => (
+                                        <option key={i} value={c} />
+                                      ))}
+                                    </datalist>
+                                    {formErrors[`passenger-${passenger.id}-country`] && (
+                                      <div className="invalid-feedback">{formErrors[`passenger-${passenger.id}-country`]}</div>
+                                    )}
                                   </div>
 
                                   {/* Passport Upload */}
@@ -1731,29 +1814,33 @@ const AgentPackagesDetail = () => {
                                     )}
                                   </div>
 
-                                  {passenger.type === "Infant" && (
-                                    <div className="col-lg-2 mb-2 mt-2 d-flex align-items-center">
-                                      <button
-                                        type="button"
-                                        className="btn btn-danger"
-                                        onClick={() => removeInfant(passenger.id)}
-                                      >
-                                        <PersonDash size={16} /> Remove
-                                      </button>
-                                    </div>
-                                  )}
+                                  {
+                                    passenger.type === "Infant" && (
+                                      <div className="col-lg-2 mb-2 mt-2 d-flex align-items-center">
+                                        <button
+                                          type="button"
+                                          className="btn btn-danger"
+                                          onClick={() => removeInfant(passenger.id)}
+                                        >
+                                          <PersonDash size={16} /> Remove
+                                        </button>
+                                      </div>
+                                    )
+                                  }
 
-                                  {passenger.type === "Child" && (
-                                    <div className="col-lg-2 mb-2 mt-2 d-flex align-items-center">
-                                      <button
-                                        type="button"
-                                        className="btn btn-danger"
-                                        onClick={() => removeChild(passenger.id)}
-                                      >
-                                        <PersonDash size={16} /> Remove
-                                      </button>
-                                    </div>
-                                  )}
+                                  {
+                                    passenger.type === "Child" && (
+                                      <div className="col-lg-2 mb-2 mt-2 d-flex align-items-center">
+                                        <button
+                                          type="button"
+                                          className="btn btn-danger"
+                                          onClick={() => removeChild(passenger.id)}
+                                        >
+                                          <PersonDash size={16} /> Remove
+                                        </button>
+                                      </div>
+                                    )
+                                  }
                                 </div>
                               );
                             })}
@@ -1764,127 +1851,131 @@ const AgentPackagesDetail = () => {
                   </div>
 
                   {/* Infant Selection Modal */}
-                  {showInfantModal && (
-                    <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-                      <div className="modal-dialog modal-dialog-centered">
-                        <div className="modal-content">
-                          <div className="modal-header">
-                            <h5 className="modal-title">Select Family Head for Infant</h5>
-                            <button type="button" className="btn-close" onClick={() => setShowInfantModal(false)}></button>
-                          </div>
-                          <div className="modal-body">
-                            <div className="mb-3">
-                              <label className="form-label">Select Family Head:</label>
-                              <select
-                                className="form-select"
-                                value={selectedFamilyHead}
-                                onChange={(e) => setSelectedFamilyHead(e.target.value)}
-                              >
-                                <option value="">Select Family Head</option>
-                                {familyHeads.map(head => (
-                                  <option key={head.id} value={head.id}>
-                                    {head.name} {head.lName} ({head.roomType} Room)
-                                  </option>
-                                ))}
-                              </select>
+                  {
+                    showInfantModal && (
+                      <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                        <div className="modal-dialog modal-dialog-centered">
+                          <div className="modal-content">
+                            <div className="modal-header">
+                              <h5 className="modal-title">Select Family Head for Infant</h5>
+                              <button type="button" className="btn-close" onClick={() => setShowInfantModal(false)}></button>
                             </div>
-                          </div>
-                          <div className="modal-footer">
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              onClick={() => setShowInfantModal(false)}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              id="btn" className="btn"
-                              onClick={confirmAddInfant}
-                            >
-                              Add Infant
-                            </button>
+                            <div className="modal-body">
+                              <div className="mb-3">
+                                <label className="form-label">Select Family Head:</label>
+                                <select
+                                  className="form-select"
+                                  value={selectedFamilyHead}
+                                  onChange={(e) => setSelectedFamilyHead(e.target.value)}
+                                >
+                                  <option value="">Select Family Head</option>
+                                  {familyHeads.map(head => (
+                                    <option key={head.id} value={head.id}>
+                                      {head.name} {head.lName} ({head.roomType} Room)
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="modal-footer">
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => setShowInfantModal(false)}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                id="btn" className="btn"
+                                onClick={confirmAddInfant}
+                              >
+                                Add Infant
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  }
 
                   {/* Room Type Modal */}
-                  {showRoomModal && (
-                    <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-                      <div className="modal-dialog modal-dialog-centered">
-                        <div className="modal-content">
-                          <div className="modal-header">
-                            <h5 className="modal-title">Select Room Type</h5>
-                            <button type="button" className="btn-close" onClick={() => setShowRoomModal(false)}></button>
-                          </div>
-                          <div className="modal-body">
-                            {Object.keys(bedsPerRoomType).map(roomType => {
-                              const count = selectedRooms[roomType] || 0;
-                              const pricePerPerson = getPriceForRoomType(roomType.toUpperCase());
-                              const bedsInRoom = bedsPerRoomType[roomType];
+                  {
+                    showRoomModal && (
+                      <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                        <div className="modal-dialog modal-dialog-centered">
+                          <div className="modal-content">
+                            <div className="modal-header">
+                              <h5 className="modal-title">Select Room Type</h5>
+                              <button type="button" className="btn-close" onClick={() => setShowRoomModal(false)}></button>
+                            </div>
+                            <div className="modal-body">
+                              {Object.keys(bedsPerRoomType).map(roomType => {
+                                const count = selectedRooms[roomType] || 0;
+                                const pricePerPerson = getPriceForRoomType(roomType.toUpperCase());
+                                const bedsInRoom = bedsPerRoomType[roomType];
 
-                              return (
-                                <div key={roomType} className="d-flex align-items-center justify-content-between p-3 mb-2 border rounded">
-                                  <div>
-                                    <strong className="text-capitalize">{roomType} ({bedsInRoom} {bedsInRoom === 1 ? 'Bed' : 'Beds'})</strong>
-                                    <div className="small text-muted">{bedsInRoom} {bedsInRoom === 1 ? 'person' : 'persons'} per room</div>
-                                    <div className="small text-primary fw-bold">Rs. {pricePerPerson.toLocaleString()} per adult</div>
+                                return (
+                                  <div key={roomType} className="d-flex align-items-center justify-content-between p-3 mb-2 border rounded">
+                                    <div>
+                                      <strong className="text-capitalize">{roomType} ({bedsInRoom} {bedsInRoom === 1 ? 'Bed' : 'Beds'})</strong>
+                                      <div className="small text-muted">{bedsInRoom} {bedsInRoom === 1 ? 'person' : 'persons'} per room</div>
+                                      <div className="small text-primary fw-bold">PKR {pricePerPerson.toLocaleString()} per adult</div>
+                                    </div>
+                                    <div className="d-flex align-items-center gap-2">
+                                      <button
+                                        className="btn btn-outline-secondary btn-sm"
+                                        onClick={() => handleRoomChange(roomType, -1)}
+                                        disabled={count === 0}
+                                      >
+                                        -
+                                      </button>
+                                      <span className="px-3 fw-bold">{count}</span>
+                                      <button
+                                        className="btn btn-outline-primary btn-sm"
+                                        onClick={() => handleRoomChange(roomType, 1)}
+                                      >
+                                        +
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div className="d-flex align-items-center gap-2">
-                                    <button
-                                      className="btn btn-outline-secondary btn-sm"
-                                      onClick={() => handleRoomChange(roomType, -1)}
-                                      disabled={count === 0}
-                                    >
-                                      -
-                                    </button>
-                                    <span className="px-3 fw-bold">{count}</span>
-                                    <button
-                                      className="btn btn-outline-primary btn-sm"
-                                      onClick={() => handleRoomChange(roomType, 1)}
-                                    >
-                                      +
-                                    </button>
-                                  </div>
+                                );
+                              })}
+
+                              <div className="mt-4 p-3 bg-light rounded">
+                                <div className="d-flex justify-content-between mb-2">
+                                  <span>Total Adults:</span>
+                                  <strong>
+                                    {Object.entries(selectedRooms).reduce((sum, [type, count]) => {
+                                      return sum + (bedsPerRoomType[type] || 0) * count;
+                                    }, 0)}
+                                  </strong>
                                 </div>
-                              );
-                            })}
-
-                            <div className="mt-4 p-3 bg-light rounded">
-                              <div className="d-flex justify-content-between mb-2">
-                                <span>Total Adults:</span>
-                                <strong>
-                                  {Object.entries(selectedRooms).reduce((sum, [type, count]) => {
-                                    return sum + (bedsPerRoomType[type] || 0) * count;
-                                  }, 0)}
-                                </strong>
-                              </div>
-                              <div className="d-flex justify-content-between">
-                                <span>Estimated Total:</span>
-                                <strong className="text-primary">
-                                  Rs. {Object.entries(selectedRooms).reduce((sum, [type, count]) => {
-                                    const pricePerPerson = getPriceForRoomType(type.toUpperCase());
-                                    const bedsInRoom = bedsPerRoomType[type] || 0;
-                                    return sum + (pricePerPerson * bedsInRoom * count);
-                                  }, 0).toLocaleString()}
-                                </strong>
+                                <div className="d-flex justify-content-between">
+                                  <span>Estimated Total:</span>
+                                  <strong className="text-primary">
+                                    PKR {Object.entries(selectedRooms).reduce((sum, [type, count]) => {
+                                      const pricePerPerson = getPriceForRoomType(type.toUpperCase());
+                                      const bedsInRoom = bedsPerRoomType[type] || 0;
+                                      return sum + (pricePerPerson * bedsInRoom * count);
+                                    }, 0).toLocaleString()}
+                                  </strong>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          <div className="modal-footer">
-                            <button type="button" className="btn btn-secondary" onClick={() => setShowRoomModal(false)}>
-                              Cancel
-                            </button>
-                            <button type="button" className="btn btn-primary" onClick={handleAddRooms}>
-                              Add Rooms
-                            </button>
+                            <div className="modal-footer">
+                              <button type="button" className="btn btn-secondary" onClick={() => setShowRoomModal(false)}>
+                                Cancel
+                              </button>
+                              <button type="button" className="btn btn-primary" onClick={handleAddRooms}>
+                                Add Rooms
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  }
 
                   {/* Action Buttons */}
                   <div className="row mt-4">
@@ -1906,7 +1997,7 @@ const AgentPackagesDetail = () => {
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 };
 

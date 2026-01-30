@@ -1,15 +1,22 @@
 import React, { useState, useEffect } from "react";
 import { Container, Row, Col, Card, Form, Button, Badge, Spinner, Alert, Accordion, Table, Modal } from "react-bootstrap";
+import { useNavigate } from "react-router-dom";
 import AgentSidebar from "../../components/AgentSidebar";
 import AgentHeader from "../../components/AgentHeader";
 import {
-  Plane, MapPin, Calendar, Users, Search, ArrowRight, Clock, CheckCircle, 
+  Plane, MapPin, Calendar, Users, Search, ArrowRight, Clock, CheckCircle,
   Briefcase, Coffee, CreditCard, XCircle, Info, ArrowLeft, AlertCircle
 } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import axios from "axios";
 import "./AgentFlightUpdates.css";
+import BookingModal from "../../components/BookingModal";
+import BrandedFareSelector from "../../components/BrandedFareSelector";
+import FareRulesModal from "../../components/FareRulesModal";
+
+// axios timeout for long-running flight/branding requests (120 seconds)
+const AXIOS_LONG_TIMEOUT = 120000;
 
 // Airport list with IATA codes
 const AIRPORTS = [
@@ -72,13 +79,18 @@ const AIRLINE_NAMES = {
 const AgentFlightUpdates = () => {
   // Search form state
   const [formData, setFormData] = useState({
+    tripType: "oneway", // oneway, return, multicity
     from: "",
     to: "",
     departureDate: null,
+    returnDate: null,
     adults: 1,
     children: 0,
     infants: 0,
-    cabinClass: "Economy"
+    cabinClass: "Economy",
+    multiCitySegments: [
+      { from: "", to: "", departureDate: null }
+    ]
   });
 
   // Flight results state
@@ -87,6 +99,9 @@ const AgentFlightUpdates = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showResults, setShowResults] = useState(false);
+  // Per-leg options when multicity combined search fails
+  const [perLegOptions, setPerLegOptions] = useState(null); // array of arrays
+  const [perLegSelected, setPerLegSelected] = useState([]);
   // Booking UI state
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedFlight, setSelectedFlight] = useState(null);
@@ -110,6 +125,15 @@ const AgentFlightUpdates = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
 
+  // Branded fares and fare rules modals
+  const [showBrandModal, setShowBrandModal] = useState(false);
+  const [showFareRulesModal, setShowFareRulesModal] = useState(false);
+  const [selectedFlightForRules, setSelectedFlightForRules] = useState(null);
+  const [validatedSealed, setValidatedSealed] = useState(null);
+  // Raw response modal for debugging when no flights are returned
+  const [showRawModal, setShowRawModal] = useState(false);
+  const [lastRawResponse, setLastRawResponse] = useState(null);
+
   const handleSaveToken = () => {
     if (tokenInput && tokenInput.trim()) {
       localStorage.setItem('idToken', tokenInput.trim());
@@ -131,49 +155,26 @@ const AgentFlightUpdates = () => {
     setAuthLoading(true);
     setAuthError(null);
     try {
-      const body = {
-        clientId: '6tvsrg4go69ktu9f4369tvmvi8',
-        authFlow: 'USER_PASSWORD_AUTH',
-        authParameters: {
-          USERNAME: 'preprod@gmail.com',
-          PASSWORD: 'Preprod#1@2025'
-        }
-      };
-
-      const res = await axios.post('https://pp-auth-api.aiqs.link/client/user/signin/initiate', body, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 15000
-      });
-
+      // Call backend proxy to get AIQS token (avoids CORS)
+      const res = await axios.get('http://127.0.0.1:8000/api/flights/aiqs-token/', { timeout: 10000 });
       const data = res.data || {};
-      // Try common locations for id token
-      const idToken = data?.AuthenticationResult?.IdToken || data?.idToken || data?.id_token || data?.response?.idToken || data?.response?.AuthenticationResult?.IdToken || data?.AuthenticationResult?.Id_Token;
-
+      const idToken = data?.id_token || data?.access_token || null;
       if (!idToken) {
-        // Try nested structures
-        const firstLevel = Object.values(data)[0] || {};
-        const nestedToken = firstLevel?.AuthenticationResult?.IdToken || firstLevel?.idToken || firstLevel?.id_token;
-        if (nestedToken) {
-          localStorage.setItem('idToken', nestedToken);
-          setTokenInput(nestedToken);
-          alert('idToken saved to localStorage');
-        } else {
-          throw new Error('idToken not found in authentication response');
-        }
-      } else {
-        localStorage.setItem('idToken', idToken);
-        setTokenInput(idToken);
-        alert('idToken saved to localStorage');
+        throw new Error('No token returned from server');
       }
+      localStorage.setItem('idToken', idToken);
+      setTokenInput(idToken);
+      return idToken;
     } catch (err) {
       console.error('Auth error', err);
       setAuthError(err.response?.data || err.message || 'Auth failed');
       alert('Authentication failed: ' + (err.response?.data?.message || err.message || 'unknown'));
+      return null;
     } finally {
       setAuthLoading(false);
     }
   };
-  
+
   // Filter states
   const [filters, setFilters] = useState({
     priceRange: [0, 500000],
@@ -194,82 +195,333 @@ const AgentFlightUpdates = () => {
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleDateChange = (date) => {
-    setFormData({ ...formData, departureDate: date });
+  const handleDateChange = (date, field) => {
+    setFormData({ ...formData, [field]: date });
+  };
+
+  const handleMultiCityChange = (index, field, value) => {
+    const updatedSegments = [...formData.multiCitySegments];
+    updatedSegments[index] = { ...updatedSegments[index], [field]: value };
+    setFormData({ ...formData, multiCitySegments: updatedSegments });
+  };
+
+  const addMultiCitySegment = () => {
+    if (formData.multiCitySegments.length < 6) {
+      setFormData({
+        ...formData,
+        multiCitySegments: [...formData.multiCitySegments, { from: "", to: "", departureDate: null }]
+      });
+    } else {
+      alert("Maximum 6 flight segments allowed for multi-city booking.");
+    }
+  };
+
+  const loadExampleMultiCity = () => {
+    // Example: Karachi -> Dubai (06-02-2026), Doha -> Kuwait (16-02-2026)
+    const example = [
+      { from: "Karachi - KHI", to: "Dubai - DXB", departureDate: new Date('2026-02-06') },
+      { from: "Doha - DOH", to: "Kuwait - KWI", departureDate: new Date('2026-02-16') }
+    ];
+    setFormData({ ...formData, tripType: 'multicity', multiCitySegments: example });
+  };
+
+  const removeMultiCitySegment = (index) => {
+    if (formData.multiCitySegments.length > 1) {
+      const updatedSegments = formData.multiCitySegments.filter((_, i) => i !== index);
+      setFormData({ ...formData, multiCitySegments: updatedSegments });
+    }
   };
 
   const handleSearch = async (e) => {
     e.preventDefault();
-    
-    // Validation
-    if (!formData.from || !formData.to) {
-      setError("Please select departure and arrival cities");
-      return;
+
+    // Validation based on trip type
+    if (formData.tripType === "multicity") {
+      // Validate multi-city segments
+      for (let i = 0; i < formData.multiCitySegments.length; i++) {
+        const segment = formData.multiCitySegments[i];
+        if (!segment.from || !segment.to) {
+          setError(`Please select departure and arrival cities for segment ${i + 1}`);
+          return;
+        }
+        if (!segment.departureDate) {
+          setError(`Please select departure date for segment ${i + 1}`);
+          return;
+        }
+      }
+    } else {
+      // Validate one-way and return
+      if (!formData.from || !formData.to) {
+        setError("Please select departure and arrival cities");
+        return;
+      }
+      if (!formData.departureDate) {
+        setError("Please select departure date");
+        return;
+      }
+      if (formData.tripType === "return" && !formData.returnDate) {
+        setError("Please select return date");
+        return;
+      }
     }
-    if (!formData.departureDate) {
-      setError("Please select departure date");
-      return;
+
+    // Check if multi-city is selected (not yet supported)
+    // Removed: Multi-city is now supported
+
+    // Extract airport codes and dates based on trip type
+    let searchParams = {
+      adults: parseInt(formData.adults) || 1,
+      children: parseInt(formData.children) || 0,
+      infants: parseInt(formData.infants) || 0,
+      cabinClass: getCabinCode(formData.cabinClass),
+      tripType: formData.tripType
+    };
+
+    if (formData.tripType === "multicity") {
+      // For multi-city, send all segments to backend
+      const multiCitySegments = formData.multiCitySegments.map(segment => ({
+        origin: segment.from.match(/- ([A-Z]{3})$/)?.[1],
+        destination: segment.to.match(/- ([A-Z]{3})$/)?.[1],
+        departureDate: (() => {
+          const day = String(segment.departureDate.getDate()).padStart(2, '0');
+          const month = String(segment.departureDate.getMonth() + 1).padStart(2, '0');
+          const year = segment.departureDate.getFullYear();
+          return `${day}-${month}-${year}`;
+        })()
+      }));
+
+      if (multiCitySegments.some(seg => !seg.origin || !seg.destination)) {
+        setError("Invalid airport selection in multi-city segments");
+        return;
+      }
+
+      searchParams.multiCitySegments = multiCitySegments;
+      searchParams.tripType = "multicity";
+    } else {
+      // For one-way and return
+      const fromCode = formData.from.match(/- ([A-Z]{3})$/)?.[1];
+      const toCode = formData.to.match(/- ([A-Z]{3})$/)?.[1];
+
+      if (!fromCode || !toCode) {
+        setError("Invalid airport selection");
+        return;
+      }
+
+      // Format date to DD-MM-YYYY
+      const day = String(formData.departureDate.getDate()).padStart(2, '0');
+      const month = String(formData.departureDate.getMonth() + 1).padStart(2, '0');
+      const year = formData.departureDate.getFullYear();
+      const formattedDate = `${day}-${month}-${year}`;
+
+      searchParams.origin = fromCode;
+      searchParams.destination = toCode;
+      searchParams.departureDate = formattedDate;
+
+      // Add return date for round trip
+      if (formData.tripType === "return" && formData.returnDate) {
+        const returnDay = String(formData.returnDate.getDate()).padStart(2, '0');
+        const returnMonth = String(formData.returnDate.getMonth() + 1).padStart(2, '0');
+        const returnYear = formData.returnDate.getFullYear();
+        const formattedReturnDate = `${returnDay}-${returnMonth}-${returnYear}`;
+        searchParams.returnDate = formattedReturnDate;
+      }
     }
 
-    // Extract airport codes
-    const fromCode = formData.from.match(/- ([A-Z]{3})$/)?.[1];
-    const toCode = formData.to.match(/- ([A-Z]{3})$/)?.[1];
-
-    if (!fromCode || !toCode) {
-      setError("Invalid airport selection");
-      return;
-    }
-
-    // Format date to DD-MM-YYYY
-    const day = String(formData.departureDate.getDate()).padStart(2, '0');
-    const month = String(formData.departureDate.getMonth() + 1).padStart(2, '0');
-    const year = formData.departureDate.getFullYear();
-    const formattedDate = `${day}-${month}-${year}`;
-
+    // Common API call for all trip types
     setLoading(true);
     setError(null);
     setShowResults(true);
 
     try {
-      const searchParams = {
-        origin: fromCode,
-        destination: toCode,
-        departureDate: formattedDate,
-        adults: parseInt(formData.adults) || 1,
-        children: parseInt(formData.children) || 0,
-        infants: parseInt(formData.infants) || 0,
-        cabinClass: getCabinCode(formData.cabinClass)
-      };
+      // Ensure idToken exists in localStorage. If not, generate and save it.
+      let existingToken = localStorage.getItem('idToken');
+      if (!existingToken) {
+        existingToken = await authenticateAndSaveToken();
+      }
 
+      // Send documented AIQS wrapper to backend; backend will normalize it.
+      const wrappedPayload = buildAiqsSearchWrapper(searchParams, existingToken);
       const response = await axios.post(
-        'http://localhost:8000/api/flights/search/',
-        searchParams,
+        'http://127.0.0.1:8000/api/flights/search/',
+        wrappedPayload,
         {
-          timeout: 45000,
-          headers: {
-            'Content-Type': 'application/json'
-          }
+          timeout: AXIOS_LONG_TIMEOUT,
+          headers: { 'Content-Type': 'application/json', 'Authorization': existingToken ? `Bearer ${existingToken}` : undefined }
         }
       );
 
-      if (response.data && response.data.flights) {
-        setFlights(response.data.flights);
-        setFilteredFlights(response.data.flights);
+      console.debug('Search raw response:', response.data);
+      setLastRawResponse(response.data || null);
+      if (response.data && response.data.parsed_results && typeof response.data.parsed_results === 'object') {
+        console.debug('parsed_results keys:', Object.keys(response.data.parsed_results));
+      }
+      const flightsData = extractFlights(response.data);
+      console.debug('extractFlights -> found', Array.isArray(flightsData) ? flightsData.length : 0, 'flights');
+      if (flightsData && flightsData.length > 0) {
+
+        // Fetch branded fares for flights that require separate requests
+        const flightsWithBrands = await Promise.all(
+          flightsData.map(async (flight) => {
+            if (flight.brandedFareSupported && flight.brandedFareSeparate) {
+              try {
+                console.log(`🎨 Fetching branded fares separately for flight`);
+                const brandResponse = await axios.post(
+                  'http://127.0.0.1:8000/api/flights/branded-fares/',
+                  {
+                    flightData: flight,
+                    origin: searchParams.origin,
+                    destination: searchParams.destination
+                  },
+                  {
+                    timeout: AXIOS_LONG_TIMEOUT,
+                    headers: { 'Content-Type': 'application/json', 'Authorization': existingToken ? `Bearer ${existingToken}` : undefined }
+                  }
+                );
+
+                if (brandResponse.data && brandResponse.data.brands) {
+                  console.log(`✅ Found ${brandResponse.data.brands.length} branded fares`);
+                  return {
+                    ...flight,
+                    brands: brandResponse.data.brands,
+                    fareInfo: brandResponse.data.fareInfo
+                  };
+                }
+              } catch (brandErr) {
+                const details = brandErr.response?.data || brandErr.message || 'Unknown branded fares error';
+                console.warn(`❌ Failed to fetch branded fares:`, details);
+                // attach error info so UI can avoid re-requesting and can display details
+                return { ...flight, brandedFetchError: details };
+              }
+            }
+            return flight;
+          })
+        );
+
+        // Filter flights based on trip type
+        let filteredByTripType = flightsWithBrands;
+        if (formData.tripType === "oneway") {
+          filteredByTripType = flightsWithBrands.filter(flight => {
+            return flight.rawData?.ondPairs && flight.rawData.ondPairs.length === 1;
+          });
+        } else if (formData.tripType === "return") {
+          filteredByTripType = flightsWithBrands.filter(flight => {
+            return flight.rawData?.ondPairs && flight.rawData.ondPairs.length === 2;
+          });
+        }
+
+        setFlights(filteredByTripType);
+        setFilteredFlights(filteredByTripType);
+
+        // If multicity and no combined flights returned, fallback to per-leg searches
+        if (formData.tripType === 'multicity' && (!filteredByTripType || filteredByTripType.length === 0)) {
+          console.log('No combined multicity itineraries returned — fetching per-leg options');
+          const perLeg = await fetchPerLegOptions(searchParams.multiCitySegments, existingToken);
+          setPerLegOptions(perLeg);
+          setPerLegSelected(new Array(perLeg.length).fill(null));
+        } else {
+          setPerLegOptions(null);
+          setPerLegSelected([]);
+        }
       } else {
+        setPerLegOptions(null);
+        setPerLegSelected([]);
         setFlights([]);
         setFilteredFlights([]);
       }
     } catch (err) {
       console.error('Flight search error:', err);
       setError(
-        err.response?.data?.error || 
-        err.message || 
+        err.response?.data?.error ||
+        err.message ||
         'Failed to search flights. Please try again.'
       );
       setFlights([]);
       setFilteredFlights([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPerLegOptions = async (segments, existingToken) => {
+    if (!segments || segments.length === 0) return [];
+    const headers = { 'Content-Type': 'application/json' };
+    if (existingToken) headers.Authorization = `Bearer ${existingToken}`;
+
+    const results = await Promise.all(segments.map(async (seg) => {
+      try {
+        const payload = {
+          adults: parseInt(formData.adults) || 1,
+          children: parseInt(formData.children) || 0,
+          infants: parseInt(formData.infants) || 0,
+          cabinClass: getCabinCode(formData.cabinClass),
+          tripType: 'oneway',
+          origin: seg.origin || seg.from?.match(/- ([A-Z]{3})$/)?.[1],
+          destination: seg.destination || seg.to?.match(/- ([A-Z]{3})$/)?.[1],
+          departureDate: seg.departureDate
+        };
+
+        const wrapped = buildAiqsSearchWrapper(payload, existingToken);
+        const res = await axios.post('http://127.0.0.1:8000/api/flights/search/', wrapped, { headers, timeout: AXIOS_LONG_TIMEOUT });
+        console.debug('Per-leg raw response (leg):', res.data);
+        const extracted = extractFlights(res.data);
+        console.debug('Per-leg extractFlights ->', Array.isArray(extracted) ? extracted.length : 0, 'items');
+        return extracted;
+      } catch (err) {
+        console.error('Per-leg search failed for', seg, err.message || err);
+        return [];
+      }
+    }));
+    return results;
+  };
+
+  const selectPerLegOption = (legIndex, flight) => {
+    const selected = [...perLegSelected];
+    selected[legIndex] = flight;
+    setPerLegSelected(selected);
+  };
+
+  const validateCombinedItinerary = async () => {
+    // Ensure all legs selected
+    if (!perLegSelected || perLegSelected.some(s => !s)) {
+      alert('Please select one flight option for each leg before validating');
+      return;
+    }
+
+    // Build combined flightData
+    const combined = { segments: [], fare: { baseFare: 0, tax: 0, total: 0, currency: '' }, supplierSpecific: [] };
+    perLegSelected.forEach(f => {
+      if (f.segments) {
+        f.segments.forEach(s => combined.segments.push(s));
+      }
+      if (f.fare) {
+        combined.fare.baseFare += Number(f.fare.baseFare || 0);
+        combined.fare.tax += Number(f.fare.tax || 0);
+        combined.fare.total += Number(f.fare.total || 0);
+        combined.fare.currency = combined.fare.currency || f.fare.currency;
+      }
+      if (f.supplierSpecific) {
+        if (Array.isArray(f.supplierSpecific)) combined.supplierSpecific.push(...f.supplierSpecific);
+        else combined.supplierSpecific.push(f.supplierSpecific);
+      }
+    });
+    combined.tripType = 'multicity';
+
+    try {
+      const authToken = localStorage.getItem('idToken');
+      const headers = { 'Content-Type': 'application/json' };
+      if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
+      const resp = await axios.post('http://127.0.0.1:8000/api/flights/validate/', { flightData: combined }, { headers, timeout: AXIOS_LONG_TIMEOUT });
+      if (resp.data) {
+        setValidatedSealed(resp.data.sealed || resp.data?.response?.content?.sealed || resp.data?.response?.content?.validateFareResponse?.sealed || null);
+        alert('Validation successful — sealed token received');
+        // Store combined as selectedFlight for booking flow
+        setSelectedFlight({ ...combined, fare: combined.fare, supplierSpecific: combined.supplierSpecific });
+        setShowBookingModal(true);
+      }
+    } catch (err) {
+      console.error('Combined validate failed', err);
+      alert('Validation failed: ' + (err.response?.data?.error || err.message || 'Unknown'));
     }
   };
 
@@ -287,7 +539,7 @@ const AgentFlightUpdates = () => {
     let filtered = [...flights];
 
     // Price filter
-    filtered = filtered.filter(f => 
+    filtered = filtered.filter(f =>
       f.fare.total >= filters.priceRange[0] && f.fare.total <= filters.priceRange[1]
     );
 
@@ -305,7 +557,7 @@ const AgentFlightUpdates = () => {
     // Airline filter
     if (filters.airlines.length > 0) {
       filtered = filtered.filter(f => {
-        const flightAirlines = f.segments?.flatMap(seg => 
+        const flightAirlines = f.segments?.flatMap(seg =>
           seg.flights?.map(fl => fl.airlineCode) || []
         ) || [];
         return filters.airlines.some(airline => flightAirlines.includes(airline));
@@ -387,15 +639,257 @@ const AgentFlightUpdates = () => {
   };
 
   const formatPrice = (price, currency) => {
-    return `${currency} ${parseFloat(price || 0).toLocaleString('en-US', {
+    const p = parseFloat(price || 0) || 0;
+    return `${currency || 'PKR'} ${p.toLocaleString('en-US', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     })}`;
   };
 
+  const formatDateDDMMYYYY = (d) => {
+    if (!d) return '';
+    // If already in DD-MM-YYYY format, return as-is
+    if (typeof d === 'string' && /^\d{2}-\d{2}-\d{4}$/.test(d)) return d;
+    // If it's a Date object
+    if (d instanceof Date && !isNaN(d)) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+    }
+    // If it's an ISO string (YYYY-MM-DD or full ISO), try parsing
+    if (typeof d === 'string') {
+      // Try YYYY-MM-DD
+      const isoMatch = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoMatch) {
+        const [, yy, mm, dd] = isoMatch;
+        return `${dd}-${mm}-${yy}`;
+      }
+      // Fallback to Date constructor
+      const dt = new Date(d);
+      if (!isNaN(dt)) {
+        const day = String(dt.getDate()).padStart(2, '0');
+        const month = String(dt.getMonth() + 1).padStart(2, '0');
+        const year = dt.getFullYear();
+        return `${day}-${month}-${year}`;
+      }
+    }
+    // If number (timestamp)
+    if (typeof d === 'number') {
+      const dt = new Date(d);
+      if (!isNaN(dt)) {
+        const day = String(dt.getDate()).padStart(2, '0');
+        const month = String(dt.getMonth() + 1).padStart(2, '0');
+        const year = dt.getFullYear();
+        return `${day}-${month}-${year}`;
+      }
+    }
+    return '';
+  };
+
+  // Compute a reliable fare total for display (fallback to baseFare + tax)
+  const getFareAmount = (flight) => {
+    if (!flight) return 0;
+    const fare = flight.fare || {};
+    const total = parseFloat(fare.total || fare.totalAmount || 0);
+    if (!isNaN(total) && total > 0) return total;
+    const base = parseFloat(fare.baseFare || fare.base || 0) || 0;
+    const tax = parseFloat(fare.tax || fare.taxes || 0) || 0;
+    return base + tax;
+  };
+
+  // Build AIQS documented wrapper for search requests
+  const buildAiqsSearchWrapper = (params, token) => {
+    // params: simplified searchParams used in frontend
+    const tripTypeMap = { 'oneway': 'O', 'return': 'R', 'multicity': 'M' };
+
+    const criteria = {
+      criteriaType: 'Air',
+      commonRequestSearch: {
+        numberOfUnits: (params.adults || 1) + (params.children || 0) + (params.infants || 0),
+        typeOfUnit: 'PX',
+        resultsCount: String(params.maxResults || 50)
+      },
+      ondPairs: [],
+      preferredAirline: params.preferredAirlines || [],
+      nonStop: params.nonStop || false,
+      cabin: params.cabinClass || params.cabin || 'Y',
+      maxStopQuantity: params.nonStop ? 'Direct' : 'All',
+      tripType: tripTypeMap[params.tripType] || 'O',
+      target: 'Test',
+      paxQuantity: {
+        adt: params.adults || 1,
+        chd: params.children || 0,
+        inf: params.infants || 0
+      }
+    };
+
+    if (params.tripType === 'multicity' && Array.isArray(params.multiCitySegments)) {
+      criteria.ondPairs = params.multiCitySegments.map(s => ({
+        departureDate: s.departureDate,
+        originLocation: s.origin || s.from,
+        destinationLocation: s.destination || s.to
+      }));
+    } else if (params.tripType === 'return') {
+      criteria.ondPairs = [
+        { departureDate: params.departureDate, originLocation: params.origin || params.from, destinationLocation: params.destination || params.to },
+        { departureDate: params.returnDate, originLocation: params.destination || params.to, destinationLocation: params.origin || params.from }
+      ];
+    } else {
+      criteria.ondPairs = [
+        { departureDate: params.departureDate, originLocation: params.origin || params.from, destinationLocation: params.destination || params.to }
+      ];
+    }
+
+    const wrapper = {
+      request: {
+        service: 'FlightRQ',
+        token: token || undefined,
+        content: {
+          command: 'FlightSearchRQ',
+          criteria
+        }
+      }
+    };
+
+    return wrapper;
+  };
+
+  // Normalize various API response shapes into an array of flights
+  const extractFlights = (data) => {
+    if (!data) return [];
+    // direct arrays
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data.flights)) return data.flights;
+    if (Array.isArray(data.itineraries)) return data.itineraries;
+    if (Array.isArray(data.results)) return data.results;
+
+    if (data.response?.content?.flights && Array.isArray(data.response.content.flights)) return data.response.content.flights;
+
+    // parsed_results may be object or array
+    const parsed = data.parsed_results || data.response?.content?.parsed_results || null;
+    if (parsed) {
+      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed.flights)) return parsed.flights;
+      if (Array.isArray(parsed.results)) return parsed.results;
+    }
+
+    // Generic recursive search: find first array that looks like flights
+    const isFlightLike = (item) => {
+      if (!item || typeof item !== 'object') return false;
+      const keys = Object.keys(item);
+      return keys.includes('fare') || keys.includes('segments') || keys.includes('flights') || keys.includes('ondPairs') || keys.includes('fareDetails') || keys.includes('total');
+    };
+
+    const findArrayWithFlightLikeObjects = (obj, depth = 0) => {
+      if (!obj || typeof obj !== 'object' || depth > 4) return null;
+      for (const k of Object.keys(obj)) {
+        const v = obj[k];
+        if (Array.isArray(v) && v.length > 0 && isFlightLike(v[0])) return v;
+        if (typeof v === 'object') {
+          const res = findArrayWithFlightLikeObjects(v, depth + 1);
+          if (res) return res;
+        }
+      }
+      return null;
+    };
+
+    const found = findArrayWithFlightLikeObjects(data);
+    if (found) return found;
+
+    // last-resort: empty
+    return [];
+  };
+
   const handleBookFlight = (flight) => {
-    setSelectedFlight(flight);
+    // Check if flight has multiple branded fares
+    if (flight.brands && flight.brands.length > 1) {
+      // Show branded fare selector
+      setSelectedFlight(flight);
+      setShowBrandModal(true);
+    } else {
+      // Single brand or no brands - proceed directly to booking
+      let flightToBook = { ...flight };
+
+      if (flight.brands && flight.brands.length > 0) {
+        const firstBrand = flight.brands[0];
+        console.log('🎫 Using branded fare:', firstBrand.brandName, 'brandId:', firstBrand.brandId);
+
+        // Use brand's fare and supplierSpecific
+        flightToBook = {
+          ...flight,
+          brandId: firstBrand.brandId,
+          fare: {
+            baseFare: firstBrand.baseFare,
+            tax: firstBrand.tax,
+            total: firstBrand.total,
+            currency: firstBrand.currency
+          },
+          supplierSpecific: firstBrand.supplierSpecific,
+          selectedBrandName: firstBrand.brandName
+        };
+      } else {
+        // For non-branded flights, ensure brandId defaults to 1
+        flightToBook.brandId = 1;
+      }
+
+      console.log('📋 Flight data for booking:', {
+        hasSupplierSpecific: !!flightToBook.supplierSpecific,
+        supplierCode: flightToBook.supplierCode,
+        brandId: flightToBook.brandId,
+        fare: flightToBook.fare
+      });
+
+      setSelectedFlight(flightToBook);
+      setShowBookingModal(true);
+    }
+  };
+
+  // Helper to update a flight entry in `flights` and `filteredFlights` by id
+  const updateFlightInState = (flightId, patch) => {
+    setFlights(prev => prev.map(f => f.id === flightId ? { ...f, ...patch } : f));
+    setFilteredFlights(prev => prev.map(f => f.id === flightId ? { ...f, ...patch } : f));
+  };
+
+  const handleSelectBrand = (selectedBrand) => {
+    // User selected a brand from BrandedFareSelector
+    const flightToBook = {
+      ...selectedFlight,
+      brandId: selectedBrand.brandId,
+      fare: {
+        baseFare: selectedBrand.baseFare,
+        tax: selectedBrand.tax,
+        total: selectedBrand.total,
+        currency: selectedBrand.currency
+      },
+      supplierSpecific: selectedBrand.supplierSpecific,
+      selectedBrandName: selectedBrand.brandName
+    };
+
+    console.log('✅ Brand selected:', selectedBrand.brandName);
+    setShowBrandModal(false);
+    setSelectedFlight(flightToBook);
     setShowBookingModal(true);
+  };
+
+  const handleShowFareRules = (flight) => {
+    setSelectedFlightForRules(flight);
+    setValidatedSealed(null); // Reset sealed token
+    setShowFareRulesModal(true);
+  };
+
+  const [bookingSuccess, setBookingSuccess] = useState(null);
+  const navigate = useNavigate();
+
+  const handleBookingSuccess = (bookingData) => {
+    setShowBookingModal(false);
+    setBookingSuccess(bookingData);
+
+    // Show success alert for 3 seconds then navigate to tickets page
+    setTimeout(() => {
+      setBookingSuccess(null);
+      navigate('/tickets');
+    }, 3000);
   };
 
   const handlePassengerChange = (e) => {
@@ -475,7 +969,8 @@ const AgentFlightUpdates = () => {
       };
 
       const authToken = localStorage.getItem('idToken');
-      const validateRes = await axios.post('/api/air/validate/', validatePayload, { timeout: 60000,
+      const validateRes = await axios.post('/api/air/validate/', validatePayload, {
+        timeout: AXIOS_LONG_TIMEOUT,
         headers: Object.assign({ 'Content-Type': 'application/json' }, authToken ? { Authorization: `Bearer ${authToken}` } : {})
       });
       const sealed = validateRes?.data?.response?.content?.validateFareResponse?.sealed || validateRes?.data?.response?.content?.sealed || validateRes?.data?.sealed;
@@ -487,14 +982,6 @@ const AgentFlightUpdates = () => {
       // 2) Build travelerInfo from passenger modal (minimal required fields)
       const [given, ...rest] = passenger.name.trim().split(' ');
       const sur = rest.join(' ') || 'Passenger';
-      const formatDateDDMMYYYY = (d) => {
-        if (!d) return '';
-        const dt = new Date(d);
-        const day = String(dt.getDate()).padStart(2, '0');
-        const month = String(dt.getMonth() + 1).padStart(2, '0');
-        const year = dt.getFullYear();
-        return `${day}-${month}-${year}`;
-      };
 
       const travelerInfo = [
         {
@@ -534,7 +1021,7 @@ const AgentFlightUpdates = () => {
           cabin: s.cabin || s.cabin || '',
           duration: s.duration || s.duration || '',
           rbd: s.rbd || '',
-          eqpType: s.eqpType || s.equipmentType || '' ,
+          eqpType: s.eqpType || s.equipmentType || '',
           stopQuantity: s.stopQuantity || s.stops || 0
         }));
 
@@ -575,7 +1062,8 @@ const AgentFlightUpdates = () => {
         }
       };
 
-      const bookRes = await axios.post('/api/air/book/', bookPayload, { timeout: 60000,
+      const bookRes = await axios.post('/api/air/book/', bookPayload, {
+        timeout: AXIOS_LONG_TIMEOUT,
         headers: Object.assign({ 'Content-Type': 'application/json' }, authToken ? { Authorization: `Bearer ${authToken}` } : {})
       });
       const bookResp = bookRes?.data?.response?.content?.bookFlightRS || bookRes?.data?.response?.content?.bookFlightRS || bookRes?.data?.response?.content?.bookFlightRS;
@@ -624,67 +1112,217 @@ const AgentFlightUpdates = () => {
                 </Card.Header>
                 <Card.Body className="p-4">
                   <Form onSubmit={handleSearch}>
-                    <Row>
-                      <Col md={6} className="mb-3">
+                    {/* Trip Type Selection */}
+                    <Row className="mb-4">
+                      <Col md={12}>
                         <Form.Group>
-                          <Form.Label>
-                            <MapPin size={16} className="me-1" />
-                            From (Departure City)
-                          </Form.Label>
-                          <Form.Select
-                            name="from"
-                            value={formData.from}
-                            onChange={handleInputChange}
-                            required
-                          >
-                            <option value="">Select departure city</option>
-                            {AIRPORTS.map(airport => (
-                              <option key={airport} value={airport}>{airport}</option>
-                            ))}
-                          </Form.Select>
-                        </Form.Group>
-                      </Col>
-                      
-                      <Col md={6} className="mb-3">
-                        <Form.Group>
-                          <Form.Label>
-                            <MapPin size={16} className="me-1" />
-                            To (Arrival City)
-                          </Form.Label>
-                          <Form.Select
-                            name="to"
-                            value={formData.to}
-                            onChange={handleInputChange}
-                            required
-                          >
-                            <option value="">Select arrival city</option>
-                            {AIRPORTS.map(airport => (
-                              <option key={airport} value={airport}>{airport}</option>
-                            ))}
-                          </Form.Select>
+                          <Form.Label>Trip Type</Form.Label>
+                          <div className="d-flex gap-3">
+                            <Form.Check
+                              type="radio"
+                              label="One Way"
+                              name="tripType"
+                              value="oneway"
+                              checked={formData.tripType === "oneway"}
+                              onChange={handleInputChange}
+                              inline
+                            />
+                            <Form.Check
+                              type="radio"
+                              label="Return"
+                              name="tripType"
+                              value="return"
+                              checked={formData.tripType === "return"}
+                              onChange={handleInputChange}
+                              inline
+                            />
+                            <Form.Check
+                              type="radio"
+                              label="Multi-City"
+                              name="tripType"
+                              value="multicity"
+                              checked={formData.tripType === "multicity"}
+                              onChange={handleInputChange}
+                              inline
+                            />
+                          </div>
                         </Form.Group>
                       </Col>
                     </Row>
 
-                    <Row>
-                      <Col md={6} className="mb-3">
-                        <Form.Group>
-                          <Form.Label>
-                            <Calendar size={16} className="me-1" />
-                            Departure Date
-                          </Form.Label>
-                          <DatePicker
-                            selected={formData.departureDate}
-                            onChange={handleDateChange}
-                            minDate={new Date()}
-                            dateFormat="dd-MM-yyyy"
-                            className="form-control"
-                            placeholderText="Select date"
-                            required
-                          />
-                        </Form.Group>
-                      </Col>
+                    {/* One Way and Return Form */}
+                    {formData.tripType !== "multicity" && (
+                      <>
+                        <Row>
+                          <Col md={6} className="mb-3">
+                            <Form.Group>
+                              <Form.Label>
+                                <MapPin size={16} className="me-1" />
+                                From (Departure City)
+                              </Form.Label>
+                              <Form.Select
+                                name="from"
+                                value={formData.from}
+                                onChange={handleInputChange}
+                                required
+                              >
+                                <option value="">Select departure city</option>
+                                {AIRPORTS.map(airport => (
+                                  <option key={airport} value={airport}>{airport}</option>
+                                ))}
+                              </Form.Select>
+                            </Form.Group>
+                          </Col>
 
+                          <Col md={6} className="mb-3">
+                            <Form.Group>
+                              <Form.Label>
+                                <MapPin size={16} className="me-1" />
+                                To (Arrival City)
+                              </Form.Label>
+                              <Form.Select
+                                name="to"
+                                value={formData.to}
+                                onChange={handleInputChange}
+                                required
+                              >
+                                <option value="">Select arrival city</option>
+                                {AIRPORTS.map(airport => (
+                                  <option key={airport} value={airport}>{airport}</option>
+                                ))}
+                              </Form.Select>
+                            </Form.Group>
+                          </Col>
+                        </Row>
+
+                        <Row>
+                          <Col md={formData.tripType === "return" ? 6 : 12} className="mb-3">
+                            <Form.Group>
+                              <Form.Label>
+                                <Calendar size={16} className="me-1" />
+                                Departure Date
+                              </Form.Label>
+                              <DatePicker
+                                selected={formData.departureDate}
+                                onChange={(date) => handleDateChange(date, 'departureDate')}
+                                minDate={new Date()}
+                                dateFormat="dd-MM-yyyy"
+                                className="form-control"
+                                placeholderText="Select date"
+                                required
+                              />
+                            </Form.Group>
+                          </Col>
+
+                          {formData.tripType === "return" && (
+                            <Col md={6} className="mb-3">
+                              <Form.Group>
+                                <Form.Label>
+                                  <Calendar size={16} className="me-1" />
+                                  Return Date
+                                </Form.Label>
+                                <DatePicker
+                                  selected={formData.returnDate}
+                                  onChange={(date) => handleDateChange(date, 'returnDate')}
+                                  minDate={formData.departureDate || new Date()}
+                                  dateFormat="dd-MM-yyyy"
+                                  className="form-control"
+                                  placeholderText="Select return date"
+                                  required
+                                />
+                              </Form.Group>
+                            </Col>
+                          )}
+                        </Row>
+                      </>
+                    )}
+
+                    {/* Multi-City Form */}
+                    {formData.tripType === "multicity" && (
+                      <div className="mb-4">
+                        <h6 className="mb-3">
+                          Flight Segments (Max 6) - <small className="text-muted">Currently {formData.multiCitySegments.length} segment{formData.multiCitySegments.length > 1 ? 's' : ''}</small>
+                          <Button variant="outline-secondary" size="sm" className="ms-3" onClick={loadExampleMultiCity}>Load Example Itinerary</Button>
+                        </h6>
+                        {formData.multiCitySegments.map((segment, index) => (
+                          <Card key={index} className="mb-3 border">
+                            <Card.Body className="p-3">
+                              <Row className="align-items-end">
+                                <Col md={3}>
+                                  <Form.Group>
+                                    <Form.Label>From</Form.Label>
+                                    <Form.Select
+                                      value={segment.from}
+                                      onChange={(e) => handleMultiCityChange(index, 'from', e.target.value)}
+                                      required
+                                    >
+                                      <option value="">Select city</option>
+                                      {AIRPORTS.map(airport => (
+                                        <option key={airport} value={airport}>{airport}</option>
+                                      ))}
+                                    </Form.Select>
+                                  </Form.Group>
+                                </Col>
+                                <Col md={3}>
+                                  <Form.Group>
+                                    <Form.Label>To</Form.Label>
+                                    <Form.Select
+                                      value={segment.to}
+                                      onChange={(e) => handleMultiCityChange(index, 'to', e.target.value)}
+                                      required
+                                    >
+                                      <option value="">Select city</option>
+                                      {AIRPORTS.map(airport => (
+                                        <option key={airport} value={airport}>{airport}</option>
+                                      ))}
+                                    </Form.Select>
+                                  </Form.Group>
+                                </Col>
+                                <Col md={3}>
+                                  <Form.Group>
+                                    <Form.Label>Departure Date</Form.Label>
+                                    <DatePicker
+                                      selected={segment.departureDate}
+                                      onChange={(date) => handleMultiCityChange(index, 'departureDate', date)}
+                                      minDate={new Date()}
+                                      dateFormat="dd-MM-yyyy"
+                                      className="form-control"
+                                      placeholderText="Select date"
+                                      required
+                                    />
+                                  </Form.Group>
+                                </Col>
+                                <Col md={3}>
+                                  <div className="d-flex gap-2">
+                                    {formData.multiCitySegments.length > 1 && (
+                                      <Button
+                                        variant="outline-danger"
+                                        size="sm"
+                                        onClick={() => removeMultiCitySegment(index)}
+                                      >
+                                        Remove
+                                      </Button>
+                                    )}
+                                    {index === formData.multiCitySegments.length - 1 && formData.multiCitySegments.length < 6 && (
+                                      <Button
+                                        variant="outline-primary"
+                                        size="sm"
+                                        onClick={addMultiCitySegment}
+                                      >
+                                        Add Segment
+                                      </Button>
+                                    )}
+                                  </div>
+                                </Col>
+                              </Row>
+                            </Card.Body>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Common Fields */}
+                    <Row>
                       <Col md={6} className="mb-3">
                         <Form.Group>
                           <Form.Label>
@@ -703,51 +1341,51 @@ const AgentFlightUpdates = () => {
                           </Form.Select>
                         </Form.Group>
                       </Col>
-                    </Row>
 
-                    <Row>
-                      <Col md={4} className="mb-3">
+                      <Col md={6} className="mb-3">
                         <Form.Group>
                           <Form.Label>
                             <Users size={16} className="me-1" />
-                            Adults
+                            Passengers
                           </Form.Label>
-                          <Form.Control
-                            type="number"
-                            name="adults"
-                            min="1"
-                            max="9"
-                            value={formData.adults}
-                            onChange={handleInputChange}
-                          />
-                        </Form.Group>
-                      </Col>
-
-                      <Col md={4} className="mb-3">
-                        <Form.Group>
-                          <Form.Label>Children (2-11 yrs)</Form.Label>
-                          <Form.Control
-                            type="number"
-                            name="children"
-                            min="0"
-                            max="9"
-                            value={formData.children}
-                            onChange={handleInputChange}
-                          />
-                        </Form.Group>
-                      </Col>
-
-                      <Col md={4} className="mb-3">
-                        <Form.Group>
-                          <Form.Label>Infants (under 2 yrs)</Form.Label>
-                          <Form.Control
-                            type="number"
-                            name="infants"
-                            min="0"
-                            max="9"
-                            value={formData.infants}
-                            onChange={handleInputChange}
-                          />
+                          <Row>
+                            <Col md={4}>
+                              <Form.Control
+                                type="number"
+                                placeholder="Adults"
+                                name="adults"
+                                min="1"
+                                max="9"
+                                value={formData.adults}
+                                onChange={handleInputChange}
+                              />
+                              <small className="text-muted">Adults</small>
+                            </Col>
+                            <Col md={4}>
+                              <Form.Control
+                                type="number"
+                                placeholder="Children"
+                                name="children"
+                                min="0"
+                                max="9"
+                                value={formData.children}
+                                onChange={handleInputChange}
+                              />
+                              <small className="text-muted">Children</small>
+                            </Col>
+                            <Col md={4}>
+                              <Form.Control
+                                type="number"
+                                placeholder="Infants"
+                                name="infants"
+                                min="0"
+                                max="9"
+                                value={formData.infants}
+                                onChange={handleInputChange}
+                              />
+                              <small className="text-muted">Infants</small>
+                            </Col>
+                          </Row>
                         </Form.Group>
                       </Col>
                     </Row>
@@ -773,10 +1411,35 @@ const AgentFlightUpdates = () => {
                     </Button>
                     <div className="text-center">
                       <h5 className="mb-0">
-                        {formData.from?.split(' - ')[0]} → {formData.to?.split(' - ')[0]}
+                        {formData.tripType === "multicity" ? (
+                          formData.multiCitySegments.map((segment, index) => (
+                            <span key={index}>
+                              {segment.from?.split(' - ')[0]} → {segment.to?.split(' - ')[0]}
+                              {index < formData.multiCitySegments.length - 1 && " | "}
+                            </span>
+                          ))
+                        ) : (
+                          <>
+                            {formData.from?.split(' - ')[0]} → {formData.to?.split(' - ')[0]}
+                            {formData.tripType === "return" && (
+                              <span className="ms-2 text-muted">
+                                (Return: {formData.returnDate?.toLocaleDateString('en-GB')})
+                              </span>
+                            )}
+                          </>
+                        )}
                       </h5>
                       <small className="text-muted">
-                        {formData.departureDate?.toLocaleDateString('en-GB')} • 
+                        {formData.tripType === "multicity" ? (
+                          formData.multiCitySegments.map((segment, index) => (
+                            <span key={index}>
+                              {segment.departureDate?.toLocaleDateString('en-GB')}
+                              {index < formData.multiCitySegments.length - 1 && " | "}
+                            </span>
+                          ))
+                        ) : (
+                          formData.departureDate?.toLocaleDateString('en-GB')
+                        )} •
                         {formData.adults} Adult{formData.adults > 1 ? 's' : ''}
                         {formData.children > 0 && `, ${formData.children} Child${formData.children > 1 ? 'ren' : ''}`}
                         {formData.infants > 0 && `, ${formData.infants} Infant${formData.infants > 1 ? 's' : ''}`}
@@ -864,10 +1527,10 @@ const AgentFlightUpdates = () => {
                                 type="radio"
                                 id={`time-${time}`}
                                 name="departureTime"
-                                label={time === 'all' ? 'Any Time' : 
-                                       time === 'morning' ? 'Morning (6AM-12PM)' :
-                                       time === 'afternoon' ? 'Afternoon (12PM-6PM)' :
-                                       time === 'evening' ? 'Evening (6PM-12AM)' : 'Night (12AM-6AM)'}
+                                label={time === 'all' ? 'Any Time' :
+                                  time === 'morning' ? 'Morning (6AM-12PM)' :
+                                    time === 'afternoon' ? 'Afternoon (12PM-6PM)' :
+                                      time === 'evening' ? 'Evening (6PM-12AM)' : 'Night (12AM-6AM)'}
                                 checked={filters.departureTime === time}
                                 onChange={() => setFilters({ ...filters, departureTime: time })}
                               />
@@ -912,11 +1575,192 @@ const AgentFlightUpdates = () => {
                     {/* Flight Cards */}
                     <Col lg={9}>
                       {filteredFlights.length === 0 ? (
-                        <Alert variant="info">
-                          <Info size={20} className="me-2" />
-                          No flights found for the selected filters. Try adjusting your search criteria.
-                        </Alert>
+                        <div>
+                          <Alert variant="info">
+                            <Info size={20} className="me-2" />
+                            No flights found for the selected filters. Try adjusting your search criteria.
+                          </Alert>
+                          {/* Helpful fallback actions when no flights are present */}
+                          <div className="d-flex gap-2 mb-3">
+                            {formData.tripType === 'multicity' && (
+                              <Button
+                                variant="outline-primary"
+                                size="sm"
+                                onClick={async () => {
+                                  try {
+                                    setLoading(true);
+                                    const existingToken = localStorage.getItem('idToken') || await authenticateAndSaveToken();
+                                    const perLeg = await fetchPerLegOptions(formData.multiCitySegments.map(s => ({
+                                      origin: s.from?.match(/- ([A-Z]{3})$/)?.[1],
+                                      destination: s.to?.match(/- ([A-Z]{3})$/)?.[1],
+                                      departureDate: formatDateDDMMYYYY(s.departureDate)
+                                    })), existingToken);
+                                    setPerLegOptions(perLeg);
+                                    setPerLegSelected(new Array(perLeg.length).fill(null));
+                                  } catch (e) {
+                                    console.error('Fallback per-leg fetch failed', e);
+                                  } finally {
+                                    setLoading(false);
+                                  }
+                                }}
+                              >
+                                Fetch Per-Leg Options
+                              </Button>
+                            )}
+                            {lastRawResponse && (
+                              <Button variant="outline-secondary" size="sm" onClick={() => setShowRawModal(true)}>
+                                View Raw Response
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ) : formData.tripType === "multicity" ? (
+                        // Multi-city: render a single combined card that includes combined itineraries (if any)
+                        <Card className="mb-4 shadow-sm flight-card">
+                          <Card.Body>
+                            <Row>
+                              <Col md={9}>
+                                <h5 className="mb-3 text-primary">Multi-City Search Results</h5>
+
+                                {/* Combined itineraries (show top 3 if available) */}
+                                {filteredFlights && filteredFlights.length > 0 && (
+                                  <div className="mb-4">
+                                    <h6 className="mb-3 text-dark">Combined Itineraries</h6>
+                                    {filteredFlights.slice(0, 3).map((flight, fi) => (
+                                      <div key={fi} className="mb-4 p-3 border rounded bg-white shadow-sm">
+                                        <div className="d-flex justify-content-between align-items-center mb-3">
+                                          <div className="fw-bold fs-5">Itinerary {fi + 1}</div>
+                                          <div className="text-end">
+                                            <div className="fw-bold text-primary fs-4">{formatPrice(getFareAmount(flight), (flight.fare && flight.fare.currency) || 'PKR')}</div>
+                                            <div className="small text-muted">Base: {formatPrice(Number(flight.fare?.baseFare || 0), (flight.fare && flight.fare.currency) || 'PKR')}</div>
+                                          </div>
+                                        </div>
+
+                                        {/* Display each segment's flight details */}
+                                        {flight.segments?.map((segment, segIdx) => (
+                                          <div key={segIdx} className="mb-3 border-bottom pb-3">
+                                            <div className="d-flex justify-content-between align-items-start mb-2">
+                                              <h6 className="text-muted mb-0">Leg {segIdx + 1}: {segment.ond?.origin} → {segment.ond?.destination}</h6>
+                                              <div className="text-muted small">{formatDuration(segment.ond?.duration)}</div>
+                                            </div>
+
+                                            {/* show only direct / non-stop flights similar to screenshot */}
+                                            {(segment.flights || []).filter(f => (f.stops === 0 || f.stopQuantity === 0 || f.stops === '0')).map((fl, flIdx) => (
+                                              <div key={flIdx} className="py-3">
+                                                <Row className="align-items-center">
+                                                  {/* Airline logo and name */}
+                                                  <Col md={2} className="text-center">
+                                                    <img src={getAirlineLogo(fl.airlineCode)} alt={fl.airlineCode} style={{ width: 48, height: 48 }} onError={(e) => e.target.style.display = 'none'} />
+                                                    <div className="fw-bold mt-2 small">{getAirlineName(fl.airlineCode)}</div>
+                                                    <div className="small text-muted">{fl.airlineCode} {fl.flightNo}</div>
+                                                  </Col>
+
+                                                  {/* Departure time & origin */}
+                                                  <Col md={4}>
+                                                    <div className="fw-bold fs-5">{formatTime(fl.departureTime || fl.depTime || fl.departureDate)}</div>
+                                                    <div className="fw-bold">{fl.departureLocation || fl.depAirport || fl.depCode}</div>
+                                                    <div className="small text-muted">{getCityName(fl.departureLocation || fl.depAirport || fl.depCode)}</div>
+                                                  </Col>
+
+                                                  {/* center: duration + non-stop badge */}
+                                                  <Col md={3} className="text-center">
+                                                    <div className="small text-muted mb-2">{formatDuration(fl.duration || segment.ond?.duration)}</div>
+                                                    <div className="my-2">
+                                                      <Badge bg="primary" className="px-3 py-2">Non-Stop</Badge>
+                                                    </div>
+                                                  </Col>
+
+                                                  {/* Arrival time & destination */}
+                                                  <Col md={3} className="text-end">
+                                                    <div className="fw-bold fs-5">{formatTime(fl.arrivalTime || fl.arrTime || fl.arrivalDate)}</div>
+                                                    <div className="fw-bold">{fl.arrivalLocation || fl.arrAirport || fl.arrCode}</div>
+                                                    <div className="small text-muted">{getCityName(fl.arrivalLocation || fl.arrAirport || fl.arrCode)}</div>
+                                                  </Col>
+                                                </Row>
+
+                                                {/* small date label on right similar to screenshot */}
+                                                <div className="text-end small text-muted mt-2">Flight {flIdx + 1} - {formatDateDDMMYYYY(fl.departureDate || fl.depDate || segment.ond?.depDate)}</div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ))}
+
+                                        {/* Select and Fare Rules buttons */}
+                                        <div className="d-flex justify-content-end gap-2 mt-3">
+                                          <Button variant="primary" onClick={() => handleBookFlight(flight)}>
+                                            <CheckCircle size={16} className="me-1" />
+                                            Select
+                                          </Button>
+                                          {flight.fareRuleOffered && (
+                                            <Button variant="outline-info" size="sm" onClick={() => handleShowFareRules(flight)}>
+                                              Fare Rules
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Per-Leg one-way options grouped together */}
+                                {perLegOptions && perLegOptions.length > 0 && (
+                                  <div className="mt-2 p-3 bg-light rounded">
+                                    <h6>Per-Leg One-Way Options</h6>
+                                    <small className="text-muted">Only one-way options are shown. Select one option per leg to assemble the combined itinerary.</small>
+                                    {perLegOptions.map((options, legIdx) => (
+                                      <div key={legIdx} className="mt-3">
+                                        <div className="fw-bold">Leg {legIdx + 1}: {formData.multiCitySegments[legIdx]?.from?.split(' - ')[0]} → {formData.multiCitySegments[legIdx]?.to?.split(' - ')[0]}</div>
+                                        {options.length === 0 && (
+                                          <div className="text-muted">No one-way options found for this leg</div>
+                                        )}
+                                        {options.map((opt, optIdx) => (
+                                          <div key={optIdx} className={`d-flex align-items-center justify-content-between p-2 mt-2 ${perLegSelected[legIdx] && perLegSelected[legIdx].id === opt.id ? 'border border-primary rounded' : 'border rounded'}`}>
+                                            <div>
+                                              <div className="fw-bold">{getAirlineName(opt.segments?.[0]?.flights?.[0]?.airlineCode || opt.segments?.[0]?.flights?.[0]?.airline)}</div>
+                                              <div className="small text-muted">{opt.segments?.[0]?.flights?.[0]?.departureLocation} → {opt.segments?.[0]?.flights?.slice(-1)[0]?.arrivalLocation}</div>
+                                              <div className="small text-muted">Price: {formatPrice(getFareAmount(opt), (opt.fare && opt.fare.currency) || 'PKR')}</div>
+                                            </div>
+                                            <div>
+                                              <Button size="sm" variant={perLegSelected[legIdx] && perLegSelected[legIdx].id === opt.id ? 'success' : 'outline-primary'} onClick={() => selectPerLegOption(legIdx, opt)}>
+                                                {perLegSelected[legIdx] && perLegSelected[legIdx].id === opt.id ? 'Selected' : 'Select'}
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ))}
+
+                                    <div className="mt-4 d-flex gap-2">
+                                      <Button variant="primary" onClick={validateCombinedItinerary} disabled={!perLegSelected || perLegSelected.some(s => !s)}>Validate & Book Combined Itinerary</Button>
+                                      <Button variant="outline-secondary" onClick={() => { setPerLegOptions(null); setPerLegSelected([]); }}>Cancel</Button>
+                                    </div>
+                                  </div>
+                                )}
+                              </Col>
+
+                              {/* Price and Book for combined card (if top itinerary exists) */}
+                              <Col md={3} className="text-center border-start">
+                                <div className="price-section">
+                                  {filteredFlights && filteredFlights.length > 0 ? (
+                                    <>
+                                      <small className="text-muted d-block">Best Combined Price</small>
+                                      <h3 className="price-amount mb-1 text-primary">{formatPrice(getFareAmount(filteredFlights[0]), (filteredFlights[0].fare && filteredFlights[0].fare.currency) || 'PKR')}</h3>
+                                      <small className="text-muted d-block mb-3">Base: {formatPrice(Number(filteredFlights[0].fare?.baseFare || 0), (filteredFlights[0].fare && filteredFlights[0].fare.currency) || 'PKR')}</small>
+                                      <Button variant="primary" size="lg" className="w-100" onClick={() => handleBookFlight(filteredFlights[0])}>
+                                        <CheckCircle size={18} className="me-2" />
+                                        Select Best
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <Alert variant="info">No combined itineraries available</Alert>
+                                  )}
+                                </div>
+                              </Col>
+                            </Row>
+                          </Card.Body>
+                        </Card>
                       ) : (
+                        // Regular one-way/return display
                         filteredFlights.map((flight, index) => (
                           <Card key={index} className="mb-4 shadow-sm flight-card">
                             <Card.Body>
@@ -1028,9 +1872,9 @@ const AgentFlightUpdates = () => {
                                                 {fl.cabin && (
                                                   <div className="mt-2">
                                                     <Badge bg="secondary">
-                                                      {fl.cabin === 'Y' ? 'Economy' : 
-                                                       fl.cabin === 'C' ? 'Business' : 
-                                                       fl.cabin === 'F' ? 'First Class' : fl.cabin}
+                                                      {fl.cabin === 'Y' ? 'Economy' :
+                                                        fl.cabin === 'C' ? 'Business' :
+                                                          fl.cabin === 'F' ? 'First Class' : fl.cabin}
                                                     </Badge>
                                                   </div>
                                                 )}
@@ -1107,11 +1951,11 @@ const AgentFlightUpdates = () => {
                                   <div className="price-section">
                                     <small className="text-muted d-block">Total Price</small>
                                     <h3 className="price-amount mb-1 text-primary">
-                                      {formatPrice(flight.fare.total, flight.fare.currency)}
+                                      {formatPrice(getFareAmount(flight), (flight.fare && flight.fare.currency) || 'PKR')}
                                     </h3>
                                     <small className="text-muted d-block mb-3">
-                                      Base: {formatPrice(flight.fare.baseFare, flight.fare.currency)}<br/>
-                                      Tax: {formatPrice(flight.fare.tax, flight.fare.currency)}
+                                      Base: {formatPrice(Number(flight.fare?.baseFare || 0), (flight.fare && flight.fare.currency) || 'PKR')}<br />
+                                      Tax: {formatPrice(Number(flight.fare?.tax || 0), (flight.fare && flight.fare.currency) || 'PKR')}
                                     </small>
 
                                     {/* Per Passenger Breakdown */}
@@ -1121,23 +1965,23 @@ const AgentFlightUpdates = () => {
                                         {flight.fareDetails.fareBreakup.map((fb, fbIdx) => (
                                           <div key={fbIdx} className="small text-start">
                                             <strong>
-                                              {fb.paxType === 'ADT' ? 'Adult' : 
-                                               fb.paxType === 'CHD' ? 'Child' : 
-                                               fb.paxType === 'INF' ? 'Infant' : fb.paxType}:
+                                              {fb.paxType === 'ADT' ? 'Adult' :
+                                                fb.paxType === 'CHD' ? 'Child' :
+                                                  fb.paxType === 'INF' ? 'Infant' : fb.paxType}:
                                             </strong>
                                             <div className="ms-2">
-                                              Base: {flight.fare.currency} {parseFloat(fb.baseFare).toLocaleString()}<br/>
-                                              Tax: {flight.fare.currency} {parseFloat(fb.tax).toLocaleString()}<br/>
+                                              Base: {flight.fare.currency} {parseFloat(fb.baseFare).toLocaleString()}<br />
+                                              Tax: {flight.fare.currency} {parseFloat(fb.tax).toLocaleString()}<br />
                                               <strong>Total: {flight.fare.currency} {parseFloat(fb.total).toLocaleString()}</strong>
                                             </div>
                                           </div>
                                         ))}
                                       </div>
                                     )}
-                                    
-                                    <Button 
-                                      variant="primary" 
-                                      size="lg" 
+
+                                    <Button
+                                      variant="primary"
+                                      size="lg"
                                       className="w-100"
                                       onClick={() => handleBookFlight(flight)}
                                     >
@@ -1146,16 +1990,93 @@ const AgentFlightUpdates = () => {
                                     </Button>
 
                                     {flight.fareRuleOffered && (
-                                      <Button 
-                                        variant="outline-secondary" 
-                                        size="sm" 
+                                      <Button
+                                        variant="outline-secondary"
+                                        size="sm"
                                         className="w-100 mt-2"
-                                        onClick={() => alert('Fare rules: ' + JSON.stringify(flight.fareDetails, null, 2))}
+                                        onClick={() => handleShowFareRules(flight)}
                                       >
                                         <Info size={14} className="me-1" />
                                         View Fare Rules
                                       </Button>
                                     )}
+
+                                    {((flight.brandedFareSupported && !flight.brandedFareSeparate && flight.brands && flight.brands.length > 1) ||
+                                      (flight.brandedFareSupported && flight.brandedFareSeparate)) && (
+                                        <>
+                                          <Button
+                                            variant="outline-info"
+                                            size="sm"
+                                            className="w-100 mt-2"
+                                            disabled={flight.loadingBrands}
+                                            onClick={async () => {
+                                              try {
+
+                                                // Define headers for the request
+                                                const existingToken = localStorage.getItem('idToken');
+                                                const searchHeaders = { 'Content-Type': 'application/json' };
+                                                if (existingToken) searchHeaders.Authorization = `Bearer ${existingToken}`;
+
+                                                // If branded fares need separate fetching and aren't loaded yet
+                                                if (flight.brandedFareSeparate && (!flight.brands || flight.brands.length === 0) && !flight.brandedFetchError) {
+                                                  try {
+                                                    console.log(`🎨 Fetching branded fares on click for flight with supplier ${flight.supplierCode}`);
+                                                    // Mark loading on this flight to disable duplicate clicks
+                                                    updateFlightInState(flight.id, { loadingBrands: true, brandedFetchError: null });
+                                                    const brandResponse = await axios.post(
+                                                      'http://127.0.0.1:8000/api/flights/branded-fares/',
+                                                      {
+                                                        flightData: flight,
+                                                        origin: flight.origin,
+                                                        destination: flight.destination
+                                                      },
+                                                      {
+                                                        timeout: 30000,
+                                                        headers: searchHeaders
+                                                      }
+                                                    );
+
+                                                    if (brandResponse.data && brandResponse.data.brands) {
+                                                      console.log(`✅ Found ${brandResponse.data.brands.length} branded fares on click`);
+                                                      // Update the flight with brands
+                                                      updateFlightInState(flight.id, { brands: brandResponse.data.brands, fareInfo: brandResponse.data.fareInfo, loadingBrands: false });
+                                                      setSelectedFlight(prev => prev && prev.id === flight.id ? { ...prev, brands: brandResponse.data.brands, fareInfo: brandResponse.data.fareInfo } : prev);
+                                                    } else {
+                                                      updateFlightInState(flight.id, { brands: [], loadingBrands: false });
+                                                    }
+                                                  } catch (brandErr) {
+                                                    console.error('❌ Failed to fetch branded fares on click:', brandErr);
+                                                    const details = brandErr.response?.data || brandErr.message || 'Unknown error';
+                                                    // Store the error on flight to avoid repeated requests
+                                                    updateFlightInState(flight.id, { brandedFetchError: details, loadingBrands: false });
+                                                    // Save last raw response for modal inspection
+                                                    try { setLastRawResponse(typeof details === 'string' ? details : details); } catch (e) { }
+                                                    // Show user-friendly message with an option to view raw server details
+                                                    alert('Unable to load branded fare options. See console or use "View Raw Response" for details.');
+                                                  }
+                                                }
+
+                                                setShowBrandModal(true);
+                                              } catch (error) {
+                                                console.error('❌ Error in branded fares onClick handler:', error);
+                                                alert('An error occurred while loading branded fares.');
+                                              }
+                                            }}
+                                          >
+                                            {flight.loadingBrands ? (
+                                              <><Spinner animation="border" size="sm" className="me-2" /> Loading...</>
+                                            ) : (
+                                              <><Info size={14} className="me-1" /> {flight.brandedFareSeparate && (!flight.brands || flight.brands.length === 0) ? 'View Fare Options' : `Compare ${flight.brands?.length || 0} Fare Options`}</>
+                                            )}
+                                          </Button>
+                                          {flight.brandedFetchError && (
+                                            <div className="mt-1">
+                                              <div className="small text-danger">Branded fares unavailable: {typeof flight.brandedFetchError === 'string' ? flight.brandedFetchError : (flight.brandedFetchError?.error || flight.brandedFetchError?.message || 'Server error')}</div>
+                                              <Button size="sm" variant="link" onClick={() => { setLastRawResponse(flight.brandedFetchError); setShowRawModal(true); }}>View Server Details</Button>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
                                   </div>
                                 </Col>
                               </Row>
@@ -1169,193 +2090,94 @@ const AgentFlightUpdates = () => {
               </div>
             )}
           </Container>
-                {/* Booking Modal */}
-                <Modal show={showBookingModal} onHide={() => setShowBookingModal(false)} centered>
-                  <Modal.Header closeButton>
-                    <Modal.Title>Confirm Booking</Modal.Title>
-                  </Modal.Header>
-                  <Modal.Body>
-                    {bookingError && (
-                      <Alert variant="danger">{bookingError}</Alert>
-                    )}
 
-                    {selectedFlight && (
-                      <div>
-                        <p className="small text-muted">Selected flight:</p>
-                        <div className="mb-2">
-                          <strong>{selectedFlight.segments?.[0]?.flights?.[0]?.airlineCode} {selectedFlight.segments?.[0]?.flights?.[0]?.flightNo}</strong>
-                          <div className="small text-muted">{selectedFlight.segments?.[0]?.flights?.[0]?.departureLocation} → {selectedFlight.segments?.[0]?.flights?.[0]?.arrivalLocation}</div>
-                          <div className="mt-1">Price: {formatPrice(selectedFlight.fare?.total, selectedFlight.fare?.currency)}</div>
-                        </div>
-                        <hr />
+          {/* Success Alert */}
+          {bookingSuccess && (
+            <Container className="mt-3">
+              <Alert variant="success" onClose={() => setBookingSuccess(null)} dismissible>
+                <Alert.Heading>
+                  <CheckCircle size={24} className="me-2" />
+                  Booking Confirmed!
+                </Alert.Heading>
+                <p className="mb-2">
+                  Your flight has been successfully booked.
+                </p>
+                <hr />
+                <div className="mb-0">
+                  <strong>PNR:</strong> {bookingSuccess.pnr}<br />
+                  <strong>Booking Reference:</strong> {bookingSuccess.bookingRefId}
+                </div>
+              </Alert>
+            </Container>
+          )}
 
-                        <Form>
-                          <Row>
-                            <Col md={6} className="mb-2">
-                              <Form.Group>
-                                <Form.Label>Salutation</Form.Label>
-                                <Form.Select name="salutation" value={passenger.salutation} onChange={handlePassengerChange}>
-                                  <option>Mr</option>
-                                  <option>Mrs</option>
-                                  <option>Ms</option>
-                                  <option>Miss</option>
-                                  <option>Mstr</option>
-                                </Form.Select>
-                              </Form.Group>
-                            </Col>
-                            <Col md={6} className="mb-2">
-                              <Form.Group>
-                                <Form.Label>Gender</Form.Label>
-                                <Form.Select name="gender" value={passenger.gender} onChange={handlePassengerChange}>
-                                  <option>Male</option>
-                                  <option>Female</option>
-                                </Form.Select>
-                              </Form.Group>
-                            </Col>
-                          </Row>
+          {/* Booking Modal */}
+          <BookingModal
+            show={showBookingModal}
+            onHide={() => setShowBookingModal(false)}
+            flight={selectedFlight}
+            onBookingSuccess={handleBookingSuccess}
+          />
 
-                          <Form.Group className="mb-2">
-                            <Form.Label>Lead Passenger Name</Form.Label>
-                            <Form.Control
-                              type="text"
-                              name="name"
-                              value={passenger.name}
-                              onChange={handlePassengerChange}
-                              placeholder="Full name"
-                            />
-                          </Form.Group>
+          {/* Branded Fare Selector Modal */}
+          <BrandedFareSelector
+            show={showBrandModal}
+            onHide={() => setShowBrandModal(false)}
+            flight={selectedFlight}
+            onSelectBrand={handleSelectBrand}
+          />
 
-                          <Row>
-                            <Col md={6} className="mb-2">
-                              <Form.Group>
-                                <Form.Label>Date of Birth</Form.Label>
-                                <DatePicker
-                                  selected={passenger.birthDate}
-                                  onChange={(d) => handlePassengerDateChange('birthDate', d)}
-                                  dateFormat="dd-MM-yyyy"
-                                  className="form-control"
-                                  placeholderText="DD-MM-YYYY"
-                                />
-                              </Form.Group>
-                            </Col>
-                            <Col md={6} className="mb-2">
-                              <Form.Group>
-                                <Form.Label>Nationality</Form.Label>
-                                <Form.Control
-                                  type="text"
-                                  name="nationality"
-                                  value={passenger.nationality}
-                                  onChange={handlePassengerChange}
-                                  placeholder="PK"
-                                />
-                              </Form.Group>
-                            </Col>
-                          </Row>
+          {/* Fare Rules Modal */}
+          <FareRulesModal
+            show={showFareRulesModal}
+            onHide={() => setShowFareRulesModal(false)}
+            flight={selectedFlightForRules}
+            sealed={validatedSealed}
+          />
 
-                          <Row>
-                            <Col md={6} className="mb-2">
-                              <Form.Group>
-                                <Form.Label>Passport / Document Number</Form.Label>
-                                <Form.Control
-                                  type="text"
-                                  name="documentNumber"
-                                  value={passenger.documentNumber}
-                                  onChange={handlePassengerChange}
-                                  placeholder="Passport number"
-                                />
-                              </Form.Group>
-                            </Col>
-                            <Col md={6} className="mb-2">
-                              <Form.Group>
-                                <Form.Label>Issuing Country</Form.Label>
-                                <Form.Control
-                                  type="text"
-                                  name="docIssueCountry"
-                                  value={passenger.docIssueCountry}
-                                  onChange={handlePassengerChange}
-                                  placeholder="PK"
-                                />
-                              </Form.Group>
-                            </Col>
-                          </Row>
+          {/* Raw response modal for debugging search results */}
+          <Modal show={showRawModal} onHide={() => setShowRawModal(false)} size="lg">
+            <Modal.Header closeButton>
+              <Modal.Title>Last Search Raw Response</Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+              <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+                <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {lastRawResponse ? JSON.stringify(lastRawResponse, null, 2) : 'No response captured.'}
+                </pre>
+              </div>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="secondary" onClick={() => setShowRawModal(false)}>Close</Button>
+            </Modal.Footer>
+          </Modal>
 
-                          <Row>
-                            <Col md={6} className="mb-2">
-                              <Form.Group>
-                                <Form.Label>Document Expiry Date</Form.Label>
-                                <DatePicker
-                                  selected={passenger.expiryDate}
-                                  onChange={(d) => handlePassengerDateChange('expiryDate', d)}
-                                  dateFormat="dd-MM-yyyy"
-                                  className="form-control"
-                                  placeholderText="DD-MM-YYYY"
-                                />
-                              </Form.Group>
-                            </Col>
-                            <Col md={6} className="mb-2">
-                              <Form.Group>
-                                <Form.Label>Phone</Form.Label>
-                                <Form.Control
-                                  type="text"
-                                  name="phone"
-                                  value={passenger.phone}
-                                  onChange={handlePassengerChange}
-                                  placeholder="Phone number"
-                                />
-                              </Form.Group>
-                            </Col>
-                          </Row>
-
-                          <Form.Group className="mb-2">
-                            <Form.Label>Email</Form.Label>
-                            <Form.Control
-                              type="email"
-                              name="email"
-                              value={passenger.email}
-                              onChange={handlePassengerChange}
-                              placeholder="Email address"
-                            />
-                          </Form.Group>
-                        </Form>
-                      </div>
-                    )}
-                  </Modal.Body>
-                  <Modal.Footer>
-                    <Button variant="secondary" onClick={() => setShowBookingModal(false)} disabled={bookingLoading}>
-                      Cancel
-                    </Button>
-                    <Button variant="primary" onClick={handleConfirmBooking} disabled={bookingLoading}>
-                      {bookingLoading ? 'Booking...' : 'Confirm & Book'}
-                    </Button>
-                  </Modal.Footer>
-                </Modal>
-
-                {/* idToken Modal */}
-                <Modal show={showTokenModal} onHide={() => setShowTokenModal(false)} centered>
-                  <Modal.Header closeButton>
-                    <Modal.Title>Set idToken</Modal.Title>
-                  </Modal.Header>
-                  <Modal.Body>
-                    <Form>
-                      <Form.Group>
-                        <Form.Label>Paste idToken (JWT)</Form.Label>
-                        <Form.Control
-                          as="textarea"
-                          rows={4}
-                          value={tokenInput}
-                          onChange={(e) => setTokenInput(e.target.value)}
-                          placeholder="eyJ..."
-                        />
-                      </Form.Group>
-                      <div className="small text-muted mt-2">Current token will be overwritten.</div>
-                    </Form>
-                  </Modal.Body>
-                  <Modal.Footer>
-                    <Button variant="danger" onClick={handleRemoveToken}>Remove</Button>
-                    <Button variant="secondary" onClick={() => setShowTokenModal(false)}>Cancel</Button>
-                    <Button variant="primary" onClick={handleSaveToken}>Save Token</Button>
-                  </Modal.Footer>
-                </Modal>
+          {/* idToken Modal */}
+          <Modal show={showTokenModal} onHide={() => setShowTokenModal(false)} centered>
+            <Modal.Header closeButton>
+              <Modal.Title>Set idToken</Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+              <Form>
+                <Form.Group>
+                  <Form.Label>Paste idToken (JWT)</Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    rows={4}
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                    placeholder="eyJ..."
+                  />
+                </Form.Group>
+                <div className="small text-muted mt-2">Current token will be overwritten.</div>
+              </Form>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="danger" onClick={handleRemoveToken}>Remove</Button>
+              <Button variant="secondary" onClick={() => setShowTokenModal(false)}>Cancel</Button>
+              <Button variant="primary" onClick={handleSaveToken}>Save Token</Button>
+            </Modal.Footer>
+          </Modal>
 
         </div>
       </div>

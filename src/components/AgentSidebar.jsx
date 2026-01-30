@@ -384,6 +384,16 @@ const Sidebar = () => {
                   <span className="fs-6">Flight Updates</span>
                 </NavLink>
               </Nav.Item>
+              <Nav.Item className="mb-3">
+                <NavLink
+                  to="/tickets"
+                  className={getNavLinkClass}
+                  style={{ color: "black" }}
+                >
+                  <Check size={20} />{" "}
+                  <span className="fs-6">My Tickets</span>
+                </NavLink>
+              </Nav.Item>
             </Nav>
             <Nav.Item className="mt-auto">
               <button
@@ -533,6 +543,16 @@ const Sidebar = () => {
                 >
                   <Plane size={20} />{" "}
                   <span className="fs-6">Flight Updates</span>
+                </NavLink>
+              </Nav.Item>
+              <Nav.Item className="mb-3">
+                <NavLink
+                  to="/tickets"
+                  style={{ color: "black" }}
+                  className={getNavLinkClass}
+                >
+                  <Check size={20} />{" "}
+                  <span className="fs-6">My Tickets</span>
                 </NavLink>
               </Nav.Item>
             </Nav>

@@ -23,6 +23,10 @@ const BookingReview = () => {
   const [childPrices, setChildPrices] = useState(initialChildPrices || 0);
   const [infantPrices, setInfantPrices] = useState(initialInfantPrices || 0);
   const [agencyType, setAgencyType] = useState(null);
+  const [foodInfo, setFoodInfo] = useState(null);
+  const [makkahZiyaratInfo, setMakkahZiyaratInfo] = useState(null);
+  const [madinahZiyaratInfo, setMadinahZiyaratInfo] = useState(null);
+  const [discountAmount, setDiscountAmount] = useState(0);
   // If no location.state provided, try to load from sessionStorage (packages flow)
   useEffect(() => {
     if (!pkgState) {
@@ -84,6 +88,25 @@ const BookingReview = () => {
           const agencyData = await response.json();
           setAgencyType(agencyData.agency_type);
           console.log('✅ Review page - Fetched agency type:', agencyData.agency_type);
+
+          // Fetch discount group if available
+          if (agencyData.discount_group) {
+            try {
+              const discResponse = await axios.get(`http://127.0.0.1:8000/api/discounts/?discount_group=${agencyData.discount_group}`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              if (discResponse.status === 200 && Array.isArray(discResponse.data)) {
+                const umrahDiscount = discResponse.data.find(d => d.things === "umrah_package");
+                if (umrahDiscount) {
+                  const amt = Number(umrahDiscount.umrah_package_discount_amount) || 0;
+                  console.log('💰 Found applicable discount:', amt);
+                  setDiscountAmount(amt);
+                }
+              }
+            } catch (err) {
+              console.error('❌ Error fetching discounts:', err);
+            }
+          }
         }
       } catch (error) {
         console.error('Error fetching agency type:', error);
@@ -172,6 +195,66 @@ const BookingReview = () => {
     fetchExpiryTime();
     fetchLastBookingNumber();
   }, []);
+
+  // Fetch Food Details if ID exists
+  useEffect(() => {
+    const fetchFoodDetails = async () => {
+      if (pkgState?.food_price_id) {
+        try {
+          const token = localStorage.getItem("agentAccessToken");
+          const response = await axios.get(`http://127.0.0.1:8000/api/food-prices/${pkgState.food_price_id}/`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (response.status === 200) {
+            console.log("🍽️ Fetched Food Info:", response.data);
+            setFoodInfo(response.data);
+          }
+        } catch (error) {
+          console.error("❌ Error fetching food details:", error);
+        }
+      }
+    };
+    fetchFoodDetails();
+    fetchFoodDetails();
+  }, [pkgState?.food_price_id]);
+
+  // Fetch Ziyarat Details (Makkah & Madinah)
+  useEffect(() => {
+    const fetchZiyaratDetails = async () => {
+      const token = localStorage.getItem("agentAccessToken");
+
+      // Fetch Makkah Ziyarat
+      if (pkgState?.makkah_ziyarat_id) {
+        try {
+          const res = await axios.get(`http://127.0.0.1:8000/api/ziarat-prices/${pkgState.makkah_ziyarat_id}/`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.status === 200) {
+            console.log("🕋 Fetched Makkah Ziyarat Info:", res.data);
+            setMakkahZiyaratInfo(res.data);
+          }
+        } catch (err) {
+          console.error("❌ Error fetching Makkah ziyarat details:", err);
+        }
+      }
+
+      // Fetch Madinah Ziyarat
+      if (pkgState?.madinah_ziyarat_id) {
+        try {
+          const res = await axios.get(`http://127.0.0.1:8000/api/ziarat-prices/${pkgState.madinah_ziyarat_id}/`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.status === 200) {
+            console.log("🕌 Fetched Madinah Ziyarat Info:", res.data);
+            setMadinahZiyaratInfo(res.data);
+          }
+        } catch (err) {
+          console.error("❌ Error fetching Madinah ziyarat details:", err);
+        }
+      }
+    };
+    fetchZiyaratDetails();
+  }, [pkgState?.makkah_ziyarat_id, pkgState?.madinah_ziyarat_id]);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "N/A";
@@ -452,13 +535,24 @@ const BookingReview = () => {
     });
 
     // Format hotel details
+    console.log('HOTEL DETAILS SOURCE ARRAY:', pkgState.hotel_details);
     const hotelDetails = pkgState.hotel_details.map(hotel => {
+      console.log('🏨 Processing Hotel Row:', hotel);
+      console.log('🏨 Hotel Keys:', Object.keys(hotel));
+      console.log('🏨 Hotel Info FULL:', JSON.stringify(hotel.hotel_info, null, 2));
+
       console.log('🏨 Hotel Debug:', {
         hotel_info: hotel.hotel_info,
         prices: hotel.hotel_info?.prices,
         sharing_bed_price: hotel.sharing_bed_price,
         double_bed_price: hotel.double_bed_price,
-        triple_bed_price: hotel.triple_bed_price
+        triple_bed_price: hotel.triple_bed_price,
+        id_check: {
+          from_info: hotel.hotel_info?.id,
+          from_hotel_prop: hotel.hotel,
+          from_id: hotel.id,
+          from_hotel_id: hotel.hotel_id
+        }
       });
 
 
@@ -491,14 +585,25 @@ const BookingReview = () => {
         totalPassengers: passengersState.length
       });
 
-      // Use TOTAL passenger count, not per-room-type count
-      const totalPassengers = passengersState.filter(p => p.type !== "Infant").length;
-      const totalPricePKR = pricePerNight * (Number(hotel.number_of_nights) || 0) * totalPassengers;
+      // Use TOTAL passenger count for this room type
+      const paxCountInRoom = roomTypeCounts[roomType] || 0;
+
+      // Calculate total for this hotel stay
+      // Formula: Price Per Night * Number of Nights * Number of Pax
+      // The user confirmed 140,000 for 2000*35*2, so it MUST be per person.
+      const totalPricePKR = pricePerNight * (parseInt(hotel.number_of_nights) || 0) * paxCountInRoom;
+
+      console.log('🔄 Price Calculation:', {
+        pricePerNight,
+        nights: hotel.number_of_nights,
+        paxCountInRoom,
+        total: totalPricePKR
+      });
 
       console.log('🏨 Hotel pricing (PKR):', {
         pricePerNightPKR: pricePerNight,
         nights: hotel.number_of_nights,
-        totalPassengers,
+        totalPassengers: paxCountInRoom,
         totalPricePKR
       });
 
@@ -507,27 +612,60 @@ const BookingReview = () => {
         check_out_date: hotel.check_out_date || hotel.check_out_time || "",
         number_of_nights: parseInt(hotel.number_of_nights) || 0,
         room_type: roomType,
+        // Send explicit model fields
+        price_in_pkr: parseFloat(pricePerNight),
+        total_in_pkr: parseFloat(totalPricePKR),
+        price_in_sar: 0,
+
         price: parseFloat(pricePerNight),  // Send PKR price directly
-        quantity: parseInt(quantity),
+        quantity: parseInt(paxCountInRoom), // Set quantity to pax count for record keeping
         total_price: parseFloat(totalPricePKR),  // Send PKR total directly
-        riyal_rate: 1,  // Set to 1 so backend multiplication doesn't change the value (PKR × 1 = PKR)
+        riyal_rate: 1,  // Set to 1 so backend multiplication doesn't change the value
         is_price_pkr: true,  // TRUE - we're sending PKR
-        hotel: hotel.hotel_info?.id,
+        hotel: hotel.hotel_info?.id || hotel.hotel || hotel.id || hotel.hotel_id,
       };
     });
 
     // Format transport details
     // If package has transport_details array, use it; otherwise create from package-level transport_selling_price
     const transportDetails = (pkgState.transport_details && pkgState.transport_details.length > 0)
-      ? pkgState.transport_details.map(transport => ({
-        vehicle_type: transport.transport_sector_info?.vehicle_type,
-        transport_sector: transport.transport_sector_info?.id,
-        price: Number(transport.price || transport.transport_sector_info?.adault_price) || 0,
-        quantity: 1,
-        total_price: Number(transport.price || transport.transport_sector_info?.adault_price) || 0,
-        is_price_pkr: riyalRate?.is_transport_pkr ?? true,
-        riyal_rate: Number(riyalRate?.rate) || 0,
-      }))
+      ? pkgState.transport_details.map(transport => {
+        // Extract Big Sector & Small Sectors for detailed route info
+        const bigSector = transport.transport_sector_info?.big_sector;
+        const smallSectors = bigSector?.small_sectors || [];
+
+        // Map to sector_details format expected by BookingTransportDetailsSerializer
+        const sectorDetails = smallSectors.map((sector, index) => ({
+          sector_no: index + 1,
+          small_sector_id: sector.id,
+          sector_type: sector.sector_type,
+          is_airport_pickup: sector.is_airport_pickup,
+          is_airport_drop: sector.is_airport_drop,
+          is_hotel_to_hotel: sector.is_hotel_to_hotel,
+          departure_city: sector.departure_city,
+          arrival_city: sector.arrival_city,
+          contact_person_name: sector.contact_name,
+          contact_number: sector.contact_number
+        }));
+
+        const priceVal = Number(transport.transport_selling_price || transport.price || transport.transport_sector_info?.adault_price) || 0;
+
+        return {
+          vehicle_type: transport.transport_sector || transport.vehicle_type?.id || transport.transport_sector_info?.vehicle_type,
+          transport_sector: transport.transport_sector || transport.transport_sector_info?.id,
+          big_sector_id: bigSector?.id,
+          // Send explicit model fields to ensure serializer accepts them
+          price_in_pkr: priceVal,
+          price_in_sar: 0,
+          // Keep legacy fields just in case, but rely on price_in_pkr
+          price: priceVal,
+          quantity: 1,
+          total_price: priceVal,
+          is_price_pkr: riyalRate?.is_transport_pkr ?? true,
+          riyal_rate: Number(riyalRate?.rate) || 0,
+          sector_details: sectorDetails
+        };
+      })
       : (pkgState.transport_selling_price && Number(pkgState.transport_selling_price) > 0)
         ? [{
           // Create transport detail from package-level price
@@ -542,50 +680,40 @@ const BookingReview = () => {
         : [];  // No transport
 
     // Format ticket details
-    const flightDetails = getFlightDetails();
+    // Format ticket details - Direct Mapping from Package State
+    const ticketInfo = pkgState.ticket_details?.[0]?.ticket_info;
     const ticketDetails = [{
-      trip_details: [
-        {
-          departure_date_time: flightDetails.departure?.departure_date_time || new Date().toISOString(),
-          arrival_date_time: flightDetails.departure?.arrival_date_time || new Date().toISOString(),
-          trip_type: "Depearture",
-          departure_city: parseInt(flightDetails.departure?.departure_city),
-          arrival_city: parseInt(flightDetails.departure?.arrival_city)
-        },
-        flightDetails.return ? {
-          departure_date_time: flightDetails.return?.departure_date_time || new Date().toISOString(),
-          arrival_date_time: flightDetails.return?.arrival_date_time || new Date().toISOString(),
-          trip_type: "Return",
-          departure_city: parseInt(flightDetails.return?.departure_city),
-          arrival_city: parseInt(flightDetails.return?.arrival_city)
-        } : null
-      ].filter(Boolean),
-      stopover_details: flightDetails.stopover_city && flightDetails.stopover_city !== null ? [
-        {
-          stopover_duration: parseInt(flightDetails.stopover_duration),
-          trip_type: parseInt(flightDetails.trip_type),
-          stopover_city: parseInt(flightDetails.stopover_city)
-        }
-      ] : [],
-      is_meal_included: pkgState.ticket_details?.[0]?.ticket_info?.is_meal_included || false,
-      is_refundable: pkgState.ticket_details?.[0]?.ticket_info?.is_refundable || false,
-      // pnr: pkg.ticket_details?.[0]?.ticket_info?.pnr || "",
-      child_price: Number(pkgState.ticket_details?.[0]?.ticket_info?.child_price || pkgState.child_ticket_price) || 0,
-      infant_price: Number(pkgState.ticket_details?.[0]?.ticket_info?.infant_price || pkgState.infant_ticket_price) || 0,
-      adult_price: Number(pkgState.ticket_details?.[0]?.ticket_info?.adult_price || pkgState.adult_ticket_price) || 0,
-      weight: parseFloat(pkgState.ticket_details?.[0]?.ticket_info?.weight) || 0,
+      trip_details: ticketInfo?.trip_details?.map(trip => ({
+        departure_date_time: trip.departure_date_time,
+        arrival_date_time: trip.arrival_date_time,
+        trip_type: trip.trip_type,
+        departure_city: trip.departure_city,
+        arrival_city: trip.arrival_city,
+        flight_number: trip.flight_number,
+        airline_code: trip.airline?.code || trip.airline_code,
+      })) || [],
+      stopover_details: ticketInfo?.stopover_details?.map(stop => ({
+        stopover_city: stop.stopover_city,
+        stopover_duration: stop.stopover_duration,
+        trip_type: stop.trip_type
+      })) || [],
+      is_meal_included: ticketInfo?.is_meal_included || false,
+      is_refundable: ticketInfo?.is_refundable || false,
+      child_price: Number(ticketInfo?.child_price || pkgState.child_ticket_price) || 0,
+      infant_price: Number(ticketInfo?.infant_price || pkgState.infant_ticket_price) || 0,
+      adult_price: Number(ticketInfo?.adult_price || pkgState.adult_ticket_price) || 0,
+      weight: parseFloat(ticketInfo?.baggage_weight || ticketInfo?.weight) || 0,
       seats: parseInt(pkgState.total_seats) || 1,
-      pieces: parseInt(pkgState.ticket_details?.[0]?.ticket_info?.pieces) || 1,
+      pieces: parseInt(ticketInfo?.baggage_pieces || ticketInfo?.pieces) || 1,
       is_umrah_seat: true,
-      // trip_type: pkg.ticket_details?.[0]?.ticket_info?.trip_type || "",
-      // departure_stay_type: pkg.ticket_details?.[0]?.ticket_info?.departure_stay_type || "",
-      // return_stay_type: pkg.ticket_details?.[0]?.ticket_info?.return_stay_type || "",
+      trip_type: ticketInfo?.trip_type || "",
+      departure_stay_type: ticketInfo?.departure_stay_type || "",
+      return_stay_type: ticketInfo?.return_stay_type || "",
       status: "CONFIRMED",
       is_price_pkr: true,
       riyal_rate: parseFloat(riyalRate?.rate || 0),
-      // ticket: parseInt(pkg.ticket_details?.[0]?.ticket_info?.id),
-      pnr: pkgState.ticket_details?.[0]?.ticket_info?.pnr || "TEMP-PNR"
-
+      ticket: ticketInfo?.id, // ID reference
+      pnr: ticketInfo?.pnr || "TEMP-PNR"
     }];
 
     console.log('🎫 Ticket Details being sent:', JSON.stringify(ticketDetails, null, 2));
@@ -790,7 +918,8 @@ const BookingReview = () => {
 
     // Prepare food_details at booking level (not person level)
     const foodDetails = (Number(pkgState.food_selling_price) || 0) > 0 ? [{
-      food: "Package Food",
+      food: foodInfo?.title || "Package Food",
+      description: foodInfo?.description || "",
       adult_price: Number(pkgState.food_selling_price) || 0,
       child_price: Number(pkgState.food_selling_price) || 0,
       infant_price: Number(pkgState.food_selling_price) || 0,
@@ -804,20 +933,44 @@ const BookingReview = () => {
     }] : [];
 
     // Prepare ziyarat_details at booking level (not person level)
-    const ziaratDetails = (Number(pkgState.makkah_ziyarat_selling_price) + Number(pkgState.madinah_ziyarat_selling_price)) > 0 ? [{
-      ziarat: "Package Ziyarat",
-      city: "", // Can be populated if city info is available
-      adult_price: (Number(pkgState.makkah_ziyarat_selling_price) || 0) + (Number(pkgState.madinah_ziyarat_selling_price) || 0),
-      child_price: 0,
-      infant_price: 0,
-      total_adults: Number(passengersState.filter(p => p.type === "Adult").length) || 0,
-      total_children: Number(passengersState.filter(p => p.type === "Child").length) || 0,
-      total_infants: Number(passengersState.filter(p => p.type === "Infant").length) || 0,
-      is_price_pkr: riyalRate?.is_ziarat_pkr ?? true,
-      riyal_rate: Number(riyalRate?.rate) || 0,
-      total_price_pkr: totalZiyaratAmount,
-      total_price_sar: riyalRate?.is_ziarat_pkr ? 0 : totalZiyaratAmount / (Number(riyalRate?.rate) || 1),
-    }] : [];
+    // We can have Makkah, Madinah, or both.
+    const ziyaratDetails = [];
+
+    // Makkah Ziyarat
+    if ((Number(pkgState.makkah_ziyarat_selling_price) || 0) > 0) {
+      ziyaratDetails.push({
+        ziarat: makkahZiyaratInfo?.title || "Makkah Ziyarat",
+        city: "Makkah",
+        adult_price: Number(pkgState.makkah_ziyarat_selling_price) || 0,
+        child_price: Number(pkgState.makkah_ziyarat_selling_price) || 0,
+        infant_price: Number(pkgState.makkah_ziyarat_selling_price) || 0,
+        total_adults: Number(passengersState.filter(p => p.type === "Adult").length) || 0,
+        total_children: Number(passengersState.filter(p => p.type === "Child").length) || 0,
+        total_infants: Number(passengersState.filter(p => p.type === "Infant").length) || 0,
+        is_price_pkr: riyalRate?.is_ziarat_pkr ?? true,
+        riyal_rate: Number(riyalRate?.rate) || 0,
+        total_price_pkr: (Number(pkgState.makkah_ziyarat_selling_price) || 0) * passengersState.length,
+        contact_person_name: makkahZiyaratInfo?.description || "", // Using description for now if relevant logic needed
+      });
+    }
+
+    // Madinah Ziyarat
+    if ((Number(pkgState.madinah_ziyarat_selling_price) || 0) > 0) {
+      ziyaratDetails.push({
+        ziarat: madinahZiyaratInfo?.title || "Madinah Ziyarat",
+        city: "Madinah",
+        adult_price: Number(pkgState.madinah_ziyarat_selling_price) || 0,
+        child_price: Number(pkgState.madinah_ziyarat_selling_price) || 0,
+        infant_price: Number(pkgState.madinah_ziyarat_selling_price) || 0,
+        total_adults: Number(passengersState.filter(p => p.type === "Adult").length) || 0,
+        total_children: Number(passengersState.filter(p => p.type === "Child").length) || 0,
+        total_infants: Number(passengersState.filter(p => p.type === "Infant").length) || 0,
+        is_price_pkr: riyalRate?.is_ziarat_pkr ?? true,
+        riyal_rate: Number(riyalRate?.rate) || 0,
+        total_price_pkr: (Number(pkgState.madinah_ziyarat_selling_price) || 0) * passengersState.length,
+        contact_person_name: madinahZiyaratInfo?.description || "",
+      });
+    }
 
     return {
       hotel_details: hotelDetails,
@@ -825,7 +978,7 @@ const BookingReview = () => {
       ticket_details: ticketDetails,
       person_details: personDetails,
       food_details: foodDetails,  // Added at booking level
-      ziyarat_details: ziaratDetails,  // Added at booking level
+      ziyarat_details: ziyaratDetails,  // Added at booking level
       payment_details: [],
 
       booking_number: `UMRAH-${Number(bookingNumber) || Math.floor(Math.random() * 10000)}`,
@@ -838,7 +991,8 @@ const BookingReview = () => {
       total_hotel_amount: Number(totalHotelAmount) || 0,  // Changed from totalPriceState to totalHotelAmount
       total_transport_amount: Number(totalTransportAmount) || 0,
       total_visa_amount: Number(totalVisaAmount) || 0,
-      total_amount: Number(finalTotalAmount) || 0,  // Use package selling price, not component costs
+      total_visa_amount: Number(totalVisaAmount) || 0,
+      total_amount: (Number(finalTotalAmount) || 0) - (Number(discountAmount) || 0),  // Use package selling price minus discount
 
       // PKR/SAR specific amounts (matching Custom Umrah)
       // For Umrah packages, prices are ALREADY in PKR, so don't multiply by riyal_rate
@@ -851,8 +1005,8 @@ const BookingReview = () => {
 
       // CRITICAL: Set total_discount to prevent backend from recalculating total_amount
       // Backend skips recalculation if total_discount > 0 (see booking/models.py line 641)
-      total_discount: 0.01,  // Tiny value to trigger skip, won't affect actual price
-      discount_notes: "Service charge included in total_amount",
+      total_discount: Number(discountAmount) > 0 ? Number(discountAmount) : 0.01,  // Use actual discount or tiny value
+      discount_notes: Number(discountAmount) > 0 ? "Agency Discount Applied" : "Service charge included in total_amount",
 
       is_paid: false,
       status: "Under-process",  // Match Custom Umrah: "Under-process"

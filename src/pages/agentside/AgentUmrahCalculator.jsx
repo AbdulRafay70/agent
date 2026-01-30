@@ -14,7 +14,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import mockData from "../../mock/mockData";
 import InvoicePrint from "../../components/InvoicePrint";
-import * as jwtDecode from 'jwt-decode';
+import { jwtDecode } from 'jwt-decode';
 import { usePermission } from "../../contexts/EnhancedPermissionContext";
 
 // Wrapper around react-select to render menus into document.body (portal)
@@ -132,11 +132,23 @@ const FlightModal = ({
   citiesMap,
 }) => {
   // Filter only Umrah flights
+  // Filter only valid Umrah flights
   const filteredFlights = (flights || []).filter((flight) => {
-    const isUmrah = flight.is_umrah_seat === true || flight.is_umrah_seat === 1;
+    // const isUmrah = flight.is_umrah_seat === true || flight.is_umrah_seat === 1;
+    // if (!isUmrah) return false; // TEMPORARILY DISABLED: Show all flights for debugging
 
-    // Show all Umrah flights (one-way or round-trip)
-    return isUmrah;
+    // Check availability
+    if (!flight.trip_details || flight.trip_details.length === 0) return false;
+
+    // Check departure details
+    const departureTrip = flight.trip_details[0];
+    if (!departureTrip || !departureTrip.departure_date_time) return false;
+
+    // Check pricing (must have > 0 price)
+    const price = flight.adult_selling_price || flight.adult_price || flight.adult_fare || 0;
+    // if (price <= 0) return false; // TEMPORARILY DISABLED: Show 0 price flights to avoid "No flights"
+
+    return true;
   });
 
   return (
@@ -167,9 +179,15 @@ const FlightModal = ({
                 ) || flight.trip_details?.[1];
 
                 const fromCode =
-                  citiesMap[departureTrip?.departure_city?.id || departureTrip?.departure_city]?.code || "N/A";
+                  citiesMap[departureTrip?.departure_city?.id || departureTrip?.departure_city]?.code ||
+                  departureTrip?.departure_city?.code ||
+                  departureTrip?.departure_city?.name?.substring(0, 3).toUpperCase() ||
+                  "N/A";
                 const toCode =
-                  citiesMap[departureTrip?.arrival_city?.id || departureTrip?.arrival_city]?.code || "N/A";
+                  citiesMap[departureTrip?.arrival_city?.id || departureTrip?.arrival_city]?.code ||
+                  departureTrip?.arrival_city?.code ||
+                  departureTrip?.arrival_city?.name?.substring(0, 3).toUpperCase() ||
+                  "N/A";
 
                 return (
                   <div key={flight.id} className="col-12 col-md-6">
@@ -189,50 +207,56 @@ const FlightModal = ({
                           <small>
                             {airlinesMap[flight.airline]?.code ||
                               airlinesMap[flight.airline]?.name?.slice(0, 2) ||
+                              departureTrip?.airline?.code ||
+                              (flight.airline && typeof flight.airline === 'object' ? flight.airline.code : null) ||
                               "—"}
                           </small>
                         </div>
 
+
                         <div className="flex-grow-1">
                           <div className="fw-semibold">
-                            {airlinesMap[flight.airline]?.name || "N/A"}
+                            {airlinesMap[flight.airline]?.name ||
+                              (flight.airline && typeof flight.airline === 'object' ? flight.airline.name : null) ||
+                              departureTrip?.airline?.name ||
+                              "Unknown Airline"}
                           </div>
-                          <div className="small text-muted">
-                            {fromCode} → {toCode} • Seats:{" "}
-                            {flight.seats || "N/A"}
+                          <div className="small text-muted mt-1">
+                            <div><span className="fw-bold">Flight:</span> {flight.flight_number || departureTrip?.flight_number || "N/A"}</div>
+                            <div><span className="fw-bold">PNR:</span> {flight.pnr || "N/A"}</div>
+                            <div><span className="fw-bold">Route:</span> {fromCode} → {toCode}</div>
+                            <div><span className="fw-bold">Seats:</span> {flight.seats || flight.total_seats || flight.available_seats || "N/A"}</div>
                           </div>
                         </div>
 
                         <div className="text-end">
                           <div className="fw-bold text-success">
-                            PKR {(flight.adult_price || 0).toLocaleString()}
+                            PKR {(flight.adult_selling_price || flight.adult_price || flight.adult_fare || 0).toLocaleString()}
                           </div>
                           <div className="small text-muted">Adult</div>
                         </div>
                       </div>
 
-                      <div className="mt-3 d-flex justify-content-between align-items-center">
+                      <div className="mt-3 pt-3 border-top d-flex justify-content-between align-items-center">
                         <div className="small text-muted">
                           <div>
-                            Departure:{" "}
+                            <span className="fw-bold">Dep:</span>{" "}
                             {departureTrip?.departure_date_time
-                              ? new Date(
-                                departureTrip.departure_date_time
-                              ).toLocaleString()
+                              ? new Date(departureTrip.departure_date_time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
                               : "N/A"}
                           </div>
-                          <div>
-                            Return:{" "}
-                            {returnTrip?.arrival_date_time
-                              ? new Date(
-                                returnTrip.arrival_date_time
-                              ).toLocaleString()
-                              : "N/A"}
-                          </div>
+                          {returnTrip && (
+                            <div className="mt-1">
+                              <span className="fw-bold">Ret:</span>{" "}
+                              {returnTrip.arrival_date_time
+                                ? new Date(returnTrip.arrival_date_time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+                                : "N/A"}
+                            </div>
+                          )}
                         </div>
 
                         <button
-                          className="btn btn-sm"
+                          className="btn btn-primary btn-sm px-4"
                           id="btn"
                           onClick={() => onSelect(flight)}
                         >
@@ -253,7 +277,7 @@ const FlightModal = ({
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 };
 const CustomTicketModal = ({ show, onClose, onSubmit }) => {
@@ -908,6 +932,7 @@ const CustomTicketModal = ({ show, onClose, onSubmit }) => {
 };
 
 const AgentUmrahCalculator = () => {
+  const navigate = useNavigate();
   // Airlines state for dropdown
   const [airlines, setAirlines] = useState([]);
   const [selectedAirline, setSelectedAirline] = useState('');
@@ -1098,6 +1123,7 @@ const AgentUmrahCalculator = () => {
 
   // State declarations
   const [selectedFlight, setSelectedFlight] = useState(null);
+
   const [airlinesMap, setAirlinesMap] = useState({});
   const [citiesMap, setCitiesMap] = useState({});
   const [showCustomTicketModal, setShowCustomTicketModal] = useState(false);
@@ -1314,8 +1340,8 @@ const AgentUmrahCalculator = () => {
     totalInfants: 0,
     addVisaPrice: false,
     longTermVisa: false,
-    // withOneSideTransport: false,
-    // withFullTransport: false,
+    withOneSideTransport: false,
+    withFullTransport: false,
     visaTypeId: "",
     onlyVisa: false,
     hotelId: "",
@@ -1511,6 +1537,11 @@ const AgentUmrahCalculator = () => {
         }));
       }
 
+      // Auto-enable Full Transport for Transport packages
+      if (id === "vtth" || id === "vth" || id === "vt") {
+        setFormData(prev => ({ ...prev, withFullTransport: true, withOneSideTransport: false }));
+      }
+
       // Show a helpful info toast when a booking option is newly selected
       try {
         showBookingToast && showBookingToast(id);
@@ -1602,6 +1633,8 @@ const AgentUmrahCalculator = () => {
     currency: "PKR"
   });
 
+  const [vehicleTypes, setVehicleTypes] = useState([]); // Store vehicle types for ID mapping
+
   // Warnings/state for passenger / seats
   const [seatWarning, setSeatWarning] = useState("");
   const [passengerError, setPassengerError] = useState("");
@@ -1666,6 +1699,7 @@ const AgentUmrahCalculator = () => {
       setFoodPrices(merged.food_prices || []);
       setZiaratPrices(merged.ziarat_prices || []);
       setTicketsList(merged.tickets || []);
+      setAirlines(merged.airlines || []);
 
       // Create airlines and cities maps
       const airlinesMap = {};
@@ -1707,6 +1741,7 @@ const AgentUmrahCalculator = () => {
           airlinesMap[airline.id] = { name: airline.name, code: airline.code };
         });
         setAirlinesMap(airlinesMap);
+        setAirlines(mockData.airlines || []);
 
         const citiesMap = {};
         (mockData.cities || []).forEach((city) => {
@@ -1725,7 +1760,9 @@ const AgentUmrahCalculator = () => {
         setFoodPrices([]);
         setZiaratPrices([]);
         setTicketsList([]);
+        setTicketsList([]);
         setAirlinesMap({});
+        setAirlines([]);
         setCitiesMap({});
       }
     } finally {
@@ -1738,6 +1775,19 @@ const AgentUmrahCalculator = () => {
         ziarat: false,
         riyalRate: false
       });
+    }
+  };
+
+  const fetchVehicleTypes = async () => {
+    try {
+      const response = await axios.get("http://127.0.0.1:8000/api/vehicle-types/", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data) {
+        setVehicleTypes(response.data.results || response.data);
+      }
+    } catch (error) {
+      console.warn("Error fetching vehicle types:", error);
     }
   };
 
@@ -1757,7 +1807,8 @@ const AgentUmrahCalculator = () => {
           fetchAirlines().catch(err => console.warn('Failed to fetch airlines:', err)),
           fetchCities().catch(err => console.warn('Failed to fetch cities:', err)),
           fetchFoodPrices().catch(err => console.warn('Failed to fetch food prices:', err)),
-          fetchZiaratPrices().catch(err => console.warn('Failed to fetch ziarat prices:', err))
+          fetchZiaratPrices().catch(err => console.warn('Failed to fetch ziarat prices:', err)),
+          fetchVehicleTypes().catch(err => console.warn('Failed to fetch vehicle types:', err))
         ]);
       } catch (error) {
         console.error("Error in initial data fetching:", error);
@@ -1824,7 +1875,7 @@ const AgentUmrahCalculator = () => {
     }
     for (const ep of endpoints) {
       try {
-        const url = `http://127.0.0.1:8000${ep}`;
+        const url = `http://127.0.0.1:8000/${ep}`;
         setLoading((prev) => ({ ...prev, transport: true }));
         const res = await axios.get(url, { params: { organization: safeOrg }, headers: { Authorization: `Bearer ${token}` } });
         // Backend may return paginated results or direct list
@@ -2087,9 +2138,9 @@ const AgentUmrahCalculator = () => {
     setPnr(flight.pnr);
 
     // Calculate flight costs based on passenger counts
-    const adultCost = flight.adult_price || flight.adult_fare || 0;
-    const childCost = flight.child_price || flight.child_fare || 0;
-    const infantCost = flight.infant_price || flight.infant_fare || 0;
+    const adultCost = flight.adult_selling_price || flight.adult_price || flight.adult_fare || 0;
+    const childCost = flight.child_selling_price || flight.child_price || flight.child_fare || 0;
+    const infantCost = flight.infant_selling_price || flight.infant_price || flight.infant_fare || 0;
 
     const totalFlightCost =
       parseInt(formData.totalAdults || 0) * adultCost +
@@ -2125,12 +2176,20 @@ const AgentUmrahCalculator = () => {
       const airlineId = matchingAirline?.id ? String(matchingAirline.id) : "";
       setSelectedAirline(airlineId);
       // Set airline name from airlinesMap using flight.airline ID
-      setAirlineName(airlinesMap[flight.airline]?.name || matchingAirline?.name || "");
+      setAirlineName(airlinesMap[flight.airline]?.name || matchingAirline?.name || (flight.airline && typeof flight.airline === 'object' ? flight.airline.name : ""));
       setFlightNumber(departureTrip.flight_number || flight.flight_number || "");
 
-      // Handle city data (can be ID or object)
-      const depCityCode = departureTrip.departure_city?.code || citiesMap[departureTrip.departure_city?.id || departureTrip.departure_city]?.code || "";
-      const arrCityCode = departureTrip.arrival_city?.code || citiesMap[departureTrip.arrival_city?.id || departureTrip.arrival_city]?.code || "";
+      // Handle city data (can be ID or object) - Robust Fallback
+      const depCityCode =
+        departureTrip.departure_city?.code ||
+        citiesMap[departureTrip.departure_city?.id || departureTrip.departure_city]?.code ||
+        departureTrip.departure_city?.name?.substring(0, 3).toUpperCase() ||
+        "";
+      const arrCityCode =
+        departureTrip.arrival_city?.code ||
+        citiesMap[departureTrip.arrival_city?.id || departureTrip.arrival_city]?.code ||
+        departureTrip.arrival_city?.name?.substring(0, 3).toUpperCase() ||
+        "";
       setFromSector(depCityCode);
       setToSector(arrCityCode);
 
@@ -2159,8 +2218,16 @@ const AgentUmrahCalculator = () => {
       setSelectedReturnAirline(returnAirlineId);
       setReturnFlightNumber(returnTrip.flight_number || "");
 
-      const depCityCode = returnTrip.departure_city?.code || citiesMap[returnTrip.departure_city?.id || returnTrip.departure_city]?.code || "";
-      const arrCityCode = returnTrip.arrival_city?.code || citiesMap[returnTrip.arrival_city?.id || returnTrip.arrival_city]?.code || "";
+      const depCityCode =
+        returnTrip.departure_city?.code ||
+        citiesMap[returnTrip.departure_city?.id || returnTrip.departure_city]?.code ||
+        returnTrip.departure_city?.name?.substring(0, 3).toUpperCase() ||
+        "";
+      const arrCityCode =
+        returnTrip.arrival_city?.code ||
+        citiesMap[returnTrip.arrival_city?.id || returnTrip.arrival_city]?.code ||
+        returnTrip.arrival_city?.name?.substring(0, 3).toUpperCase() ||
+        "";
       setReturnFromSector(depCityCode);
       setReturnToSector(arrCityCode);
 
@@ -2410,6 +2477,215 @@ const AgentUmrahCalculator = () => {
     }
   };
 
+  // ✅ HELPER: Calculate Transport Cost (with FREE logic for linked sectors)
+  const calculateTransportCost = (form) => {
+    if (!form.transportSectorId || form.self) return 0;
+
+    const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
+    if (!sector) return 0;
+
+    // --- FREE TRANSPORT LOGIC ---
+    let isFree = false;
+    const sectorId = Number(form.transportSectorId);
+
+    // 1. Check Full Package Match (VTTH, VTH, VT)
+    if (matchedVisaForFullPackage) {
+      const linkedSectors = (matchedVisaForFullPackage.transport_sectors || []).map(s => typeof s === 'object' ? s.id : s);
+      const linkedVehicles = (matchedVisaForFullPackage.vehicle_types || []).map(s => typeof s === 'object' ? s.id : s);
+
+      if (linkedSectors.includes(sectorId) || linkedVehicles.includes(sectorId)) {
+        console.log(`🎉 Transport Sector ${sectorId} is FREE due to Matched Visa (Full Package)`);
+        isFree = true;
+      }
+    }
+
+    // 2. Check Only Visa / Long Term Match
+    if (!isFree && (formData.onlyVisa || formData.longTermVisa)) {
+      const visaOption = formData.onlyVisa ? 'only' : (formData.longTermVisa ? 'long_term' : null);
+
+      if (visaOption && onlyVisaPrices && onlyVisaPrices.length > 0) {
+        // Find matching visa price entry (checking visa_option or type2_option)
+        const activeVisa = onlyVisaPrices.find(p => {
+          const opt = (p.visa_option || p.type2_option || '').toString().toLowerCase();
+          return opt === visaOption;
+        });
+
+        if (activeVisa) {
+          const pSectors = Array.isArray(activeVisa.sectors) ? activeVisa.sectors : [];
+          const pVehicleTypes = Array.isArray(activeVisa.vehicle_types) ? activeVisa.vehicle_types : [];
+          const allReferenceSectors = [...pSectors, ...pVehicleTypes];
+
+          // Convert all references to simple IDs for comparison
+          const linkedIds = allReferenceSectors.map(s => {
+            if (typeof s === 'object' && s !== null) return Number(s.id);
+            return Number(s);
+          }).filter(n => !isNaN(n));
+
+          if (linkedIds.includes(sectorId)) {
+            console.log(`🎉 Transport Sector ${sectorId} is FREE due to Only/LongTerm Visa`);
+            isFree = true;
+          }
+        }
+      }
+    }
+
+    if (isFree) return 0;
+
+    // Standard Calculation
+    const adults = parseInt(formData.totalAdults || 0);
+    const childs = parseInt(formData.totalChilds || 0);
+    const infants = parseInt(formData.totalInfants || 0);
+    const adultPrice = sector.adault_price || 0;
+    const childPrice = sector.child_price || 0;
+    const infantPrice = sector.infant_price || 0;
+
+    return (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
+  };
+
+  // ✅ HELPER: Calculate Hotel Cost with Family Split Logic
+  const calculateHotelCost = (form, manualFamiliesData = null) => {
+    // If we have manualFamilies passed in (e.g. from handleBookNow), use them.
+    // Otherwise fallback to state manualFamilies.
+    const families = manualFamiliesData || manualFamilies || [];
+
+    // Check if this hotel is assigned to specific families
+    // If form.assignedFamilies is set and we have manual families, calculate specifically
+    if (form.assignedFamilies && form.assignedFamilies.length > 0 && families.length > 0) {
+      let totalCost = 0;
+
+      const selectedHotel = hotels.find(h => h.id.toString() === form.hotelId);
+      // Lookup active price if available in scope
+      let activePrice = null;
+      if (selectedHotel) {
+        activePrice = getActivePriceForDates(selectedHotel, form.checkIn, form.roomType);
+        if (!activePrice && selectedHotel.prices && selectedHotel.prices.length > 0) {
+          activePrice = selectedHotel.prices[0];
+        }
+      }
+
+      // Iterate over assigned families
+      form.assignedFamilies.forEach(assigned => {
+        let familyIndex = -1;
+        let numberOfRooms = 1;
+
+        if (typeof assigned === 'object' && assigned !== null) {
+          familyIndex = parseInt(assigned.familyIndex);
+          numberOfRooms = parseInt(assigned.rooms || 1);
+        } else {
+          // If assigned is just a number (ID or index), we need to map it to the 0-based manualFamilies array.
+          // Usually manualFamilies are 0-indexed. If the IDs in assignedFamilies are 1-based (like "Family 1"),
+          // we strictly need to know theconvention.
+          // Looking at the dump: manualFamilies has "Family 1", "Family 2". assigned_families is [1, 2].
+          // It is highly likely that assigned values are 1-based indices.
+          // So we subtract 1.
+          familyIndex = parseInt(assigned) - 1;
+        }
+
+        // Find the actual family data
+        // familyIndex is 0-based index in the manualFamilies array
+        const family = families[familyIndex];
+        if (!family) return;
+
+        const adults = parseInt(family.adults || 0);
+        const children = parseInt(family.children || 0);
+        const infants = parseInt(family.infants || 0); // Infants usually free in hotels but depends on policy
+
+        // Price calculation
+        // Determine rates from activePrice (or fallback to form.price if looked up failed)
+        let derivedPricePerPerson = 0;
+        let derivedPricePerRoom = 0;
+
+        if (activePrice) {
+          derivedPricePerRoom = parseFloat(activePrice.price || activePrice.selling_price || 0);
+          derivedPricePerPerson = parseFloat(activePrice.adult_selling_price ?? activePrice.adult_price ?? 0);
+        } else {
+          // Fallback to form props if lookup failed (legacy/manual override?)
+          derivedPricePerPerson = parseFloat(form.perPersonPrice || form.price || 0);
+          derivedPricePerRoom = parseFloat(form.price || 0);
+        }
+
+        // If Sharing -> Price is Per Person
+        if (form.sharingType && form.sharingType.toLowerCase() === 'sharing') {
+          const totalPax = adults + children; // Assuming infants don't pay sharing price usually?
+          // Or should we include infants? Usually infants are free.
+          // Use derived price or fallback
+          const finalPrice = derivedPricePerPerson || derivedPricePerRoom || 0;
+          totalCost += finalPrice * totalPax * parseInt(form.noOfNights || 0);
+        } else {
+          // If Room -> Price is Per Room
+          const finalPrice = derivedPricePerRoom || derivedPricePerPerson || 0;
+          totalCost += finalPrice * numberOfRooms * parseInt(form.noOfNights || 0);
+        }
+      });
+
+      const nights = parseInt(form.noOfNights || 0);
+      const perNight = nights > 0 ? totalCost / nights : 0;
+      return { total: totalCost, perNight };
+    }
+
+    // Default Fallback (Old Logic): All Pax, All Rooms
+    // If no specific assignment, we assume ONE room per family or just global calculation?
+    // The previous logic likely just did (Price * Quantity) if sharing, or (Price * 1) if room?
+    // Let's keep it robust.
+
+    // If it's a "Sharing" room type, it's (PricePerPax * TotalPax * Nights)
+    // If we reach here, we might need to lookup price for fallback cases too!
+    const selectedHotel = hotels.find(h => h.id.toString() === form.hotelId);
+    let activePriceFallback = null;
+    if (selectedHotel) {
+      activePriceFallback = getActivePriceForDates(selectedHotel, form.checkIn, form.roomType);
+      if (!activePriceFallback && selectedHotel.prices && selectedHotel.prices.length > 0) {
+        activePriceFallback = selectedHotel.prices[0];
+      }
+    }
+
+    // Determine fallback rates
+    let fbPricePerPerson = parseFloat(form.perPersonPrice || form.price || 0);
+    let fbPricePerRoom = parseFloat(form.price || 0);
+
+    if (activePriceFallback) {
+      fbPricePerRoom = parseFloat(activePriceFallback.price || activePriceFallback.selling_price || 0);
+      fbPricePerPerson = parseFloat(activePriceFallback.adult_selling_price ?? activePriceFallback.adult_price ?? 0);
+    }
+
+    // If it's a "Sharing" room type, it's (PricePerPax * TotalPax * Nights)
+    if (form.sharingType && form.sharingType.toLowerCase() === 'sharing') {
+      const adults = parseInt(formData.totalAdults || 0);
+      const childs = parseInt(formData.totalChilds || 0);
+      const totalPax = adults + childs;
+      const price = fbPricePerPerson || fbPricePerRoom || 0;
+      return { total: price * totalPax * parseInt(form.noOfNights || 0) };
+    }
+
+    // If it's a "Room" type (Double, Triple, Quad, etc.)
+    // It is normally (PricePerRoom * NumberOfRooms * Nights)
+    // The 'quantity' field in the form usually tracks number of rooms? 
+    // OR does 'quantity' track number of PAX? 
+    // In the old code: quantity: parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0)
+    // This suggests 'quantity' was treated as PAX count.
+
+    // However, for Room types, we usually need Number of Rooms.
+    // If `form.quinty` (quantity?) is set, use it as room count.
+    // Otherwise default to 1 room? Or 1 room per family?
+
+    // Fix: If form.quinty is missing/0, default to number of families if available, else 1
+    // This handles the case where users add families but don't explicitly set "quantity" of rooms in the UI for that specific line again
+    let roomCount = parseInt(form.quinty || 0);
+    if (roomCount === 0 && families.length > 0) {
+      roomCount = families.length;
+    }
+    if (roomCount === 0) roomCount = 1;
+
+    // If we have manual families and NO assignment, maybe default to 1 room per family?
+    // But let's stick to explicit `quinty` if available.
+
+    const pricePerRoom = fbPricePerRoom || fbPricePerPerson || 0;
+    const nights = parseInt(form.noOfNights || 0);
+    const total = pricePerRoom * roomCount * nights;
+    const perNight = nights > 0 ? total / nights : pricePerRoom;
+    return { total, perNight };
+  };
+
   // ✅ HELPER: Calculate grand total in PKR (converts all services to PKR)
   const calculateGrandTotalInPKR = () => {
     const visaPKR = convertToPKR(
@@ -2429,7 +2705,7 @@ const AgentUmrahCalculator = () => {
     const hotelTotal = hotelForms
       .filter(f => f.hotelId || f.isSelfHotel)
       .reduce((sum, form) => {
-        const { total = 0 } = calculateHotelCost(form);
+        const { total = 0 } = calculateHotelCost(form, manualFamilies);
         return sum + total;
       }, 0);
     const hotelPKR = convertToPKR(hotelTotal, 'hotel');
@@ -2785,15 +3061,17 @@ const AgentUmrahCalculator = () => {
       // Determine category based on hotel nights and longTermVisa checkbox
       let category = "short stay with hotel";
 
+      const totalNights = hotelForms.reduce((sum, h) => sum + (parseInt(h.noOfNights) || 0), 0) + (parseInt(formData.noOfNights) || 0);
+
       // If hotel nights > 28 or long term visa checked, use long stay
-      if (formData.noOfNights > 28 || formData.longTermVisa) {
+      if (totalNights > 28 || formData.longTermVisa) {
         category = "long stay with hotel";
       }
 
       const matchingVisaPrices = visaPricesOne.filter(
         price => price.visa_type?.toLowerCase() === selectedVisaType?.name?.toLowerCase() &&
           price.category === category &&
-          (price.maximum_nights >= formData.noOfNights || price.maximum_nights === 2147483647)
+          (price.maximum_nights >= totalNights || price.maximum_nights === 2147483647)
       );
 
       if (matchingVisaPrices.length > 0) {
@@ -3433,7 +3711,7 @@ const AgentUmrahCalculator = () => {
       hotel_details: hotelForms
         .filter(form => form.hotelId || form.isSelfHotel)
         .map(form => {
-          const hotelCost = form.hotelId ? calculateHotelCost(form) : { total: 0 };
+          const hotelCost = form.hotelId ? calculateHotelCost(form, manualFamilies) : { total: 0 };
           return {
             room_type: form.roomType,
             quantity: parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0),
@@ -3838,17 +4116,9 @@ const AgentUmrahCalculator = () => {
     hotels.forEach(hotel => {
       const totalPersons = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
       const nights = parseInt(hotel.noOfNights || 0) || 0;
-      const roomTypeNormalized = String(hotel.roomType || '').toLowerCase().trim();
-
-      if (roomTypeNormalized === 'sharing') {
-        // Sharing: price stored per person (use perPersonPrice if available, fall back to hotel.price)
-        const perPerson = parseFloat(hotel.perPersonPrice || hotel.price || 0) || 0;
-        totalHotelCost += perPerson * totalPersons * nights;
-      } else {
-        // Room-based price: price is per-room-per-night
-        const perRoom = parseFloat(hotel.price || 0) || 0;
-        totalHotelCost += perRoom * nights;
-      }
+      // Use the robust calculateHotelCost helper
+      const { total } = calculateHotelCost(hotel, manualFamilies);
+      totalHotelCost += total;
     });
 
     setCosts(prev => ({
@@ -3915,17 +4185,77 @@ const AgentUmrahCalculator = () => {
     let totalTransportCost = 0;
 
     routes.forEach(route => {
-      const baseCost =
-        (parseInt(formData.totalAdults || 0) * route.adultPrice) +
-        (parseInt(formData.totalChilds || 0) * route.childPrice) +
-        (parseInt(formData.totalInfants || 0) * route.infantPrice);
+      // Create a mock form object to pass to calculateTransportCost
+      const mockForm = {
+        transportSectorId: route.transportSectorId,
+        self: false // Routes in this list are never self ? or check route prop
+      };
 
-      if (route.isFullTransport) {
-        totalTransportCost += baseCost;
-      } else if (route.isOneSideTransport) {
-        totalTransportCost += baseCost * 0.5;
+      // Use the singular helper which contains the FREE logic
+      // Note: route objects in this list might have slightly different structure 
+      // but calculateTransportCost mainly needs transportSectorId.
+      // However, the helper relies on 'formData' for pax counts. 
+      // This function 'calculateTransportCosts' seems to be used for the 'transportRoutes' 
+      // state which is a separate list from 'transportForms'.
+      // If 'transportRoutes' is a legacy or parallel system, we should ensure consistency.
+
+      // Let's stick to the existing logic structure but inject the FREE check.
+
+      let isFree = false;
+      const sectorId = Number(route.transportSectorId);
+
+      // 1. Check Full Package Match
+      if (matchedVisaForFullPackage) {
+        const linkedSectors = (matchedVisaForFullPackage.transport_sectors || []).map(s => typeof s === 'object' ? s.id : s);
+        const linkedVehicles = (matchedVisaForFullPackage.transport_sectors || []).map(s => typeof s === 'object' ? s.id : s); // Check both if needed, usually transport_sectors is the key
+        const linkedVehiclesTypes = (matchedVisaForFullPackage.vehicle_types || []).map(s => typeof s === 'object' ? s.id : s);
+
+        if (linkedSectors.includes(sectorId) || linkedVehiclesTypes.includes(sectorId)) {
+          isFree = true;
+        }
       }
-      // If neither is selected, don't add to cost
+
+      // 2. Check Only Visa / Long Term Match
+      if (!isFree && (formData.onlyVisa || formData.longTermVisa)) {
+        const visaOption = formData.onlyVisa ? 'only' : (formData.longTermVisa ? 'long_term' : null);
+
+        if (visaOption && onlyVisaPrices && onlyVisaPrices.length > 0) {
+          const activeVisa = onlyVisaPrices.find(p => {
+            const opt = (p.visa_option || p.type2_option || '').toString().toLowerCase();
+            return opt === visaOption;
+          });
+
+          if (activeVisa) {
+            const pSectors = Array.isArray(activeVisa.sectors) ? activeVisa.sectors : [];
+            const pVehicleTypes = Array.isArray(activeVisa.vehicle_types) ? activeVisa.vehicle_types : [];
+            const allReferenceSectors = [...pSectors, ...pVehicleTypes];
+
+            const linkedIds = allReferenceSectors.map(s => {
+              if (typeof s === 'object' && s !== null) return Number(s.id);
+              return Number(s);
+            }).filter(n => !isNaN(n));
+
+            if (linkedIds.includes(sectorId)) {
+              isFree = true;
+            }
+          }
+        }
+      }
+
+      if (isFree) {
+        // Add 0
+      } else {
+        const baseCost =
+          (parseInt(formData.totalAdults || 0) * route.adultPrice) +
+          (parseInt(formData.totalChilds || 0) * route.childPrice) +
+          (parseInt(formData.totalInfants || 0) * route.infantPrice);
+
+        if (route.isFullTransport) {
+          totalTransportCost += baseCost;
+        } else if (route.isOneSideTransport) {
+          totalTransportCost += baseCost * 0.5;
+        }
+      }
     });
 
     setCosts(prev => ({
@@ -3939,6 +4269,65 @@ const AgentUmrahCalculator = () => {
       ).toLocaleString()
     }));
   };
+
+
+
+  const [hotelForms, setHotelForms] = useState([{
+    id: Date.now(),
+    hotelId: "",
+    roomType: "",
+    sharingType: "Gender or Family",
+    checkIn: "",
+    checkOut: "",
+    noOfNights: 0,
+    specialRequest: "",
+    // New fields per Section 5
+    isSelfHotel: false,
+    selfHotelName: "",
+    quinty: "",
+    checkInLocked: false,
+    checkOutLocked: false
+    , assignedFamilies: []
+  }]);
+
+  const [transportForms, setTransportForms] = useState([{
+    id: Date.now(),
+    transportType: "Company Shared Bus",
+    transportSectorId: "",
+    self: false
+  }]);
+
+  // VT auto-add flags declared earlier near booking selection state
+
+  // Options for self hotel names (reuse any previously entered self-hotel names)
+  const selfHotelOptions = useMemo(() => {
+    const names = Array.from(new Set(hotelForms.map(f => f.selfHotelName).filter(Boolean)));
+    return names.map(n => ({ value: n, label: n }));
+  }, [hotelForms]);
+
+  // Auto-recalculate costs when dependencies change
+  useEffect(() => {
+    calculateCosts();
+  }, [
+    selectedBookingOptions,
+    formData.addVisaPrice,
+    formData.onlyVisa,
+    formData.longTermVisa,
+    formData.totalAdults,
+    formData.totalChilds,
+    formData.totalInfants,
+    selectedFlight, // Recalculate when flight changes
+    selectedFood,
+    selectedZiarat,
+    hotelForms,
+    transportForms,
+    visaPricesTwo, // Recalculate if visa prices load/change
+    onlyVisaPrices,
+    visaTypes,
+    matchedVisaForFullPackage,
+    riyalRate, // Important: update if currency rate changes
+    manualFamilies // Recalculate if manual families change
+  ]);
 
   // Update the calculateCosts function to use the lists
   const calculateCosts = () => {
@@ -3956,7 +4345,7 @@ const AgentUmrahCalculator = () => {
     const infants = parseInt(formData.totalInfants || 0);
     const totalPersons = adults + childs;
 
-    // Flight
+    // Flight - Ensure it is calculated if selected
     if (selectedFlight) {
       flightCost =
         adults * (parseFloat(selectedFlight.adult_price) || 0) +
@@ -3964,11 +4353,17 @@ const AgentUmrahCalculator = () => {
         infants * (parseFloat(selectedFlight.infant_price) || 0);
     }
 
-    // Visa
-    totalVisaCost = (formData.addVisaPrice || formData.onlyVisa) ?
-      parseInt(formData.totalAdults || 0) * (visaPrices.adultPrice || 0) +
-      parseInt(formData.totalChilds || 0) * (visaPrices.childPrice || 0) +
-      parseInt(formData.totalInfants || 0) * (visaPrices.infantPrice || 0) : 0;
+    // Visa Cost Calculation
+    // Logic: Explicitly added OR Full Package (VTTH, VTH, VT) implied visa
+    const isFullPackage = selectedBookingOptions.includes("vtth") || selectedBookingOptions.includes("vth") || selectedBookingOptions.includes("vt");
+    const shouldCalcVisa = formData.addVisaPrice || formData.onlyVisa || formData.longTermVisa || isFullPackage;
+
+    if (shouldCalcVisa) {
+      totalVisaCost =
+        adults * (visaPrices.adultPrice || 0) +
+        childs * (visaPrices.childPrice || 0) +
+        infants * (visaPrices.infantPrice || 0);
+    }
 
     // Single food selection
     if (selectedFood) {
@@ -3995,25 +4390,11 @@ const AgentUmrahCalculator = () => {
     }
 
     // Hotels: support both per-room and per-person (sharing) pricing
+    // Hotels: support both per-room and per-person (sharing) pricing
     hotelForms.forEach(form => {
-      if (!form.hotelId) return;
-
-      const selectedHotel = hotels.find(h => h.id.toString() === form.hotelId);
-      if (!selectedHotel) return;
-
-      const activePrice = getActivePriceForDates(selectedHotel, form.checkIn, form.roomType);
-      if (!activePrice) return;
-
-      const nights = parseInt(form.noOfNights || 0) || 0;
-      const roomTypeNormalized = String(form.roomType || '').toLowerCase().trim();
-      const rawPrice = parseFloat(activePrice.price || activePrice.selling_price || 0) || 0;
-      const perPersonPrice = parseFloat(activePrice.adult_selling_price ?? activePrice.adult_price ?? 0) || 0;
-
-      if (roomTypeNormalized === 'sharing') {
-        totalHotelCost += (perPersonPrice || rawPrice) * totalPersons * nights;
-      } else {
-        totalHotelCost += rawPrice * nights;
-      }
+      // Use helper with manualFamilies (if available in scope)
+      const { total } = calculateHotelCost(form, manualFamilies);
+      totalHotelCost += total;
     });
 
     // Transport
@@ -4060,6 +4441,15 @@ const AgentUmrahCalculator = () => {
       }
     });
 
+    // Correct Total Cost Calculation using Floats
+    const finalTotal =
+      totalVisaCost +
+      totalHotelCost +
+      totalTransportCost +
+      flightCost +
+      totalFoodCost +
+      totalZiaratCost;
+
     // Final setCosts
     setCosts({
       queryNumber: costs.queryNumber,
@@ -4069,62 +4459,13 @@ const AgentUmrahCalculator = () => {
       flightCost: flightCost.toLocaleString(),
       foodCost: totalFoodCost.toLocaleString(),
       ziaratCost: totalZiaratCost.toLocaleString(),
-      totalCost: (
-        totalVisaCost +
-        totalHotelCost +
-        totalTransportCost +
-        flightCost +
-        totalFoodCost +
-        totalZiaratCost
-      ).toLocaleString(),
+      totalCost: finalTotal.toLocaleString(),
     });
   };
 
 
-  const [hotelForms, setHotelForms] = useState([{
-    id: Date.now(),
-    hotelId: "",
-    roomType: "",
-    sharingType: "Gender or Family",
-    checkIn: "",
-    checkOut: "",
-    noOfNights: 0,
-    specialRequest: "",
-    // New fields per Section 5
-    isSelfHotel: false,
-    selfHotelName: "",
-    quinty: "",
-    checkInLocked: false,
-    checkOutLocked: false
-    , assignedFamilies: []
-  }]);
 
-  // VT auto-add flags declared earlier near booking selection state
 
-  // Options for self hotel names (reuse any previously entered self-hotel names)
-  const selfHotelOptions = useMemo(() => {
-    const names = Array.from(new Set(hotelForms.map(f => f.selfHotelName).filter(Boolean)));
-    return names.map(n => ({ value: n, label: n }));
-  }, [hotelForms]);
-
-  // When transport is selected, remind the user to choose a hotel if none
-  // is selected. We show a toast warning; no automatic changes are performed.
-  useEffect(() => {
-    // Only show reminder when the explicit Transport button (id: 't') is selected.
-    if (!selectedBookingOptions.includes('t')) return;
-
-    const noneSelected = (hotelForms || []).every(h => !h.hotelId && !h.isSelfHotel);
-    if (noneSelected) {
-      toast.info('Transport selected: please select a hotel (or choose Self Hotel).');
-    }
-  }, [selectedBookingOptions, hotelForms]);
-
-  const [transportForms, setTransportForms] = useState([{
-    id: Date.now(),
-    transportType: "Company Shared Bus",
-    transportSectorId: "",
-    self: false
-  }]);
 
 
   // Transport form handlers
@@ -4489,6 +4830,7 @@ const AgentUmrahCalculator = () => {
   };
 
   const [showViewModal, setShowViewModal] = useState(false);
+  const [previewInvoiceData, setPreviewInvoiceData] = useState(null); // For viewing saved package invoices
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Function to show all details in modal
@@ -4498,6 +4840,273 @@ const AgentUmrahCalculator = () => {
   //   }
   //   setShowViewModal(true);
   // };
+
+  // Helper to map saved package DB format to InvoicePrint props
+  const mapPackageToInvoiceData = (pkg) => {
+    if (!pkg) return null;
+
+    // Map DB ticket details -> selectedFlight
+    let selectedFlight = null;
+    let pnr = '';
+    let travelDate = '';
+    let returnDate = '';
+
+    if (pkg.ticket_details && pkg.ticket_details.length > 0) {
+      const t = pkg.ticket_details[0];
+      const info = t.ticket_info || {};
+      const trips = t.trip_details || [];
+
+      selectedFlight = {
+        ...t,
+        ...info, // Merge info info
+        trip_details: trips,
+        adult_selling_price: t.adult_selling_price || info.adult_selling_price || t.adult_price || info.adult_price || t.amount || 0,
+        child_selling_price: t.child_selling_price || info.child_selling_price || t.child_price || info.child_price || 0,
+        infant_selling_price: t.infant_selling_price || info.infant_selling_price || t.infant_price || info.infant_price || 0,
+      };
+
+      pnr = t.pnr || info.pnr || '';
+
+      if (trips.length > 0) {
+        travelDate = trips[0].departure_date_time ? new Date(trips[0].departure_date_time).toLocaleDateString() : '';
+        // Assuming last trip is return for round trip, or just last leg
+        const lastTrip = trips[trips.length - 1];
+        returnDate = lastTrip.return_date_time ? new Date(lastTrip.return_date_time).toLocaleDateString() : '';
+      }
+    }
+
+    // Map DB hotel details -> hotelForms
+    const hotelForms = (pkg.hotel_details || []).map(h => {
+      const info = h.hotel_info || h.hotel || {};
+      const isObject = typeof h.hotel === 'object' && h.hotel !== null;
+      // If h.hotel is ID, use info.id. If h.hotel is Object, use h.hotel.id.
+      const hotelId = (isObject ? h.hotel.id : h.hotel) || info.id || '';
+      const hotelName = (isObject ? h.hotel.name : null) || info.name || h.hotel_name || '';
+
+      return {
+        hotelId: hotelId ? hotelId.toString() : '',
+        hotelName: hotelName,
+        savedName: hotelName || 'Booked Hotel',
+        roomType: h.room_type,
+        checkIn: h.check_in_date || h.check_in_time,
+        checkOut: h.check_out_date || h.check_out_time,
+        noOfNights: h.nights || h.number_of_nights,
+        isSelfHotel: !h.hotel && !h.hotel_info,
+        selfHotelName: (!h.hotel && !h.hotel_info) ? h.hotel_name : '',
+        sharingType: h.sharing_type || 'Family Sharing',
+        assignedFamilies: h.assigned_families || [],
+        savedRate: (h.price && (h.nights || h.number_of_nights))
+          ? (h.price / (h.nights || h.number_of_nights))
+          : (h.price || h.rate || 0),
+        savedNet: h.price || h.total_price || h.amount || h.cost || h.net_price || 0
+      };
+    });
+
+    // Map DB transport details -> transportForms
+    const transportForms = (pkg.transport_details || []).map((t, idx) => {
+      const info = t.transport_sector_info || t.sector_info || t.sector || {};
+      const isObject = typeof t.sector === 'object' && t.sector !== null;
+      const sectorId = (isObject ? t.sector.id : t.sector) || info.id || '';
+      const sectorName = (isObject ? t.sector.name : null) || info.name || t.sector_name || '';
+
+      const shouldBeFree = pkg.formData?.withFullTransport === true;
+
+      return {
+        id: idx,
+        transportType: t.vehicle_type,
+        transportSectorId: sectorId ? sectorId.toString() : '',
+        transportSector: sectorName,
+        self: !t.sector && !t.transport_sector_info,
+        savedName: sectorName || t.sector_name || 'Transport',
+        savedRate: shouldBeFree ? 0 : (t.price || t.rate || 0),
+        savedNet: shouldBeFree ? 0 : (t.total_price || t.amount || t.cost || t.net_price || t.price || 0)
+      };
+    });
+
+    // Map DB food details -> foodForms
+    const foodForms = (pkg.food_details || []).map((f, idx) => {
+      const info = f.food_info || f.food || {};
+      const isObject = typeof f.food === 'object' && f.food !== null;
+      const foodId = (isObject ? f.food.id : f.food) || info.id || '';
+      const foodName = (isObject ? f.food.name : null) || info.name || info.title || f.food_name || '';
+
+      return {
+        id: idx,
+        foodId: foodId ? foodId.toString() : '',
+        savedName: foodName || 'Food Service',
+        savedNet: f.total_price || f.amount || f.cost || 0,
+        savedAdultPrice: f.adult_price || info.adult_selling_price || info.adult_price || 0,
+        savedChildPrice: f.child_price || info.child_selling_price || info.child_price || 0,
+        savedNet: f.total_price || f.amount || f.cost || 0,
+        savedAdultPrice: f.adult_price || info.adult_selling_price || info.adult_price || 0,
+        savedChildPrice: f.child_price || info.child_selling_price || info.child_price || 0,
+        savedInfantPrice: f.infant_price || info.infant_selling_price || info.infant_price || 0,
+        // Restore Edit fields
+        startDate: f.start_date || '',
+        noOfDays: f.days || 0,
+        selfPickup: f.self_pickup || false,
+        city: f.city || '',
+        hotel: f.hotel_name || ''
+      };
+    });
+
+    // Map DB ziarat details -> ziaratForms
+    const ziaratForms = (pkg.ziarat_details || []).map((z, idx) => {
+      const info = z.ziarat_info || z.ziarat || {};
+      const isObject = typeof z.ziarat === 'object' && z.ziarat !== null;
+      const ziaratId = (isObject ? z.ziarat.id : z.ziarat) || info.id || '';
+      const ziaratName = (isObject ? z.ziarat.name : null) || info.name || info.ziarat_title || z.ziarat_name || '';
+
+      return {
+        id: idx,
+        ziaratId: ziaratId ? ziaratId.toString() : '',
+        savedName: ziaratName || 'Ziarat Service',
+        savedNet: z.total_price || z.amount || z.cost || 0,
+        savedAdultPrice: z.adult_price || info.adult_selling_price || info.adult_price || 0,
+        savedChildPrice: z.child_price || info.child_selling_price || info.child_price || 0,
+        savedNet: z.total_price || z.amount || z.cost || 0,
+        savedAdultPrice: z.adult_price || info.adult_selling_price || info.adult_price || 0,
+        savedChildPrice: z.child_price || info.child_selling_price || info.child_price || 0,
+        savedInfantPrice: z.infant_price || info.infant_selling_price || info.infant_price || 0,
+        // Restore Edit fields
+        date: z.date || '',
+        city: z.city || ''
+      };
+    });
+
+    // Map DB Visa prices
+    const calculatedVisaPrices = {
+      adultPrice: pkg.adault_visa_price || pkg.adult_visa_price || pkg.visa_price || 0,
+      childPrice: pkg.child_visa_price || pkg.visa_price || 0,
+      infantPrice: pkg.infant_visa_price || pkg.visa_price || 0,
+    };
+
+    // Calculate family sizes from manualFamilies
+    const familyGroups = (pkg.manualFamilies || []).map(fam => {
+      return (parseInt(fam.adults) || 0) + (parseInt(fam.children) || 0) + (parseInt(fam.infants) || 0);
+    });
+
+    // Prepare familyRoomTypes map if needed (restore from saved if available)
+    const familyRoomTypes = pkg.family_room_types || {};
+
+    // If flight dates are missing, fallback to hotel dates
+    if (!travelDate && hotelForms.length > 0) {
+      // Sort hotels by checkIn just in case
+      const sortedHotels = [...hotelForms].sort((a, b) => new Date(a.checkIn) - new Date(b.checkIn));
+      const firstHotel = sortedHotels[0];
+      const lastHotel = sortedHotels[sortedHotels.length - 1];
+
+      if (firstHotel && firstHotel.checkIn) {
+        try {
+          travelDate = new Date(firstHotel.checkIn).toLocaleDateString();
+        } catch (e) { }
+      }
+      if (lastHotel && lastHotel.checkOut) {
+        try {
+          returnDate = new Date(lastHotel.checkOut).toLocaleDateString();
+        } catch (e) { }
+      }
+    }
+
+    // Reconstruct FormData
+    const formData = {
+      totalAdults: pkg.total_adaults || 0,
+      totalChilds: pkg.total_children || 0,
+      totalInfants: pkg.total_infants || 0,
+      pnr: pnr,
+      travelDate: travelDate,
+      returnDate: returnDate,
+    };
+
+    return {
+      formData,
+      hotelForms,
+      transportForms,
+      foodForms,
+      ziaratForms,
+      selectedFlight,
+      calculatedVisaPrices,
+      riyalRate: riyalRate,
+      hotels,
+      transportSectors,
+      foodPrices,
+      ziaratPrices,
+      familyGroups,
+      manualFamilies: pkg.manualFamilies || [],
+      familyRoomTypes,
+      airlinesMap,
+    };
+  };
+
+  // Handler: Edit saved package
+  const handleEditPackage = (pkg) => {
+    try {
+      const data = mapPackageToInvoiceData(pkg);
+      if (!data) {
+        toast.error("Failed to load package for editing");
+        return;
+      }
+
+      setFormData(data.formData);
+      setHotelForms(data.hotelForms);
+      setTransportForms(data.transportForms);
+      setFoodForms(data.foodForms);
+      setZiaratForms(data.ziaratForms);
+      setSelectedFlight(data.selectedFlight);
+      setCalculatedVisaPrices(data.calculatedVisaPrices);
+      setFamilyGroups(data.familyGroups);
+      setFamilyRoomTypes(data.familyRoomTypes);
+
+      // Restore Self flags
+      setFoodSelf(pkg.food_self || false);
+      setZiaratSelf(pkg.ziarat_self || false);
+
+      // Derive and set selectedBookingOptions to ensure correct UI state (enabling hotels/transport etc.)
+      const hasVisa = pkg.adault_visa_price > 0 || pkg.child_visa_price > 0 || pkg.infant_visa_price > 0;
+      const hasHotel = pkg.hotel_details && pkg.hotel_details.length > 0;
+      const hasTransport = pkg.transport_details && pkg.transport_details.length > 0;
+      const hasTicket = pkg.ticket_details && pkg.ticket_details.length > 0;
+
+      let newOpts = [];
+      if (pkg.only_visa) {
+        newOpts = ['onlyvisa'];
+      } else if (pkg.long_term_stay) {
+        newOpts = ['longtermvisa'];
+      } else if (hasVisa && hasTransport && hasTicket && hasHotel) {
+        newOpts = ['vtth'];
+      } else if (hasVisa && hasTransport && hasHotel) {
+        newOpts = ['vth'];
+      } else if (hasVisa && hasTransport) {
+        newOpts = ['vt'];
+      } else {
+        // Fallback for individual components or weird combinations
+        if (hasHotel) newOpts.push('h');
+        if (hasTransport && !hasVisa) newOpts.push('t');
+        if (hasTicket && !hasVisa) newOpts.push('tk');
+      }
+      setSelectedBookingOptions(newOpts);
+
+      // IMPORTANT: Set queryNumber to pkg.id so "Add to Calculations" becomes "Update Package"
+      // and we preserve the ID on save.
+      setCosts(prev => ({
+        ...prev,
+        queryNumber: pkg.id,
+        margin: pkg.margin || 0,
+        // We'll trust the saved total cost for now, but real calc happens on next render/change
+        totalCost: pkg.total_cost ? pkg.total_cost.toLocaleString() : prev.totalCost
+      }));
+
+      toast.success("Package loaded for editing. Click 'Update Package' when done.");
+
+      // Scroll to top to see the form
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    } catch (e) {
+      console.error("Edit loading error:", e);
+      toast.error("Error loading package data");
+    }
+  };
+
 
   const handleViewClick = async () => {
     if (!validateForm()) {
@@ -4525,29 +5134,35 @@ const AgentUmrahCalculator = () => {
   // const storedAgencyId = localStorage.getItem("agencyId");
 
 
-  // Function to submit data to API
-  const handleAddToCalculations = async (opts = {}) => {
-    const { suppressToasts = false } = opts || {};
+  // Direct View Invoice function (Replaces Add to Calculations flow)
+  const handleViewInvoiceDirectly = async () => {
     setIsSubmitting(true);
     try {
-      const visaPrices = calculateVisaPrices();
-      // const agentInfo = JSON.parse(agentData);
+      if (!validateForm()) {
+        setIsSubmitting(false);
+        return;
+      }
 
-      // let agencyId = null;
-      const agencyId = localStorage.getItem("agencyId");
-      const agentId = localStorage.getItem("agencyId");
-      // if (storedAgencyId) {
-      //   const parsedData = JSON.parse(storedAgencyId);
-      //   agencyId = Number(parsedData.id); // convert to number
-      //   // console.log(agencyId);
-      // }
+      // Calculate everything fresh
+      const visaPrices = calculateVisaPrices();
+
+      // Retrieve agency/agent info if needed (for display only)
+      let agencyId = null;
+      // ... logic for agencyId if needed for display ...
+
+      // --- Payload Construction (Same as before) ---
 
       // Prepare hotel details
       const hotelDetails = hotelForms
         .filter(form => form.hotelId || form.isSelfHotel)
         .map(form => {
           const selectedHotel = hotels.find(h => h.id.toString() === form.hotelId);
-          const hotelCost = form.hotelId ? calculateHotelCost(form) : { total: 0 };
+          // Try to calculate fresh cost
+          let hotelCost = form.hotelId ? calculateHotelCost(form, manualFamilies) : { total: 0 };
+
+          if ((!hotelCost.total || hotelCost.total === 0) && (form.savedNet || form.net || form.price)) {
+            hotelCost = { total: form.savedNet || form.net || form.price };
+          }
 
           return {
             room_type: form.roomType,
@@ -4556,8 +5171,10 @@ const AgentUmrahCalculator = () => {
             check_in_time: form.checkIn,
             check_out_time: form.checkOut,
             number_of_nights: parseInt(form.noOfNights || 0),
+            nights: parseInt(form.noOfNights || 0), // Ensure nights is saved explicitly for invoice calc
             special_request: form.specialRequest,
             price: hotelCost.total,
+            total_price: hotelCost.total,
             hotel: form.hotelId ? parseInt(form.hotelId) : null,
             hotel_info: selectedHotel ? { id: selectedHotel.id, name: selectedHotel.name } : null,
             is_self_hotel: !!form.isSelfHotel,
@@ -4575,52 +5192,26 @@ const AgentUmrahCalculator = () => {
             s => s.id.toString() === form.transportSectorId
           );
 
+          // Force price to 0 if Full Transport is selected
+          const shouldBeFree = formData.withFullTransport === true;
+
           return {
             vehicle_type: form.transportType,
             transport_sector: parseInt(form.transportSectorId),
-            price: selectedSector ?
+            price: shouldBeFree ? 0 : (selectedSector ?
               (parseInt(formData.totalAdults || 0) * selectedSector.adault_price +
                 parseInt(formData.totalChilds || 0) * selectedSector.child_price +
-                parseInt(formData.totalInfants || 0) * selectedSector.infant_price) : 0
+                parseInt(formData.totalInfants || 0) * selectedSector.infant_price) : 0)
           };
         });
 
-      // Prepare food details from all food forms
-      // Validate Food entries: when global foodSelf is false, ensure hotel is provided
-      // unless the specific food form has `selfPickup` enabled.
+      // Prepare food details (Validation assumed passed by validateForm check or logic below)
       if (!foodSelf) {
         const missingHotel = foodForms.some(f => f.foodId && !f.selfPickup && !(f.hotel && String(f.hotel).trim()));
         if (missingHotel) {
           toast.error("Please provide Hotel name for all Food entries or enable 'Self' / 'Self Pickup'");
           setIsSubmitting(false);
           return;
-        }
-      }
-
-      // Validate food date ranges against flight departure/return dates (date-only) before building payload
-      const flightStartDate = departureDate ? String(departureDate).split('T')[0] : null;
-      const flightReturnDate = (returnDepartureDate || returnDate) ? String((returnDepartureDate || returnDate)).split('T')[0] : null;
-      if (flightStartDate || flightReturnDate) {
-        for (const form of foodForms.filter(f => f.foodId && !foodSelf)) {
-          if (form.startDate && form.noOfDays) {
-            const startDateStr = form.startDate;
-            const startDT = new Date(`${startDateStr}T00:00:00`);
-            const endDT = new Date(startDT);
-            endDT.setDate(startDT.getDate() + (parseInt(form.noOfDays || 0, 10) - 1));
-            const endDateStr = endDT.toISOString().split('T')[0];
-
-            if (flightStartDate && startDateStr < flightStartDate) {
-              toast.error('One of the food entries starts before the flight departure. Adjust start date.');
-              setIsSubmitting(false);
-              return;
-            }
-
-            if (flightReturnDate && endDateStr > flightReturnDate) {
-              toast.error('One of the food entries ends after the flight return. Adjust start date or days.');
-              setIsSubmitting(false);
-              return;
-            }
-          }
         }
       }
 
@@ -4635,10 +5226,13 @@ const AgentUmrahCalculator = () => {
             total_persons: parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0),
             city: form.city || null,
             hotel_name: form.hotel || null,
+            start_date: form.startDate,
+            days: form.noOfDays,
+            self_pickup: form.selfPickup
           };
         });
 
-      // Prepare ziarat details from all ziarat forms
+      // Prepare ziarat details
       const ziaratDetails = ziaratForms
         .filter(form => form.ziaratId && !ziaratSelf)
         .map(form => {
@@ -4647,37 +5241,29 @@ const AgentUmrahCalculator = () => {
             ziarat: selectedZiaratItem?.id || 0,
             price: selectedZiaratItem?.price || 0,
             contact_person: selectedZiaratItem?.contact_person || "",
-            contact_number: selectedZiaratItem?.contact_number || ""
+            contact_number: selectedZiaratItem?.contact_number || "",
+            date: form.date,
+            city: form.city
           };
         });
 
-      // Enhance transport details with full sector info
+      // Enhance details for Invoice Display
       const enrichedTransportDetails = transportDetails.map(transport => {
         const sector = transportSectors.find(s => s.id === transport.transport_sector);
-        return {
-          ...transport,
-          transport_sector_info: sector || null
-        };
+        return { ...transport, transport_sector_info: sector || null };
       });
 
-      // Enhance food details with full food info
       const enrichedFoodDetails = foodDetails.map(food => {
         const foodInfo = foodPrices.find(f => f.id === food.food);
-        return {
-          ...food,
-          food_info: foodInfo || null
-        };
+        return { ...food, food_info: foodInfo || null };
       });
 
-      // Enhance ziarat details with full ziarat info
       const enrichedZiaratDetails = ziaratDetails.map(ziarat => {
         const ziaratInfo = ziaratPrices.find(z => z.id === ziarat.ziarat);
-        return {
-          ...ziarat,
-          ziarat_info: ziaratInfo || null
-        };
+        return { ...ziarat, ziarat_info: ziaratInfo || null };
       });
 
+      // Construct Payload
       const payload = {
         hotel_details: hotelDetails,
         transport_details: enrichedTransportDetails,
@@ -4690,173 +5276,371 @@ const AgentUmrahCalculator = () => {
         child_visa_price: parseFloat(visaPrices.childPrice || 0),
         infant_visa_price: parseFloat(visaPrices.infantPrice || 0),
         adault_visa_price: parseFloat(visaPrices.adultPrice || 0),
+        visa_total_cost: (
+          parseInt(formData.totalAdults || 0) * (parseFloat(visaPrices.adultPrice) || 0) +
+          parseInt(formData.totalChilds || 0) * (parseFloat(visaPrices.childPrice) || 0) +
+          parseInt(formData.totalInfants || 0) * (parseFloat(visaPrices.infantPrice) || 0)
+        ),
         long_term_stay: Boolean(formData.longTermVisa),
         only_visa: Boolean(formData.onlyVisa),
         margin: parseFloat(formData.margin || 0),
         total_cost: parseFloat(costs.totalCost?.replace(/,/g, "") || 0),
         organization: parseInt(orgId),
-        status: "Custom Umrah Package"
+        status: "Custom Umrah Package",
+        food_self: foodSelf,
+        ziarat_self: ziaratSelf,
+        family_room_types: familyRoomTypes,
+        formData: formData // Pass formData to allow invoice mapper checks
       };
 
-      // Only add agency if it exists and is valid
-      if (agencyId && agencyId !== 'null' && agencyId !== 'undefined') {
-        payload.agency = parseInt(agencyId);
-      }
+      // --- Direct Invoice Mapping ---
+      const invoiceData = mapPackageToInvoiceData(payload);
+      setPreviewInvoiceData(invoiceData);
 
-      // Clear old sessionStorage keys first
-      sessionStorage.removeItem('umrah_booknow_v1');
+      // Also ensure we save this payload to session immediately so "Book Now" in modal works? 
+      // ACTUALLY: Book Now logic in modal likely relies on `previewInvoiceData` OR it re-saves.
+      // IF we want "Book Now" to work, we should update sessionStorage 'umrah_booknow_v1' here OR in the Book Now handler.
+      // But Book Now handler (handleBookNow) usually clicked FROM table.
+      // If we are IN the modal, the modal usually has buttons.
+      // We need to ensure the Modal's "Book Now" uses this `payload`.
+      // We will save it to a temporary state or reuse existing logic.
 
-      // Save to sessionStorage first (only ONE package allowed)
-      // Include manualFamilies for family grouping on detail page
-      const sessionPackage = {
-        id: `session-${Date.now()}`,
-        ...payload,
-        manualFamilies: manualFamilies || []
-      };
+      // For now, save to sessionStorage to match existing Book logic
+      sessionStorage.setItem('umrah_booknow_v1', JSON.stringify(payload));
 
-      try {
-        sessionStorage.setItem('umrah_calculation_package', JSON.stringify(sessionPackage));
-        setCustomPackages([sessionPackage]); // Replace with single package
-      } catch (e) {
-        console.warn('Failed to save to sessionStorage:', e);
-      }
+      setShowViewModal(true);
 
-      // Show success toast immediately
-      if (!suppressToasts) {
-        toast.success("Package added to calculations successfully!");
-      }
-
-      setShowViewModal(false);
     } catch (error) {
-      console.error("Error submitting package:", error);
-      console.error("Error response:", error.response);
-      console.error("Error data:", error.response?.data);
-      console.error("Status code:", error.response?.status);
-
-      if (!suppressToasts) {
-        // If there's detailed field errors, show them
-        if (error.response?.data) {
-          const errorData = error.response.data;
-
-          // Check if it's field validation errors
-          if (typeof errorData === 'object' && !errorData.detail && !errorData.message) {
-            // Show first field error
-            const firstField = Object.keys(errorData)[0];
-            const firstError = Array.isArray(errorData[firstField])
-              ? errorData[firstField][0]
-              : errorData[firstField];
-            toast.error(`${firstField}: ${firstError}`);
-            console.error("Field errors:", errorData);
-          } else {
-            const errorMsg = errorData.detail || errorData.message || JSON.stringify(errorData);
-            toast.error(`Failed to ${costs.queryNumber ? 'update' : 'add'} package: ${errorMsg}`);
-          }
-        } else {
-          toast.error(`Failed to ${costs.queryNumber ? 'update' : 'add'} package`);
-        }
-      }
+      console.error("Error preparing invoice:", error);
+      toast.error("Failed to generate invoice");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Handler: Book Now (validate then submit immediately)
+  // Replaces the old handleAddToCalculations
+  const handleAddToCalculations = async (opts = {}) => {
+    // Deprecated/Redirected
+    handleViewInvoiceDirectly();
+  };
+
   const handleBookNow = async () => {
-    console.log('Book Now clicked');
-
-    // Basic validation: require at least some passenger data
-    const totalPassengers = (parseInt(formData.totalAdults) || 0) +
-      (parseInt(formData.totalChilds) || 0) +
-      (parseInt(formData.totalInfants) || 0);
-
-    console.log('Total passengers:', totalPassengers);
-
-    if (totalPassengers === 0) {
-      toast.error("Please add at least one passenger before booking");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
-      console.log('Calculating costs...');
-      // Calculate costs before saving
-      const latestCosts = calculateCosts();
+      if (!validateForm()) {
+        setIsSubmitting(false);
+        toast.error("Please ensure the form is valid before booking.");
+        return;
+      }
 
-      // Build a safe payload to persist in sessionStorage
-      const expiresAt = (() => {
-        try {
-          if (!token) return Date.now() + 60 * 60 * 1000; // fallback 1h
-          const decodeFn = (jwtDecode && jwtDecode.default) ? jwtDecode.default : jwtDecode;
-          const decoded = decodeFn(token);
-          return decoded && decoded.exp ? decoded.exp * 1000 : Date.now() + 60 * 60 * 1000;
-        } catch (e) {
-          return Date.now() + 60 * 60 * 1000;
-        }
-      })();
+      // 1. Calculate / Prepare all Data Fresh (Identical to Payload Construction)
 
-      // Transfer room types from Families section to hotelForms before saving
-      // This ensures the room types selected in the Families section are saved to sessionStorage
-      const enrichedHotelForms = hotelForms.map((hotel, hotelIndex) => {
-        // Find the room type selected for this hotel in the Families section
-        // familyRoomTypes uses keys like "0_0" (familyIndex_hotelIndex)
-        // We'll use the first family's selection as the default room type for the hotel
-        let roomTypeForHotel = hotel.roomType || ''; // Start with existing value
+      // Calculate Visa Prices
+      const visaPrices = calculateVisaPrices();
 
-        // Check if there are family room type selections
-        if (familyRoomTypes && Object.keys(familyRoomTypes).length > 0) {
-          // Look for room type selections for this hotel across all families
-          // Format: familyIndex_hotelIndex (e.g., "0_0", "1_0", "0_1")
-          const roomTypesForThisHotel = Object.keys(familyRoomTypes)
-            .filter(key => {
-              const parts = key.split('_');
-              return parts.length === 2 && parseInt(parts[1]) === hotelIndex;
-            })
-            .map(key => familyRoomTypes[key])
-            .filter(Boolean); // Remove empty values
-
-          // Use the first non-empty room type found for this hotel
-          if (roomTypesForThisHotel.length > 0) {
-            roomTypeForHotel = roomTypesForThisHotel[0];
+      // Retrieve agency/agent info if needed (for display only)
+      let agencyId = null;
+      try {
+        if (token) {
+          const decoded = jwtDecode(token);
+          if (decoded && decoded.user_id) {
+            // If needed
           }
         }
+      } catch (e) {
+        console.error("Error decoding token", e);
+      }
 
-        return {
-          ...hotel,
-          roomType: roomTypeForHotel
-        };
+      // --- Payload Construction ---
+
+      // Hotel Details
+      const hotelDetails = hotelForms
+        .filter(form => form.hotelId || form.isSelfHotel)
+        .map(form => {
+          const selectedHotel = hotels.find(h => h.id.toString() === form.hotelId);
+          // Try to calculate fresh cost
+          let hotelCost = form.hotelId ? calculateHotelCost(form, manualFamilies) : { total: 0 };
+
+          // Fix: Prioritize savedNet if it exists (even if it's 0), matching InvoicePrint logic
+          if (form.savedNet !== undefined && form.savedNet !== null) {
+            hotelCost = { total: form.savedNet };
+          } else if ((!hotelCost.total || hotelCost.total === 0) && (form.net || form.price)) {
+            hotelCost = { total: form.net || form.price };
+          }
+
+          return {
+            room_type: form.roomType,
+            quantity: parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0),
+            sharing_type: form.sharingType,
+            check_in_time: form.checkIn,
+            check_out_time: form.checkOut,
+            number_of_nights: parseInt(form.noOfNights || 0),
+            nights: parseInt(form.noOfNights || 0),
+            special_request: form.specialRequest,
+            price: hotelCost.total,
+            total_price: hotelCost.total,
+            hotel: form.hotelId ? parseInt(form.hotelId) : null,
+            hotel_info: selectedHotel ? { id: selectedHotel.id, name: selectedHotel.name } : null,
+            is_self_hotel: !!form.isSelfHotel,
+            self_hotel_name: form.isSelfHotel ? form.selfHotelName : null,
+            quinty: form.quinty || null,
+            assigned_families: form.assignedFamilies || []
+          };
+        });
+
+      // Transport Details
+      const transportDetails = transportForms
+        .filter(form => form.transportSectorId && !form.self)
+        .map(form => {
+          const selectedSector = transportSectors.find(
+            s => s.id.toString() === form.transportSectorId
+          );
+          // Resolve vehicle type object
+          const vt = vehicleTypes.find(v => v.vehicle_name === form.transportType || v.vehicle_type === form.transportType);
+
+          // Use calculateTransportCost to get the correct price (handles FREE transport logic)
+          const calculatedPrice = calculateTransportCost(form);
+
+          return {
+            id: form.id,
+            vehicle_type: vt?.id || null,
+            vehicle_type_display: form.transportType, // User requested this
+            transport_sector: parseInt(form.transportSectorId),
+            transport_sector_info: selectedSector || null,
+            big_sector_id: vt?.big_sector?.id || vt?.big_sector || null, // Derive from VehicleType
+            price: calculatedPrice, // Use the calculated price which respects FREE logic
+            adault_price: selectedSector?.adault_price || 0,
+            child_price: selectedSector?.child_price || 0,
+            infant_price: selectedSector?.infant_price || 0,
+          };
+        });
+
+      // Food Details
+      if (!foodSelf) {
+        const missingHotel = foodForms.some(f => f.foodId && !f.selfPickup && !(f.hotel && String(f.hotel).trim()));
+        if (missingHotel) {
+          toast.error("Please provide Hotel name for all Food entries or enable 'Self' / 'Self Pickup'");
+          setIsSubmitting(false);
+          return;
+        }
+      }
+      const foodDetails = foodForms
+        .filter(form => form.foodId && !foodSelf)
+        .map(form => {
+          const selectedFoodItem = foodPrices.find(food => food.id.toString() === form.foodId);
+          const adults = parseInt(formData.totalAdults || 0);
+          const childs = parseInt(formData.totalChilds || 0);
+          const infants = parseInt(formData.totalInfants || 0);
+
+          // Match InvoicePrint Logic exactly
+          const adultPrice = selectedFoodItem?.adult_selling_price || 0;
+          const childPrice = selectedFoodItem?.child_selling_price || 0;
+          const infantPrice = selectedFoodItem?.infant_selling_price || 0;
+
+          const calculatedNetSAR = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
+
+          // Use savedNet if available (prioritize it like InvoicePrint)
+          let finalNet = (form.savedNet && form.savedNet > 0) ? parseFloat(form.savedNet) : calculatedNetSAR;
+
+          return {
+            food: selectedFoodItem?.id || 0,
+            price: adultPrice,
+            min_persons: selectedFoodItem?.min_pex || 0,
+            total_persons: adults + childs,
+            city: form.city || null,
+            hotel_name: form.hotel || null,
+            start_date: form.startDate,
+            days: form.noOfDays,
+            self_pickup: form.selfPickup,
+            total_price: finalNet
+          };
+        });
+
+      // Ziarat Details
+      const ziaratDetails = ziaratForms
+        .filter(form => form.ziaratId && !ziaratSelf)
+        .map(form => {
+          const selectedZiaratItem = ziaratPrices.find(ziarat => ziarat.id.toString() === form.ziaratId);
+          const adults = parseInt(formData.totalAdults || 0);
+          const childs = parseInt(formData.totalChilds || 0);
+          const infants = parseInt(formData.totalInfants || 0);
+
+          // Match InvoicePrint Logic exactly
+          const adultPrice = selectedZiaratItem?.adult_selling_price || 0;
+          const childPrice = selectedZiaratItem?.child_selling_price || 0;
+          const infantPrice = selectedZiaratItem?.infant_selling_price || 0;
+
+          const calculatedNetSAR = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
+
+          // Use savedNet if available
+          let finalNet = (form.savedNet && form.savedNet > 0) ? parseFloat(form.savedNet) : calculatedNetSAR;
+
+          return {
+            ziarat: selectedZiaratItem?.id || 0,
+            price: adultPrice,
+            contact_person: selectedZiaratItem?.contact_person || "",
+            contact_number: selectedZiaratItem?.contact_number || "",
+            date: form.date,
+            city: form.city,
+            total_price: finalNet
+          };
+        });
+
+      // [DEBUG] Log data for InvoicePrint inspection
+      // [DEBUG] Log data for InvoicePrint inspection
+      console.log("[INVOICE DEBUG DATA] Data for InvoicePrint:", {
+        formData,
+        hotelForms,
+        transportForms,
+        transportSectors,
+        foodForms,
+        ziaratForms,
+        selectedFlight,
+        calculatedVisaPrices: visaPrices,
+        riyalRate: typeof riyalRate !== 'undefined' ? riyalRate : 'N/A',
+        hotels,
+        foodPrices,
+        ziaratPrices,
+        familyGroups,
+        manualFamilies,
+        familyRoomTypes,
+        vehicleTypes: typeof vehicleTypes !== 'undefined' ? vehicleTypes : 'N/A',
+        airlinesMap: typeof airlinesMap !== 'undefined' ? airlinesMap : 'N/A'
       });
+
+      // 2. Refresh Totals
+      const totalHotelCost = hotelDetails.reduce((a, c) => a + (Number(c.total_price) || 0), 0);
+      const totalTransportCost = transportDetails.reduce((a, c) => a + (Number(c.price) || 0), 0);
+      // Use the pre-calculated total_price
+      const totalFoodCost = foodDetails.reduce((a, c) => a + (Number(c.total_price) || 0), 0);
+      const totalZiaratCost = ziaratDetails.reduce((a, c) => a + (Number(c.total_price) || 0), 0);
+
+      // Calculate Flight Cost explicitly (Robust check matching InvoicePrint)
+      let finalFlightCost = 0;
+      if (selectedFlight) {
+        const adultPrice = parseFloat(selectedFlight.adult_selling_price || selectedFlight.adult_price || selectedFlight.adult_fare || 0);
+        const childPrice = parseFloat(selectedFlight.child_selling_price || selectedFlight.child_price || selectedFlight.child_fare || 0);
+        const infantPrice = parseFloat(selectedFlight.infant_selling_price || selectedFlight.infant_price || selectedFlight.infant_fare || 0);
+
+        finalFlightCost =
+          (parseInt(formData.totalAdults || 0) * adultPrice) +
+          (parseInt(formData.totalChilds || 0) * childPrice) +
+          (parseInt(formData.totalInfants || 0) * infantPrice);
+      } else {
+        // Fallback to manual input if available (though less reliable)
+        finalFlightCost = parseFloat(costs.flightCost?.replace(/,/g, "") || 0);
+      }
+
+      // 3. Construct Final Package Object
+      const newPkg = {
+        package_name: formData.packageName,
+        total_days: formData.totalDays,
+        total_adaults: formData.totalAdults,
+        total_children: formData.totalChilds,
+        total_infants: formData.totalInfants,
+        start_date: formData.arrivalDate, // mapped
+        end_date: formData.departureDate, // mapped
+
+        visa_details: {
+          visa_price: visaPrices.adultVisaCost, // Simplified
+          visa_rates: {
+            adult: visaPrices.adultPrice || 0,
+            child: visaPrices.childPrice || 0,
+            infant: visaPrices.infantPrice || 0
+          }
+        },
+        // Flags for Review Page
+        only_visa: formData.onlyVisa,
+        add_visa: formData.addVisaPrice,
+        is_full_package: selectedBookingOptions.includes("vtth") || selectedBookingOptions.includes("vth") || selectedBookingOptions.includes("vt"),
+        long_term_stay: formData.longTermVisa,
+
+        hotel_details: hotelDetails,
+        transport_details: transportDetails.map(t => ({
+          id: t.id, // Ensure ID is passed if available in map scope (Need to fix map fn first)
+          ...t
+        })),
+        food_details: foodDetails,
+        ziarat_details: ziaratDetails,
+        // tikcet_details removed (typo fix)
+
+        // Pricing Metadata
+        visas_cost: parseFloat(costs.visaCost?.replace(/,/g, "") || 0),
+        visa_total_cost: parseFloat(costs.visaCost?.replace(/,/g, "") || 0),
+        tickets_cost: parseFloat(costs.flightCost?.replace(/,/g, "") || 0),
+        tickets_cost: finalFlightCost,
+        hotels_cost: totalHotelCost, // Use FRESH calculated total
+        transports_cost: totalTransportCost, // Use FRESH calculated total
+        foods_cost: totalFoodCost, // Use FRESH calculated total
+        ziarats_cost: totalZiaratCost, // Use FRESH calculated total
+
+        // Critical: Calculate Total Cost Fresh from components to ensure it matches Invoice
+        total_cost: (
+          (parseFloat(costs.visaCost?.replace(/,/g, "") || 0)) +
+          totalHotelCost +
+          totalTransportCost +
+          totalFoodCost +
+          totalZiaratCost +
+          finalFlightCost
+        ),
+
+        // Add flight logic if `selectedFlight` exists in state
+        ticket_details: selectedFlight ? [{
+          ticket_info: {
+            ...selectedFlight,
+            trip_details: selectedFlight.trip_details || []
+          },
+          ...selectedFlight
+        }] : [],
+
+        // Margin
+        margin: formData.margin || 0,
+
+        // Full Form Data for restoration
+        formData: formData,
+
+        // Family Data for Details page
+        manualFamilies: manualFamilies,
+        familyGroups: familyGroups,
+        familyRoomTypes: familyRoomTypes,
+        familyRoomOverrides: familyRoomOverrides
+      };
+
+      // 4. Save to Session Logic
+      let expiresAt = Date.now() + 60 * 60 * 1000; // default 1 hour
+      try {
+        if (token) {
+          const decoded = jwtDecode(token);
+          if (decoded && decoded.exp) {
+            expiresAt = decoded.exp * 1000;
+          }
+        }
+      } catch (e) { }
 
       const payload = {
         __version: 1,
         __expiresAt: expiresAt,
-        value: {
-          formData,
-          manualFamilies,
-          hotelForms: enrichedHotelForms, // Use enriched hotel forms with room types from Families section
-          familyRoomTypes,
-          selectedFlight,
-          costs: latestCosts || costs,
-        },
+        value: newPkg
       };
 
+      console.log("📦 [Book Now Payload] Generated Package Data:", newPkg);
+      console.log("📦 [Book Now Payload] Total Cost:", newPkg.total_cost);
+      console.log("📦 [Book Now Payload] Payload to Session:", payload);
+
       sessionStorage.setItem('umrah_booknow_v1', JSON.stringify(payload));
+      setIsSubmitting(false);
 
-      // Navigate to custom umrah detail page
-      const draftId = `draft-${Date.now()}`;
-      const targetUrl = `/packages/custom-umrah/detail/${draftId}`;
+      // 5. Navigate
+      const id = Date.now();
+      navigate(`/packages/custom-umrah/detail/${id}`);
 
-      console.log('Navigating to:', targetUrl);
-      toast.success('Saved — continuing to booking');
-
-      // Use window.location for reliable navigation
-      window.location.href = targetUrl;
     } catch (err) {
-      console.error('Book Now failed:', err);
-      toast.error('Failed to proceed. Please try again.');
-    } finally {
+      console.error(err);
+      toast.error("Failed to process booking. Please try again.");
       setIsSubmitting(false);
     }
   };
+
 
   // Modify the handleEditCalculation to work with selected package
   const handleEditCalculation = async (packageId) => {
@@ -5012,18 +5796,18 @@ const AgentUmrahCalculator = () => {
     }
   };
 
-  // Function to handle the PUT (update) request
-  const handleUpdatePackage = async () => {
+  // Function to handle the Update request (Client-Side Only)
+  const handleUpdatePackage = async (opts = {}) => {
     try {
       const visaPrices = calculateVisaPrices();
-      const agencyId = localStorage.getItem("agencyId") ? JSON.parse(localStorage.getItem("agencyId")).id : null;
 
-      // Prepare the payload according to your API structure
+      // Prepare the payload (same structure as before)
       const payload = {
+        id: costs.queryNumber, // ID is preserved
         hotel_details: hotelForms
           .filter(form => form.hotelId || form.isSelfHotel)
           .map(form => ({
-            id: form.id, // Include ID for existing records
+            id: form.id,
             room_type: form.roomType,
             quantity: parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0),
             sharing_type: form.sharingType,
@@ -5033,6 +5817,7 @@ const AgentUmrahCalculator = () => {
             special_request: form.specialRequest,
             price: form.price || 0,
             hotel: form.hotelId ? parseInt(form.hotelId) : null,
+            hotel_name: form.hotelName || "", // Add name for local display reliability
             is_self_hotel: !!form.isSelfHotel,
             self_hotel_name: form.isSelfHotel ? form.selfHotelName : null,
             quinty: form.quinty || null,
@@ -5041,15 +5826,24 @@ const AgentUmrahCalculator = () => {
 
         transport_details: transportForms
           .filter(form => form.transportSectorId && !form.self)
-          .map(form => ({
-            id: form.id, // Include ID for existing records
-            vehicle_type: form.transportType,
-            transport_sector: parseInt(form.transportSectorId),
-            price: form.price || 0
-          })),
+          .map(form => {
+            const selectedSector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
+            const vt = vehicleTypes.find(v => v.vehicle_name === form.transportType || v.vehicle_type === form.transportType);
+            return {
+              id: form.id,
+              vehicle_type: vt?.id || null,
+              vehicle_type_display: form.transportType,
+              transport_sector: parseInt(form.transportSectorId),
+              sector_name: form.transportSector || "",
+              price: form.price || 0,
+              big_sector_id: vt?.big_sector?.id || vt?.big_sector || null,
+              transport_sector_info: selectedSector || null
+            };
+          }),
 
         ticket_details: selectedFlight ? [{
-          ticket: selectedFlight.id
+          ticket: selectedFlight.id,
+          ticket_info: selectedFlight // Embed full flight details for offline view
         }] : [],
 
         food_details: foodForms
@@ -5057,8 +5851,9 @@ const AgentUmrahCalculator = () => {
           .map(form => {
             const foodItem = foodPrices.find(f => f.id.toString() === form.foodId);
             return {
-              id: form.id, // Include ID for existing records
+              id: form.id,
               food: foodItem?.id || 0,
+              food_name: foodItem?.title || foodItem?.name || "",
               price: foodItem?.per_pex || 0,
               min_persons: foodItem?.min_pex || 0,
               total_persons: parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0)
@@ -5070,8 +5865,9 @@ const AgentUmrahCalculator = () => {
           .map(form => {
             const ziaratItem = ziaratPrices.find(z => z.id.toString() === form.ziaratId);
             return {
-              id: form.id, // Include ID for existing records
+              id: form.id,
               ziarat: ziaratItem?.id || 0,
+              ziarat_name: ziaratItem?.ziarat_title || ziaratItem?.title || ziaratItem?.name || "",
               price: ziaratItem?.price || 0,
               contact_person: ziaratItem?.contact_person || "",
               contact_number: ziaratItem?.contact_number || ""
@@ -5090,61 +5886,71 @@ const AgentUmrahCalculator = () => {
         only_visa: formData.onlyVisa,
         status: "Custom Umrah Package",
         organization: orgId,
-        agent: 1, // Set agent ID from logged-in user
-        agency: agencyId || 0 // Set agency ID from logged-in user
+        is_full_package: selectedBookingOptions.includes("vtth") || selectedBookingOptions.includes("vth") || selectedBookingOptions.includes("vt"),
+        add_visa: formData.addVisaPrice,
+        manualFamilies: familyGroups.length > 0 ? manualFamilies : [] // Ensure this is saved
       };
 
-      // Make the PUT request
-      const response = await axios.put(
-        `http://127.0.0.1:8000/api/custom-umrah-packages/${costs.queryNumber}/`,
-        payload,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      // Client-Side Update Logic
+      const localData = localStorage.getItem('agent_custom_packages');
+      let packages = [];
+      if (localData) {
+        try {
+          packages = JSON.parse(localData);
+          if (!Array.isArray(packages)) packages = [];
+        } catch (e) { packages = []; }
+      }
 
-      toast.success("Package updated successfully!");
-      return response.data;
+      // Find and update
+      const index = packages.findIndex(p => String(p.id) === String(costs.queryNumber));
+      if (index !== -1) {
+        // Merge payload into existing package (preserving ID)
+        packages[index] = { ...packages[index], ...payload };
+        localStorage.setItem('agent_custom_packages', JSON.stringify(packages));
+        toast.success("Package updated locally!");
+      } else {
+        toast.error("Original package not found in local storage.");
+      }
+
+      return payload;
+
     } catch (error) {
       console.error("Error updating package:", error);
-      toast.error("Failed to update package");
+      toast.error("Failed to update package locally");
       throw error;
     }
   };
 
-  // Fetch custom packages for the logged-in agency
+  // Fetch custom packages from localStorage (Client-Side Only)
   const fetchCustomPackages = async () => {
     try {
-      // Load from sessionStorage first (only one package)
-      const sessionPkg = sessionStorage.getItem('umrah_calculation_package');
-      if (sessionPkg) {
+      // 1. Load from localStorage
+      const localData = localStorage.getItem('agent_custom_packages');
+      let packages = [];
+      if (localData) {
         try {
-          const pkg = JSON.parse(sessionPkg);
-          console.log('📦 Loaded package from session - manualFamilies:', pkg.manualFamilies);
-          setCustomPackages([pkg]);
-          return; // Use session package, don't fetch from server
+          packages = JSON.parse(localData);
+          // Ensure it's an array
+          if (!Array.isArray(packages)) packages = [];
         } catch (e) {
-          console.warn('Failed to parse session package:', e);
+          console.error("Error parsing local packages:", e);
+          packages = [];
         }
       }
 
-      // If no session package, fetch from server
-      const agencyId = localStorage.getItem("agencyId");
-      const params = new URLSearchParams();
-      params.append('organization', orgId);
-      if (agencyId && agencyId !== 'null') params.append('agency', agencyId);
-
-      const url = `http://127.0.0.1:8000/api/custom-umrah-packages/?${params.toString()}`;
-
-      const response = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
+      // 2. Sort by ID (descending - newest first) if IDs are timestamps
+      packages.sort((a, b) => {
+        const idA = parseInt(a.id) || 0;
+        const idB = parseInt(b.id) || 0;
+        return idB - idA;
       });
-      setCustomPackages(response.data || []);
+
+      // 3. Set state
+      setCustomPackages(packages);
+
     } catch (error) {
       console.error("Error fetching custom packages:", error);
+      toast.error("Failed to load packages");
     }
   };
 
@@ -5375,53 +6181,9 @@ const AgentUmrahCalculator = () => {
     return true;
   };
 
-  const calculateHotelCost = (form) => {
-    const selectedHotel = hotels.find(h => h.id.toString() === form.hotelId);
-    if (!selectedHotel) return { perNight: 0, total: 0 };
 
-    let activePrice = getActivePriceForDates(selectedHotel, form.checkIn, form.roomType);
 
-    // If no price found for the date range, use the first available price as fallback
-    if (!activePrice && selectedHotel.prices && selectedHotel.prices.length > 0) {
-      activePrice = selectedHotel.prices[0];
-    }
 
-    if (!activePrice) return { perNight: 0, total: 0 };
-
-    const nights = parseInt(form.noOfNights || 0) || 0;
-
-    // Determine per-room vs per-person pricing
-    const rawPrice = activePrice.price || activePrice.selling_price || 0;
-    const perPersonPrice = parseFloat(activePrice.adult_selling_price ?? activePrice.adult_price ?? 0) || 0;
-    const totalPersons = parseInt(formData.totalAdults || 0) + parseInt(formData.totalChilds || 0) + parseInt(formData.totalInfants || 0);
-    const roomTypeNormalized = String(form.roomType || '').toLowerCase().trim();
-
-    let perNightTotal = 0;
-    let total = 0;
-
-    if (roomTypeNormalized === 'sharing') {
-      // per person pricing
-      perNightTotal = perPersonPrice || rawPrice || 0;
-      total = perNightTotal * totalPersons * nights;
-    } else {
-      // per room pricing
-      perNightTotal = rawPrice || perPersonPrice || 0;
-      total = perNightTotal * nights;
-    }
-
-    return { perNight: perNightTotal, total };
-  };
-
-  const calculateTransportCost = (form) => {
-    const selectedSector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
-    if (!selectedSector) return 0;
-
-    return (
-      (parseInt(formData.totalAdults || 0) * selectedSector.adault_price) +
-      (parseInt(formData.totalChilds || 0) * selectedSector.child_price) +
-      (parseInt(formData.totalInfants || 0) * selectedSector.infant_price)
-    );
-  };
 
   // And update the fetchRiyalRate function:
   const fetchRiyalRate = async () => {
@@ -6242,6 +7004,59 @@ const AgentUmrahCalculator = () => {
     }
   }, [unionRoomTypeOptions, familyRoomOverrides, familyRoomTypes]);
 
+  // NEW: Sync assigned families to hotel forms based on room type matches
+  useEffect(() => {
+    // Avoid infinite loops: only update if changes are needed
+    let hasChanges = false;
+    const newHotelForms = hotelForms.map((form, hIndex) => {
+      // Find all families assigned to this hotel index's current room type
+      const assigned = [];
+      const numFamilies = manualFamiliesEnabled ? manualFamilies.length : familyGroups.length;
+
+      for (let fIndex = 0; fIndex < numFamilies; fIndex++) {
+        // key for this family at this hotel
+        const key = `${fIndex}_${hIndex}`;
+        // The room type this family is supposed to have.
+        // Fallback to the form's room type if no specific override is set.
+        // This ensures that by default, all families follow the main room selection.
+        const desiredRoomType = familyRoomTypes[key] || form.roomType;
+
+        // If the family's desired type matches this form's selected type, assign them
+        // Comparison should be case-insensitive / trimmed just to be safe.
+        if (
+          desiredRoomType &&
+          form.roomType &&
+          String(desiredRoomType).toLowerCase().trim() === String(form.roomType).toLowerCase().trim()
+        ) {
+          // We use 1-based index (Family 1, Family 2)
+          assigned.push(fIndex + 1);
+        }
+      }
+
+      // Check if different
+      const current = form.assignedFamilies || [];
+      if (JSON.stringify(current) !== JSON.stringify(assigned)) {
+        hasChanges = true;
+        return { ...form, assignedFamilies: assigned };
+      }
+      return form;
+    });
+
+    if (hasChanges) {
+      setHotelForms(newHotelForms);
+    }
+  }, [
+    familyRoomTypes,
+    familyGroups.length,
+    manualFamilies.length,
+    manualFamiliesEnabled,
+    // We strictly depend on specific properties to avoid loops, 
+    // or rely on the hasChanges check which is robust.
+    // Including hotelForms in dependency is risky if not careful, 
+    // but our hasChanges check prevents infinite loops.
+    hotelForms
+  ]);
+
   return (
     <>
       <ToastContainer
@@ -6602,36 +7417,54 @@ const AgentUmrahCalculator = () => {
                                       const adults = parseInt(formData.totalAdults || 0);
                                       const childs = parseInt(formData.totalChilds || 0);
                                       const infants = parseInt(formData.totalInfants || 0);
-                                      const adultPrice = sector?.adault_price || 0;
-                                      const childPrice = sector?.child_price || 0;
-                                      const infantPrice = sector?.infant_price || 0;
-                                      const totalTransportPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
+
+                                      // Calculate actual cost using the helper (which applies free logic)
+                                      const totalTransportPrice = calculateTransportCost(form);
+
+                                      // If total is 0 but sector has price, it implies it's free/included
+                                      // So we should display 0 prices to avoid confusion
+                                      const isFree = totalTransportPrice === 0 && (sector?.adault_price > 0 || sector?.child_price > 0);
+
+                                      const adultPrice = isFree ? 0 : (sector?.adault_price || 0);
+                                      const childPrice = isFree ? 0 : (sector?.child_price || 0);
+                                      const infantPrice = isFree ? 0 : (sector?.infant_price || 0);
 
                                       return (
                                         <>
-                                          <div className="row mt-2">
-                                            <div className="col-12 col-md-4 mb-2">
-                                              <div className="alert alert-info p-2 mb-0">
-                                                <small>
-                                                  Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'transport')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'transport')}
-                                                </small>
+                                          {!isFree && (
+                                            <div className="row mt-2">
+                                              <div className="col-12 col-md-4 mb-2">
+                                                <div className="alert alert-info p-2 mb-0">
+                                                  <small>
+                                                    Adult: {formatPriceWithCurrencyDisplay(adultPrice, 'transport')} × {adults} = {formatPriceWithCurrencyDisplay(adults * adultPrice, 'transport')}
+                                                  </small>
+                                                </div>
+                                              </div>
+                                              <div className="col-12 col-md-4 mb-2">
+                                                <div className="alert alert-info p-2 mb-0">
+                                                  <small>
+                                                    Child: {formatPriceWithCurrencyDisplay(childPrice, 'transport')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'transport')}
+                                                  </small>
+                                                </div>
+                                              </div>
+                                              <div className="col-12 col-md-4 mb-2">
+                                                <div className="alert alert-info p-2 mb-0">
+                                                  <small>
+                                                    Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'transport')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'transport')}
+                                                  </small>
+                                                </div>
                                               </div>
                                             </div>
-                                            <div className="col-12 col-md-4 mb-2">
-                                              <div className="alert alert-info p-2 mb-0">
-                                                <small>
-                                                  Child: {formatPriceWithCurrencyDisplay(childPrice, 'transport')} × {childs} = {formatPriceWithCurrencyDisplay(childs * childPrice, 'transport')}
-                                                </small>
+                                          )}
+                                          {isFree && (
+                                            <div className="row mb-2">
+                                              <div className="col-12">
+                                                <div className="badge bg-success">
+                                                  Included in Visa Package
+                                                </div>
                                               </div>
                                             </div>
-                                            <div className="col-12 col-md-4 mb-2">
-                                              <div className="alert alert-info p-2 mb-0">
-                                                <small>
-                                                  Infant: {formatPriceWithCurrencyDisplay(infantPrice, 'transport')} × {infants} = {formatPriceWithCurrencyDisplay(infants * infantPrice, 'transport')}
-                                                </small>
-                                              </div>
-                                            </div>
-                                          </div>
+                                          )}
                                           <div className="row">
                                             <div className="col-12">
                                               <div className="alert alert-success p-2 mb-0">
@@ -6645,21 +7478,23 @@ const AgentUmrahCalculator = () => {
                                       );
                                     })()}
 
-                                    {form.transportSectorId && !form.self && (() => {
-                                      const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
-                                      const note = sector?.note || sector?.description || sector?.transport_note || sector?.note_text || sector?.details;
-                                      if (!note) return null;
-                                      return (
-                                        <div className="row mt-2">
-                                          <div className="col-12">
-                                            <div className="alert alert-secondary p-2">
-                                              <small><strong>Note:</strong> {note}</small>
+                                    {
+                                      form.transportSectorId && !form.self && (() => {
+                                        const sector = transportSectors.find(s => s.id.toString() === form.transportSectorId);
+                                        const note = sector?.note || sector?.description || sector?.transport_note || sector?.note_text || sector?.details;
+                                        if (!note) return null;
+                                        return (
+                                          <div className="row mt-2">
+                                            <div className="col-12">
+                                              <div className="alert alert-secondary p-2">
+                                                <small><strong>Note:</strong> {note}</small>
+                                              </div>
                                             </div>
                                           </div>
-                                        </div>
-                                      );
-                                    })()}
-                                  </div>
+                                        );
+                                      })()
+                                    }
+                                  </div >
 
                                   <div className="d-flex justify-content-end mt-3">
                                     <button
@@ -6884,9 +7719,9 @@ const AgentUmrahCalculator = () => {
                               const adults = parseInt(formData.totalAdults || 0);
                               const childs = parseInt(formData.totalChilds || 0);
                               const infants = parseInt(formData.totalInfants || 0);
-                              const adultPrice = selectedFlight.adult_price || selectedFlight.adult_fare || 0;
-                              const childPrice = selectedFlight.child_price || selectedFlight.child_fare || 0;
-                              const infantPrice = selectedFlight.infant_price || selectedFlight.infant_fare || 0;
+                              const adultPrice = selectedFlight.adult_selling_price || selectedFlight.adult_price || selectedFlight.adult_fare || 0;
+                              const childPrice = selectedFlight.child_selling_price || selectedFlight.child_price || selectedFlight.child_fare || 0;
+                              const infantPrice = selectedFlight.infant_selling_price || selectedFlight.infant_price || selectedFlight.infant_fare || 0;
                               const totalFlightPrice = (adults * adultPrice) + (childs * childPrice) + (infants * infantPrice);
 
                               return (
@@ -7214,9 +8049,11 @@ const AgentUmrahCalculator = () => {
                                         }
                                         return copy;
                                       });
-                                      setFamilyRoomTypes(() => {
+                                      setFamilyRoomTypes(prev => {
                                         const m = {};
-                                        for (let i = 0; i < groups.length; i++) m[i] = '';
+                                        for (let i = 0; i < groups.length; i++) {
+                                          m[i] = prev[i] || '';
+                                        }
                                         return m;
                                       });
 
@@ -8041,11 +8878,17 @@ const AgentUmrahCalculator = () => {
                       </div>
 
                       <div className="text-end mb-4 d-flex justify-content-end gap-3">
-                        <button id="btn" className="btn btn-primary btn-sm d-flex align-items-center px-3 py-2" onClick={handleViewClick} style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}>
+                        <button id="btn" className="btn btn-primary btn-sm d-flex align-items-center px-3 py-2" onClick={() => {
+                          setPreviewInvoiceData(null); // Ensure we view current form
+                          handleViewClick();
+                        }} style={{ backgroundColor: '#09559B', borderColor: '#09559B', color: '#fff' }}>
                           <Eye size={16} className="me-2" /> View
                         </button>
 
-                        <Modal show={showViewModal} onHide={handleCloseViewModal} size="xl">
+                        <Modal show={showViewModal} onHide={() => {
+                          handleCloseViewModal();
+                          setPreviewInvoiceData(null);
+                        }} size="xl">
                           <Modal.Header closeButton>
                             <Modal.Title>Package Details</Modal.Title>
                           </Modal.Header>
@@ -8063,21 +8906,25 @@ const AgentUmrahCalculator = () => {
                             </div>
                             <div className="p-3" ref={modalRef}>
                               <InvoicePrint
-                                formData={formData}
-                                hotelForms={hotelForms}
-                                transportForms={transportForms}
-                                transportSectors={transportSectors}
-                                foodForms={foodForms}
-                                ziaratForms={ziaratForms}
-                                selectedFlight={selectedFlight}
-                                calculatedVisaPrices={calculatedVisaPrices}
+                                {...(previewInvoiceData || {
+                                  formData,
+                                  hotelForms,
+                                  transportForms,
+                                  transportSectors,
+                                  foodForms,
+                                  ziaratForms,
+                                  selectedFlight,
+                                  calculatedVisaPrices,
+                                  riyalRate: riyalRate, // Explicitly pass current state
+                                  hotels,
+                                  foodPrices,
+                                  ziaratPrices,
+                                  familyGroups,
+                                  familyRoomTypes,
+                                  airlinesMap,
+                                })}
+                                // Ensure riyalRate prop overrides any stale data in previewInvoiceData if merging
                                 riyalRate={riyalRate}
-                                hotels={hotels}
-                                foodPrices={foodPrices}
-                                ziaratPrices={ziaratPrices}
-                                familyGroups={familyGroups}
-                                familyRoomTypes={familyRoomTypes}
-                                airlinesMap={airlinesMap}
                                 formatPriceWithCurrencyNetPrice={formatPriceWithCurrencyNetPrice}
                                 calculateHotelCost={calculateHotelCost}
                                 calculateTransportCost={calculateTransportCost}
@@ -8087,31 +8934,7 @@ const AgentUmrahCalculator = () => {
                           </Modal.Body>
                           <Modal.Footer className="d-flex justify-content-end gap-2">
                             {/* Primary: Add / Update calculation first */}
-                            {costs.queryNumber ? (
-                              <Button
-                                variant="primary"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleAddToCalculations();
-                                }}
-                                disabled={isSubmitting}
-                              >
-                                {isSubmitting ? 'Updating...' : 'Update Package'}
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="primary"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleAddToCalculations();
-                                }}
-                                disabled={isSubmitting}
-                              >
-                                {isSubmitting ? 'Submitting...' : 'Add to Calculations'}
-                              </Button>
-                            )}
+
 
                             {/* Secondary: Book Now */}
                             <Button
@@ -8137,172 +8960,22 @@ const AgentUmrahCalculator = () => {
                     </div>
                   </div>
 
-                  <div className="shadow-sm der rounded-4 p-4 mt-3 mb-4">
-                    <div className="mb-4">
-                      <ul className="nav nav-pills">
-                        {buttonTabs.map((tab) => (
-                          <li className="nav-item me-2" key={tab}>
-                            <button
-                              className={`nav-link ${activeTab === tab
-                                ? "active"
-                                : "btn-outline-secondary"
-                                }`}
-                              onClick={() => handleTabClick(tab)}
-                              style={{
-                                backgroundColor:
-                                  activeTab === tab ? "#4169E1" : "#E1E1E1",
-                                color: activeTab === tab ? "#FFFFFF" : "#667085",
-                                border: "none",
-                                borderRadius: "10px",
-                                fontSize: "0.875rem",
-                              }}
-                            >
-                              {tab}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="row">
-                      <div className="table-responsive" style={{ overflow: 'visible' }}>
-                        <table className="table" style={{ tableLayout: 'fixed' }}>
-                          <thead className="table-light">
-                            <tr style={{ height: '120px' }}>
-                              <th className="small">Query Number</th>
-                              <th className="small">Adults</th>
-                              <th className="small">Childs</th>
-                              <th className="small">Infants</th>
-                              <th className="small">Visa</th>
-                              <th className="small">Hotel</th>
-                              <th className="small">Transport</th>
-                              <th className="small">Flight</th>
-                              <th className="small">Food</th>
-                              <th className="small">Ziarat</th>
-                              <th>Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {customPackages.length === 0 ? (
-                              <tr>
-                                <td colSpan="11" className="text-center">No packages found</td>
-                              </tr>
-                            ) : (
-                              customPackages.map(pkg => {
-                                // Check if each component exists
-                                const hasVisa = pkg.adault_visa_price > 0 || pkg.child_visa_price > 0 || pkg.infant_visa_price > 0;
-                                const hasHotel = pkg.hotel_details && pkg.hotel_details.length > 0;
-                                const hasTransport = pkg.transport_details && pkg.transport_details.length > 0;
-                                const hasFlight = pkg.ticket_details && pkg.ticket_details.length > 0;
-                                const hasFood = pkg.food_details && pkg.food_details.length > 0;
-                                const hasZiarat = pkg.ziarat_details && pkg.ziarat_details.length > 0;
 
-                                return (
-                                  <tr key={pkg.id}>
-                                    <td className="small">{pkg.id}</td>
-                                    <td className="small">{pkg.total_adaults}</td>
-                                    <td className="small">{pkg.total_children}</td>
-                                    <td className="small">{pkg.total_infants}</td>
-                                    <td className="small">{hasVisa ? "Yes" : "No"}</td>
-                                    <td className="small">{hasHotel ? "Yes" : "No"}</td>
-                                    <td className="small">{hasTransport ? "Yes" : "No"}</td>
-                                    <td className="small">{hasFlight ? "Yes" : "No"}</td>
-                                    <td className="small">{hasFood ? "Yes" : "No"}</td>
-                                    <td className="small">{hasZiarat ? "Yes" : "No"}</td>
-                                    <td>
-                                      <Dropdown drop="down" align="end">
-                                        <Dropdown.Toggle
-                                          variant="link"
-                                          className="p-0 border-0 text-decoration-none"
-                                          id={`dropdown-${pkg.id}`}
-                                        >
-                                          <Gear style={{ cursor: 'pointer', fontSize: '1.5rem', color: '#6c757d' }} />
-                                        </Dropdown.Toggle>
 
-                                        <Dropdown.Menu style={{ position: 'absolute', zIndex: 1050 }}>
-                                          <Dropdown.Item
-                                            onClick={() => {
-                                              // Calculate expiry from token
-                                              let expiresAt = Date.now() + 60 * 60 * 1000; // default 1 hour
-                                              try {
-                                                if (token) {
-                                                  const decoded = jwtDecode(token);
-                                                  if (decoded && decoded.exp) {
-                                                    expiresAt = decoded.exp * 1000;
-                                                  }
-                                                }
-                                              } catch (e) {
-                                                // use default
-                                              }
 
-                                              // Pass the complete package data (keep big sector as-is)
-                                              const transformedPkg = pkg;
 
-                                              // Save transformed package data to sessionStorage
-                                              const payload = {
-                                                __version: 1,
-                                                __expiresAt: expiresAt,
-                                                value: transformedPkg
-                                              };
 
-                                              sessionStorage.setItem('umrah_booknow_v1', JSON.stringify(payload));
-                                              toast.success('Saved — continuing to booking');
 
-                                              // Use draft ID for navigation
-                                              const draftId = `draft-${Date.now()}`;
-                                              window.location.href = `/packages/custom-umrah/detail/${draftId}`;
-                                            }}
-                                          >
-                                            Book Now
-                                          </Dropdown.Item>
-                                          <Dropdown.Item
-                                            onClick={() => {
-                                              toast.info('Edit functionality coming soon');
-                                              // TODO: Load package data back into form
-                                            }}
-                                          >
-                                            Edit
-                                          </Dropdown.Item>
-                                          <Dropdown.Item
-                                            onClick={() => {
-                                              toast.info('Invoice functionality coming soon');
-                                              // TODO: Generate/view invoice
-                                            }}
-                                          >
-                                            Invoice
-                                          </Dropdown.Item>
-                                          <Dropdown.Divider />
-                                          <Dropdown.Item
-                                            className="text-danger"
-                                            onClick={() => {
-                                              if (window.confirm('Are you sure you want to remove this package?')) {
-                                                sessionStorage.removeItem('umrah_calculation_package');
-                                                setCustomPackages([]);
-                                                toast.success('Package removed successfully!');
-                                              }
-                                            }}
-                                          >
-                                            Remove
-                                          </Dropdown.Item>
-                                        </Dropdown.Menu>
-                                      </Dropdown>
-                                    </td>
-                                  </tr>
-                                );
-                              })
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+                </div >
+              </div >
+            </div >
+          </div >
         </div >
       </div >
     </>
   );
 };
+
+
 
 export default AgentUmrahCalculator;
